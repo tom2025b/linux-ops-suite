@@ -1,0 +1,82 @@
+# Linux Ops Suite
+
+> A personal Linux operations toolkit built from focused, single-purpose tools that work together through clean file-based contracts.
+
+**This repository is the suite's contract & index headquarters — not a monorepo.** Each
+tool lives in its own repo. Here you'll find the shared
+[architecture](docs/ARCHITECTURE.md), the [integration map](docs/INTEGRATION_MAP.md),
+the [contract rules](docs/CONTRACT_RULES.md), the [roadmap](docs/ROADMAP.md), the JSON
+[`contracts/`](contracts/), and example [`examples/`](examples/).
+
+---
+
+## Tools
+
+| Tool | Role | Status |
+|---|---|---|
+| [**Bulwark**](https://github.com/tom2025b/bulwark) | Read-only scanner and risk classifier — **source of truth for risk/inventory** | Active |
+| [**ScriptVault**](https://github.com/tom2025b/scriptvault) | Fast fuzzy-search TUI script launcher with favorites and recents | Active |
+| [**Bridge**](https://github.com/tom2025b/toolbox-bridge) | File-based connector that turns Bulwark risk data into ScriptVault sidecars | Active |
+| [**ToolFoundry**](https://github.com/tom2025b/toolfoundry) | Lifecycle/ownership manager — **source of truth for lifecycle**; emits `rexops-feed` JSON | Active |
+| [**Workstate**](https://github.com/tom2025b/workstate) | Read-only project/repository health dashboard | Architecture |
+| [**RexOps**](https://github.com/tom2025b/rexops) | Operations cockpit — **the front door and only consumer** of all tool exports | In progress |
+
+---
+
+## How the Pieces Fit
+
+Data flows one way: producers write files, **RexOps is the front door and final
+consumer**. No tool imports another tool's code; no tool reads RexOps.
+
+```mermaid
+graph LR
+    subgraph Producers
+        B(Bulwark<br/>risk + inventory)
+        T(ToolFoundry<br/>lifecycle)
+        S(ScriptVault<br/>scripts)
+        W(Workstate<br/>repo health)
+    end
+    B -->|risk| BR(Bridge)
+    BR -->|sidecar YAML| S
+    B -.->|scan JSON| R
+    T ==>|rexops-feed JSON| R
+    S -.->|export JSON| R
+    W -.->|snapshot JSON| R
+    R(["RexOps<br/>front door · consumer · launcher"])
+```
+
+Solid `==>` = a real, shipped contract today. Dotted `-.->` = planned (see the
+[roadmap](docs/ROADMAP.md)). RexOps is the only consumer — it is where everything comes
+together, and it never writes back into a tool.
+
+---
+
+## Design Principles
+
+1. **One job per tool.** Each tool solves exactly one problem and stays inside that boundary.
+2. **File-based contracts.** Tools communicate through JSON or YAML — never through shared code or direct calls.
+3. **Read-only by default.** Tools that only need to observe never mutate.
+4. **Offline and private.** No telemetry. No unnecessary network calls. XDG-compliant config.
+5. **Low-resource.** Built to run well on a modest Linux machine without competing for headroom.
+6. **Rust-first.** Chosen for performance, safety, and long-term reliability.
+
+---
+
+## Repository Index
+
+Each tool lives in its own repository. This repo is the front door and contract index —
+see [`contracts/`](contracts/) for the JSON schemas and [`examples/`](examples/) for
+fixtures.
+
+| Repository | Description |
+|---|---|
+| [tom2025b/bulwark](https://github.com/tom2025b/bulwark) | Risk scanner |
+| [tom2025b/scriptvault](https://github.com/tom2025b/scriptvault) | Script launcher |
+| [tom2025b/toolbox-bridge](https://github.com/tom2025b/toolbox-bridge) | Bulwark → ScriptVault connector |
+| [tom2025b/toolfoundry](https://github.com/tom2025b/toolfoundry) | Tool lifecycle manager |
+| [tom2025b/workstate](https://github.com/tom2025b/workstate) | Repo health dashboard |
+| [tom2025b/rexops](https://github.com/tom2025b/rexops) | Operations cockpit |
+
+---
+
+Built by [@tom2025b](https://github.com/tom2025b) · All repos tagged [`linux-ops-suite`](https://github.com/search?q=topic%3Alinux-ops-suite+user%3Atom2025b&type=repositories)

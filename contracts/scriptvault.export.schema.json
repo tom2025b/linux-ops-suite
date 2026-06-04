@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/scriptvault.export.schema.json",
+  "title": "ScriptVault export",
+  "description": "STATUS: PROVISIONAL — ScriptVault does not yet emit JSON. This stub fixes only the universal envelope fields. Real shape (scripts, favorites, recents) will be added when ScriptVault ships its versioned export. Do not treat the item shapes below as final.",
+  "type": "object",
+  "required": ["schema_version", "source_tool"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "description": "Integer major version."
+    },
+    "source_tool": {
+      "type": "string",
+      "const": "scriptvault"
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "Recommended timestamp (RFC3339 or YYYY-MM-DD)."
+    },
+    "scripts": {
+      "type": "array",
+      "description": "PROVISIONAL — known scripts.",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "favorites": {
+      "type": "array",
+      "description": "PROVISIONAL — favorite script ids.",
+      "items": { "type": "string" }
+    },
+    "recents": {
+      "type": "array",
+      "description": "PROVISIONAL — recently launched script ids.",
+      "items": { "type": "string" }
+    }
+  }
+}

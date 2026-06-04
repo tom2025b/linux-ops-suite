@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/workstate.snapshot.schema.json",
+  "title": "Workstate snapshot",
+  "description": "STATUS: PROVISIONAL — Workstate is in architecture phase and emits nothing yet. This stub fixes only the universal envelope fields. Real shape (per-repo/project health) will be added when Workstate ships its versioned snapshot. Workstate is strictly read-only and must never mutate repos.",
+  "type": "object",
+  "required": ["schema_version", "source_tool"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "description": "Integer major version."
+    },
+    "source_tool": {
+      "type": "string",
+      "const": "workstate"
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "Recommended timestamp (RFC3339 or YYYY-MM-DD)."
+    },
+    "projects": {
+      "type": "array",
+      "description": "PROVISIONAL — observed project/repository health entries.",
+      "items": { "type": "object", "additionalProperties": true }
+    }
+  }
+}
