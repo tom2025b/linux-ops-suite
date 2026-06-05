@@ -1,28 +1,192 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/workstate.snapshot.schema.json",
-  "title": "Workstate snapshot",
-  "description": "STATUS: PROVISIONAL — Workstate is in architecture phase and emits nothing yet. This stub fixes only the universal envelope fields. Real shape (per-repo/project health) will be added when Workstate ships its versioned snapshot. Workstate is strictly read-only and must never mutate repos.",
+  "title": "Workstate snapshot (v3)",
+  "description": "The single versioned artifact Workstate compiles and RexOps consumes as its source of truth. Envelope { schema_version, built_at } wrapping three Section<T> objects (scripts, tools, findings). Modeled from workstate/src/model/snapshot.rs plus the normalized inventory types, cross-checked against the live RexOps fixture. Workstate is strictly read-only and never mutates source tools.",
+  "$comment": "SEAMS (intentional, documented): (1) tools[].review_due is date-or-null but the LIVE signal is review_due_flag — RexOps currently parses review_due as a bool and ignores any date. (2) tools.tool_count / attention_count are producer-reported summaries, advisory only, not cross-checked against tools[].length. (3) Record objects allow additionalProperties because producers preserve unmodeled upstream keys: Script flattens them inline (serde flatten); Finding may emit a nested 'rest' object that is OMITTED entirely when empty (skip_serializing_if). (4) section.data is null when a section is Missing/Failed/UnsupportedVersion — graceful degradation, not an error. Obsolete v1 fields (source_tool, projects[], top-level generated_at) are intentionally absent; additionalProperties:true at the root means a stray legacy key degrades rather than hard-failing, matching consumer leniency.",
   "type": "object",
-  "required": ["schema_version", "source_tool"],
+  "required": ["schema_version"],
   "additionalProperties": true,
   "properties": {
     "schema_version": {
       "type": "integer",
-      "description": "Integer major version."
+      "const": 3,
+      "description": "Major contract version. RexOps gates on this FIRST; only v3 is consumed."
     },
-    "source_tool": {
+    "built_at": {
       "type": "string",
-      "const": "workstate"
+      "description": "When this snapshot was compiled (RFC3339 UTC). Replaces the obsolete v1 'generated_at'."
     },
-    "generated_at": {
-      "type": "string",
-      "description": "Recommended timestamp (RFC3339 or YYYY-MM-DD)."
+    "scripts": { "$ref": "#/definitions/scriptsSection" },
+    "tools": { "$ref": "#/definitions/toolsSection" },
+    "findings": { "$ref": "#/definitions/findingsSection" }
+  },
+  "definitions": {
+    "provenance": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "feed_id": { "type": "string" },
+        "fetched_at": { "type": ["string", "null"], "description": "When Workstate READ the feed (UTC); null if never fetched (Missing)." },
+        "source_observed_at": { "type": ["string", "null"], "description": "When the SOURCE tool generated the data (UTC); null if unknown. The real staleness signal." }
+      }
     },
-    "projects": {
-      "type": "array",
-      "description": "PROVISIONAL — observed project/repository health entries.",
-      "items": { "type": "object", "additionalProperties": true }
+    "status": {
+      "description": "Workstate's freshness verdict. A known string, any other string (forward-compat: degrades to Unknown health on the consumer), or a tagged object for the two data-bearing variants. Intentionally NOT a closed enum.",
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["UnsupportedVersion"],
+          "additionalProperties": true,
+          "properties": {
+            "UnsupportedVersion": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "found": { "type": ["integer", "null"] },
+                "supported": { "type": "integer" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["Failed"],
+          "additionalProperties": true,
+          "properties": {
+            "Failed": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "reason": { "type": "string" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "scriptsSection": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "provenance": { "$ref": "#/definitions/provenance" },
+        "data": {
+          "description": "ScriptInventory, or null when the section is Missing/Failed/UnsupportedVersion.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "generated_at": { "type": "string" },
+                "favorites": { "type": "array", "items": { "type": "string" } },
+                "recents": { "type": "array", "items": { "type": "string" } },
+                "scripts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id"],
+                    "additionalProperties": true,
+                    "$comment": "additionalProperties:true — Script flattens unmodeled ScriptVault keys inline (serde flatten).",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "name": { "type": ["string", "null"] },
+                      "description": { "type": ["string", "null"] }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "toolsSection": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "provenance": { "$ref": "#/definitions/provenance" },
+        "data": {
+          "description": "ToolInventory, or null when Missing/Failed/UnsupportedVersion.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "as_of": { "type": "string" },
+                "tool_count": { "type": "integer", "description": "Advisory: producer-reported, not cross-checked against tools[].length." },
+                "attention_count": { "type": "integer", "description": "Advisory: producer-reported." },
+                "tools": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "display_name"],
+                    "additionalProperties": true,
+                    "properties": {
+                      "id": { "type": "string" },
+                      "display_name": { "type": "string" },
+                      "owner": { "type": "string" },
+                      "project": { "type": "string" },
+                      "lifecycle_state": { "type": "string" },
+                      "status": { "type": "string" },
+                      "review_due": { "type": ["string", "null"], "description": "SEAM: date-or-null. LIVE signal is review_due_flag; RexOps currently reads this as a bool and ignores any date." },
+                      "review_due_flag": { "type": "boolean", "description": "The live 'review is due' signal from ToolFoundry." },
+                      "drifted": { "type": "boolean" },
+                      "health_passed": { "type": "integer" },
+                      "health_total": { "type": "integer" },
+                      "manifest_path": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "findingsSection": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "provenance": { "$ref": "#/definitions/provenance" },
+        "data": {
+          "description": "FindingInventory, or null when Missing/Failed/UnsupportedVersion.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "generated_at": { "type": "string" },
+                "findings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "location"],
+                    "additionalProperties": true,
+                    "$comment": "additionalProperties:true — Finding may carry a nested 'rest' object of unmodeled non-sensitive keys, OMITTED entirely when empty (skip_serializing_if), so it is never required.",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "name": { "type": ["string", "null"] },
+                      "rule_id": { "type": ["string", "null"] },
+                      "description": { "type": ["string", "null"] },
+                      "severity": { "type": "string", "description": "Normalized bucket info|low|medium|high|critical|unrated|unknown. String, not enum, so an unforeseen value degrades not fails." },
+                      "raw_severity": { "type": ["string", "null"] },
+                      "category": { "type": ["string", "null"] },
+                      "location": { "type": "string", "description": "Always present ('unknown' when the source gave none)." }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
     }
   }
 }
