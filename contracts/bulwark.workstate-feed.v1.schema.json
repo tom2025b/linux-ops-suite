@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/bulwark.workstate-feed.v1.schema.json",
+  "title": "Bulwark Workstate feed (v1)",
+  "description": "Bulwark-owned security/inventory feed emitted by `bulwark workstate-feed` for Workstate ingestion. Distinct from `bulwark scan --json`, which is Bulwark's general inventory report.",
+  "$comment": "Modeled from bulwark-core/src/core/report/workstate.rs. JSON Schema does not enforce item_count == items.length; Bulwark's producer contract test (workstate_feed_contract) covers that invariant.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_tool",
+    "generated_at",
+    "item_count",
+    "items"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Integer major version. Bumped only on a breaking change."
+    },
+    "source_tool": {
+      "type": "string",
+      "const": "bulwark"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When Bulwark generated this feed, as an RFC3339 timestamp."
+    },
+    "item_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of items in the feed (equals items.length)."
+    },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/item" }
+    }
+  },
+  "definitions": {
+    "item": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "severity",
+        "path",
+        "language",
+        "size",
+        "is_executable",
+        "description",
+        "risk",
+        "category",
+        "owner"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable identifier for the item (the discovered file path)."
+        },
+        "name": {
+          "type": ["string", "null"],
+          "description": "File name, or null when it cannot be determined."
+        },
+        "severity": { "$ref": "#/definitions/riskLevel" },
+        "path": {
+          "type": "string",
+          "description": "Filesystem path of the discovered item."
+        },
+        "language": {
+          "type": "string",
+          "description": "Detected language/kind of the item, e.g. \"Bash\"."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "File size in bytes."
+        },
+        "is_executable": {
+          "type": "boolean",
+          "description": "Whether the file has an executable bit set."
+        },
+        "description": {
+          "type": ["string", "null"],
+          "description": "Optional human description, or null when absent."
+        },
+        "risk": { "$ref": "#/definitions/riskLevel" },
+        "category": {
+          "type": "string",
+          "description": "Bulwark classification category."
+        },
+        "owner": {
+          "type": "string",
+          "description": "Classified owner of the item."
+        }
+      }
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"],
+      "description": "Bulwark risk level, lowercase."
+    }
+  }
+}
