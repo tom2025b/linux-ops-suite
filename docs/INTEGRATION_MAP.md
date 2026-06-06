@@ -9,7 +9,7 @@ How tools produce and consume data across the suite. Contracts live in
 |---|---|---|---|---|---|
 | Bulwark | risk data | Bridge | (internal to Bridge) | — | **now** |
 | Bridge | sidecar metadata | ScriptVault | YAML sidecar | — | **now** |
-| ToolFoundry | `workstate-feed` | Workstate | JSON | [toolfoundry.feed](../contracts/toolfoundry.feed.schema.json) | **real (v1)** |
+| ToolFoundry | `workstate-feed` | Workstate | JSON | [toolfoundry.workstate-feed.v1](../contracts/toolfoundry.workstate-feed.v1.schema.json) | **real (v1)** |
 | Bulwark | `workstate-feed` | Workstate | JSON | [bulwark.workstate-feed.v1](../contracts/bulwark.workstate-feed.v1.schema.json) | **real (v1)** |
 | Bulwark | scan export | RexOps | JSON | [bulwark.scan](../contracts/bulwark.scan.schema.json) | provisional |
 | ScriptVault | state export | RexOps | JSON | [scriptvault.export](../contracts/scriptvault.export.schema.json) | provisional |

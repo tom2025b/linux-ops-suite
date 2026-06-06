@@ -5,7 +5,7 @@ Integrations land in dependency order. Read-only first; mutations last.
 | Phase | Goal | Status |
 |---|---|---|
 | 1 | Suite docs and contracts (this repo) | **in progress** |
-| 2 | Example fixtures for every contract | partial (`toolfoundry.feed` done) |
+| 2 | Example fixtures for every contract | partial (`toolfoundry.workstate-feed.v1` done) |
 | 3 | ToolFoundry `workstate-feed` -> Workstate snapshot -> RexOps status | done locally |
 | 4 | Bulwark scan contract fixture | planned |
 | 5 | ScriptVault export contract fixture | planned |

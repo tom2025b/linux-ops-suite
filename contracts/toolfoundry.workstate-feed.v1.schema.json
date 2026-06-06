@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/toolfoundry.feed.schema.json",
+  "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/toolfoundry.workstate-feed.v1.schema.json",
   "title": "ToolFoundry Workstate feed (v1)",
   "description": "ToolFoundry-owned lifecycle, ownership, health, and drift feed emitted by `toolfoundry workstate-feed` for Workstate ingestion.",
   "$comment": "Modeled from toolfoundry-core/src/workstate/report.rs. JSON Schema does not enforce derived count equality or sorted-by-id ordering; producer contract tests cover those invariants.",

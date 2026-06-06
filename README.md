@@ -21,7 +21,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 - Data flows **one way** through files (mostly JSON).
 - No tool imports code from another tool.
 - **RexOps** is the front door and only consumer — it reads summaries and lets you launch the other tools.
-- **ToolFoundry** emits `toolfoundry workstate-feed`; the shape is pinned by `contracts/toolfoundry.feed.schema.json`.
+- **ToolFoundry** emits `toolfoundry workstate-feed`; the shape is pinned by `contracts/toolfoundry.workstate-feed.v1.schema.json`.
 - **Workstate** compiles the other tools' feeds into one versioned `snapshot.json` (schema v3) that **RexOps** consumes as its source of truth. The shape is pinned by `contracts/workstate.snapshot.schema.json` and validated in both repos' CI.
 - Also live: **Bulwark → Toolbox Bridge → ScriptVault** for risk sidecars.
 - **Proto** reads human-authored protocols (YAML checklists) and emits one `session` JSON per run, pinned by `contracts/proto.session.schema.json`. It is read-only — it guides and records, it never acts on your behalf.

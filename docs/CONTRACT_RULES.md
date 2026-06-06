@@ -30,4 +30,4 @@ in [`../contracts/`](../contracts/) are the **source of truth**; tools conform t
 
 ToolFoundry's shipped `workstate-feed` is a real v1 producer contract. It includes
 both `generated_at` and `source_tool`, and is documented by
-[`toolfoundry.feed`](../contracts/toolfoundry.feed.schema.json).
+[`toolfoundry.workstate-feed.v1`](../contracts/toolfoundry.workstate-feed.v1.schema.json).
