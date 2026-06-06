@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/toolfoundry.feed.schema.json",
+  "title": "ToolFoundry Workstate feed (v1)",
+  "description": "ToolFoundry-owned lifecycle, ownership, health, and drift feed emitted by `toolfoundry workstate-feed` for Workstate ingestion.",
+  "$comment": "Modeled from toolfoundry-core/src/workstate/report.rs. JSON Schema does not enforce derived count equality or sorted-by-id ordering; producer contract tests cover those invariants.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_tool",
+    "generated_at",
+    "as_of",
+    "tool_count",
+    "attention_count",
+    "tools"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Integer major version. Bumped only on a breaking change."
+    },
+    "source_tool": {
+      "type": "string",
+      "const": "toolfoundry"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When ToolFoundry generated this feed, as an RFC3339 timestamp."
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date ToolFoundry evaluated lifecycle review status against."
+    },
+    "tool_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of tools in the feed."
+    },
+    "attention_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of tools with status 'attention'."
+    },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/tool" }
+    }
+  },
+  "definitions": {
+    "tool": {
+      "type": "object",
+      "required": [
+        "id",
+        "display_name",
+        "owner",
+        "project",
+        "lifecycle_state",
+        "status",
+        "review_after",
+        "review_due_flag",
+        "health_passed",
+        "health_total",
+        "drifted",
+        "manifest_path"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "display_name": { "type": "string" },
+        "owner": { "type": "string" },
+        "project": { "type": "string" },
+        "lifecycle_state": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["ok", "attention"],
+          "description": "Aggregate ToolFoundry state."
+        },
+        "review_after": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Lifecycle review date declared by ToolFoundry, YYYY-MM-DD."
+        },
+        "review_due_flag": {
+          "type": "boolean",
+          "description": "Whether the review is due as of the feed's as_of date."
+        },
+        "health_passed": { "type": "integer", "minimum": 0 },
+        "health_total": { "type": "integer", "minimum": 0 },
+        "drifted": { "type": "boolean" },
+        "manifest_path": { "type": "string" }
+      }
+    }
+  }
+}

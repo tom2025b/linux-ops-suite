@@ -26,16 +26,8 @@ in [`../contracts/`](../contracts/) are the **source of truth**; tools conform t
   RexOps degrades gracefully and reports the producer as unavailable.
 - Consumers validate `schema_version` first and refuse only on a major they don't know.
 
-## Known accepted deviation (v1)
+## Current real contracts
 
-ToolFoundry's shipped `rexops-feed` (`fixtures/rexops_feed_v1.json`, with a passing
-contract test) predates these rules. It uses:
-
-- **`as_of`** instead of `generated_at`, and
-- **no `source_tool`** field.
-
-For **v1 this is accepted as-is** — we conform the rules to the shipped reality rather
-than force a tool change. The
-[`toolfoundry.rexops-feed`](../contracts/toolfoundry.rexops-feed.schema.json) schema
-documents the real shape. Future contracts should prefer `generated_at` + `source_tool`;
-ToolFoundry may align at its next major version, not before.
+ToolFoundry's shipped `workstate-feed` is a real v1 producer contract. It includes
+both `generated_at` and `source_tool`, and is documented by
+[`toolfoundry.feed`](../contracts/toolfoundry.feed.schema.json).

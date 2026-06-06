@@ -36,7 +36,7 @@ Data moves in **one direction**: producers write files, consumers read them.
 ```
 Bulwark ──risk──▶ Bridge ──sidecar YAML──▶ ScriptVault
 Bulwark ───────────────── scan JSON ───────────────▶ RexOps
-ToolFoundry ───────────── rexops-feed JSON ─────────▶ RexOps
+ToolFoundry ───────────── workstate-feed JSON ──────▶ Workstate
 ScriptVault ───────────── export JSON ──────────────▶ RexOps
 Workstate ─────────────── snapshot JSON ────────────▶ RexOps
 ```
