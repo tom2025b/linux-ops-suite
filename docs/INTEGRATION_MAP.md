@@ -27,6 +27,30 @@ How tools produce and consume data across the suite. Contracts live in
 | Workstate | (snapshot subcommand TBD) | Read-only; emits versioned snapshot. |
 | Proto | `proto run <id>` | **Exists.** Walks a protocol interactively and writes one session JSON per run. Read-only — it records outcomes, it never executes the steps. `proto list` / `proto validate` are the non-interactive companions. |
 
+## Launching from RexOps
+
+RexOps's Launcher screen runs a specialist tool in the foreground. It resolves
+the command by tool **id**: it shells out to `which <id>` (a non-interactive
+subprocess) and falls back to a per-adapter `binary` path in RexOps config. It
+then runs the bare command, hands over the real terminal, and reports the child's
+**exit code** (0 = success).
+
+Two consequences for a tool that wants to be launchable:
+
+1. **A real binary named `<id>` must be on `$PATH`.** A shell *alias* does NOT
+   work — `which` runs in a subprocess where interactive aliases don't exist.
+   Install with `cargo install --path .` (lands in `~/.cargo/bin/<id>`), like
+   ScriptVault. (A `~/bin/r-<id>` wrapper or shell alias is a convenience for the
+   human, not a substitute for the PATH binary RexOps needs.)
+2. **Bare `<id>` should DO something useful**, since RexOps launches it with no
+   arguments. The tool should drop the operator into its primary interface.
+
+| Tool | Launch id | Bare-invocation behaviour |
+|---|---|---|
+| Bulwark | `bulwark` | Opens its TUI. |
+| Proto | `proto` | On a TTY, shows an interactive protocol **picker** → run; non-TTY prints help (stays scriptable). Installed via `cargo install --path .`. **Registered in the RexOps launcher catalog.** |
+| Workstate / Scripts / Tools | (feed-only) | No executable; RexOps shows "no launch command yet". |
+
 ## Expected output paths
 
 Paths are RexOps's read locations; producers may also print to stdout. Defaults under
