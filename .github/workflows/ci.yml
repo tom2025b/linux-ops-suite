@@ -1,0 +1,36 @@
+name: CI
+
+# Run on every push to main and on PRs targeting main.
+# This repo holds JSON contract/schema files (no Rust), so CI validates JSON.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  json:
+    name: Validate JSON contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install check-jsonschema
+        run: pipx install 'check-jsonschema==0.29.4'
+
+      # 1. Every tracked .json file must be well-formed JSON. `python -m json.tool`
+      #    parses each file and fails the step on the first syntax error.
+      - name: Check all JSON files parse
+        run: |
+          set -euo pipefail
+          git ls-files '*.json' | while read -r f; do
+            echo "parsing $f"
+            python3 -m json.tool "$f" > /dev/null
+          done
+
+      # 2. Every schema file (contracts/*.schema.json) must itself be a valid
+      #    JSON Schema. --check-metaschema validates the schema against the
+      #    JSON Schema metaschema, catching malformed schema definitions.
+      - name: Validate schema files against JSON Schema metaschema
+        run: check-jsonschema --check-metaschema contracts/*.schema.json
