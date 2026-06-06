@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/proto.session.schema.json",
+  "title": "Proto session record (v1)",
+  "description": "Proto-owned record of one run through a protocol (guided checklist). Written by `proto run <id>` as JSON for later consumption by RexOps / Workstate. One file per run; the protocol itself stays in YAML and is not part of this contract.",
+  "$comment": "Modeled from proto/src/core/session.rs (Session, StepResult, StepStatus). JSON Schema cannot enforce that step_id values are unique or that finished_at is present iff every step is non-pending; producer contract tests in the Proto repo cover those invariants. Per suite contract rules, optional fields (finished_at, answered_at, note) are OMITTED when absent rather than written as null.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_tool",
+    "generated_at",
+    "protocol_id",
+    "protocol_title",
+    "started_at",
+    "steps"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Integer major version. Bumped only on a breaking change."
+    },
+    "source_tool": {
+      "type": "string",
+      "const": "proto"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When Proto last wrote this session file, as an RFC3339 timestamp."
+    },
+    "protocol_id": {
+      "type": "string",
+      "description": "Stable id of the protocol that was run (matches the protocol YAML's `id`)."
+    },
+    "protocol_title": {
+      "type": "string",
+      "description": "Human-facing title of the protocol, copied in so the session is self-describing."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the operator began the walkthrough, RFC3339."
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When every step had an outcome, RFC3339. OMITTED while the run is still in progress."
+    },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/step_result" },
+      "description": "One entry per protocol step, in the protocol's order."
+    }
+  },
+  "definitions": {
+    "step_result": {
+      "type": "object",
+      "required": ["step_id", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "description": "The protocol step's id this outcome corresponds to (unique within a run)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "passed", "failed", "skipped", "acknowledged"],
+          "description": "Outcome of the step. `acknowledged` is used for info steps (no pass/fail); `pending` means not yet answered."
+        },
+        "answered_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the operator answered this step, RFC3339. OMITTED while pending."
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional free-text the operator attached to this step. OMITTED when empty."
+        }
+      }
+    }
+  }
+}

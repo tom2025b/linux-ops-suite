@@ -14,6 +14,7 @@ How tools produce and consume data across the suite. Contracts live in
 | Bulwark | scan export | RexOps | JSON | [bulwark.scan](../contracts/bulwark.scan.schema.json) | provisional |
 | ScriptVault | state export | RexOps | JSON | [scriptvault.export](../contracts/scriptvault.export.schema.json) | provisional |
 | Workstate | snapshot | RexOps | JSON | [workstate.snapshot](../contracts/workstate.snapshot.schema.json) | provisional |
+| Proto | session record | RexOps | JSON | [proto.session](../contracts/proto.session.schema.json) | **real (v1)** |
 | RexOps | suite snapshot | (self/report) | JSON | [rexops.snapshot](../contracts/rexops.snapshot.schema.json) | provisional |
 
 ## Commands each producer should expose
@@ -24,6 +25,7 @@ How tools produce and consume data across the suite. Contracts live in
 | Bulwark | `bulwark workstate-feed [PATHS] --output <path>` | **Exists.** Versioned Workstate feed; `scan --json` remains the general inventory report. |
 | ScriptVault | (export subcommand TBD) | Should export scripts + favorites + recents. |
 | Workstate | (snapshot subcommand TBD) | Read-only; emits versioned snapshot. |
+| Proto | `proto run <id>` | **Exists.** Walks a protocol interactively and writes one session JSON per run. Read-only — it records outcomes, it never executes the steps. `proto list` / `proto validate` are the non-interactive companions. |
 
 ## Expected output paths
 
@@ -37,12 +39,14 @@ Paths are RexOps's read locations; producers may also print to stdout. Defaults 
 | Bulwark scan | `…/rexops/feeds/bulwark.scan.json` |
 | ScriptVault export | `…/rexops/feeds/scriptvault.export.json` |
 | Workstate snapshot | `…/rexops/feeds/workstate.snapshot.json` |
+| Proto sessions | `…/proto/sessions/<protocol-id>-<timestamp>.json` (one file per run, not a single rolling feed) |
 
 ## What exists now vs planned
 
 - **Now:** Bulwark → Bridge → ScriptVault (sidecar YAML). ToolFoundry and Bulwark
   `workstate-feed` JSON contracts are real v1 producer contracts with passing
-  contract tests.
+  contract tests. Proto's `session` JSON is a real v1 producer contract
+  ([example](../examples/proto.session.example.json)); RexOps consumption is planned.
 - **Planned:** RexOps consuming the feeds above, in the order set by
   [ROADMAP.md](ROADMAP.md). ScriptVault/Workstate JSON exports are provisional
   until those tools ship versioned outputs.
