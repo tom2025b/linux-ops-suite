@@ -1,5 +1,7 @@
 {
   "schema_version": 1,
+  "source_tool": "toolfoundry",
+  "generated_at": "2026-06-02T00:00:00Z",
   "as_of": "2026-06-02",
   "tool_count": 1,
   "attention_count": 1,
@@ -10,11 +12,12 @@
       "owner": "tom",
       "project": "backupsage",
       "lifecycle_state": "active",
-      "review_due": false,
+      "status": "attention",
+      "review_after": "2026-09-01",
+      "review_due_flag": false,
       "health_passed": 0,
       "health_total": 2,
       "drifted": true,
-      "status": "attention",
       "manifest_path": "default.yaml"
     }
   ]
