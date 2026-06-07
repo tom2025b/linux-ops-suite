@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# rex - Linux Ops Suite reference orchestrator
+#
+# `rex run` prints the banner then runs the tools in the correct order.
+# Tools are invoked if present on PATH; missing tools are skipped.
+
+set -u
+set -o pipefail
+
+print_banner() {
+    cat << 'BANNER'
+
+      *     .     *     .     *
+   *     Rex and Baby Grok built this. Enjoy.     *
+      *     .     *     .     *
+
+                 .-""-.
+               .'  o o  '.
+              /    ^     \
+             |   \___/    |
+              \          /
+               '.      .'
+                 '----'
+                   ||
+                  /  \
+                 | RG |
+                  \  /
+                   ||
+                  /  \
+                 /    \
+                /  /\  \
+               (  (  )  )
+                '  '  '
+
+      *     .     *     .     *
+   *     Rex and Baby Grok built this. Enjoy.     *
+      *     .     *     .     *
+
+BANNER
+}
+
+run_step() {
+    local desc="$1"
+    shift
+    echo "▶ $desc"
+    if command -v "$1" >/dev/null 2>&1; then
+        "$@" 2>&1 || echo "  (exited non-zero; continuing)"
+    else
+        echo "  (not found on PATH; skipping)"
+    fi
+    echo
+}
+
+do_run() {
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        project_dir=$(git rev-parse --show-toplevel)
+    else
+        project_dir=$(pwd)
+    fi
+
+    print_banner
+
+    echo "Detected project folder: $project_dir"
+    echo "Running full suite of tools in order..."
+    echo
+
+    # Order: ToolFoundry -> Bulwark -> Proto -> ScriptVault -> Workstate
+    run_step "ToolFoundry" toolfoundry workstate-feed "$project_dir" --as-of "$(date +%F)"
+    run_step "Bulwark" bulwark workstate-feed "$project_dir"
+    run_step "Proto" proto feed
+    run_step "ScriptVault" scriptvault export
+    run_step "Workstate" workstate snapshot
+
+    # Print summary from Workstate snapshot if available
+    if command -v jq >/dev/null 2>&1 && [ -f "$HOME/.workstate/snapshot.json" ]; then
+        echo "Suite Summary:"
+        jq -r '.summary // "No summary available"' "$HOME/.workstate/snapshot.json" 2>/dev/null || true
+    fi
+
+    echo "Suite run complete."
+}
+
+if [ "${1:-}" = "run" ]; then
+    do_run
+else
+    echo "rex — Linux Ops Suite orchestrator (reference)"
+    echo "Usage: rex run"
+fi
