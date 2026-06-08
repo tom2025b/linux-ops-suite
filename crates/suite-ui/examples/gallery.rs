@@ -9,8 +9,8 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Terminal;
 
 use suite_ui::{
-    centered_rect, pane, ConfirmModal, Health, HelpSheet, PaletteFrame, PaletteItem, Theme,
-    ThemeChoice, Toast, ToastKind,
+    centered_rect, pane, ConfirmModal, Health, HelpSheet, JobState, PaletteFrame, PaletteItem,
+    StatusBar, Theme, ThemeChoice, Toast, ToastKind,
 };
 
 fn main() {
@@ -92,6 +92,19 @@ fn print_frame(theme: Theme) {
             selected: Some(0),
         }
         .render(frame, area, theme);
+    });
+    print_overlay("status bar (job states)", theme, |frame, area, theme| {
+        let rows: [Rect; 5] = Layout::vertical([Constraint::Length(1); 5])
+            .areas(centered_rect(60, 40, area));
+        for (row, job) in rows.into_iter().zip([
+            JobState::Running { name: "backup" },
+            JobState::Done { name: "backup", ok: true },
+            JobState::Done { name: "rescan", ok: false },
+            JobState::Cancelled { name: "deploy" },
+            JobState::Idle,
+        ]) {
+            StatusBar { job }.render(frame, row, theme);
+        }
     });
     print_overlay("toast (info + error)", theme, |frame, area, theme| {
         let [info_row, err_row] = Layout::vertical([Constraint::Length(1), Constraint::Length(1)])
