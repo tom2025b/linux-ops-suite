@@ -135,19 +135,19 @@ fn print_frame(theme: Theme) {
             StatusBar { job }.render(frame, row, theme);
         }
     });
-    print_overlay("toast (info + error)", theme, |frame, area, theme| {
-        let [info_row, err_row] = Layout::vertical([Constraint::Length(1), Constraint::Length(1)])
-            .areas(centered_rect(60, 10, area));
-        Toast {
-            text: "saved search 'deploys'",
-            kind: ToastKind::Info,
+    print_overlay("toast (info + error + job events)", theme, |frame, area, theme| {
+        let rows: [Rect; 5] = Layout::vertical([Constraint::Length(1); 5])
+            .areas(centered_rect(60, 40, area));
+        let toasts = [
+            ("saved search 'deploys'", ToastKind::Info),
+            ("reload failed: permission denied", ToastKind::Error),
+            ("backup — done", ToastKind::Success),
+            ("rescan — failed", ToastKind::Failure),
+            ("deploy — cancelled", ToastKind::Cancelled),
+        ];
+        for (row, (text, kind)) in rows.into_iter().zip(toasts) {
+            Toast { text, kind }.render(frame, row, theme);
         }
-        .render(frame, info_row, theme);
-        Toast {
-            text: "reload failed: permission denied",
-            kind: ToastKind::Error,
-        }
-        .render(frame, err_row, theme);
     });
 }
 

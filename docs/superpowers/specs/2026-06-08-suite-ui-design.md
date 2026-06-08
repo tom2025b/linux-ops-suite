@@ -180,3 +180,24 @@ actually usable from outside the crate.
 No config/theme files, no runtime theme registry, no generalized
 "palette-as-data" abstraction, no async, and no other tools wired this pass.
 Duplication beyond the shared chrome is fine; we are not lifting app logic.
+
+## Addendum (2026-06-08): job-event toast kinds
+
+`ToastKind` gains three job-lifecycle variants — `Success`, `Failure`,
+`Cancelled` — alongside `Info`/`Error`. `Toast` stays exactly what it is: a
+single, caller-rendered, **stateless** line (no stacking, no timing, no overlay
+frame). The app owns when a toast appears and disappears; the kind only chooses
+the leading glyph + style.
+
+To keep a toast and the persistent status segment reading identically, the new
+kinds reuse the `StatusBar` glyphs and styles:
+
+- `Success`  → `✓ ` + `health(Healthy)` (green/bold)
+- `Failure`  → `✗ ` + `status_error` (red/bold)
+- `Cancelled`→ `■ ` + `working` (yellow; dim under `NO_COLOR`)
+
+`Info`/`Error` are unchanged. As elsewhere, the leading glyph carries the
+distinction when hue drops away under `NO_COLOR`. No new constructors and no
+name-formatting in the widget — the caller passes the message text; the kind
+picks glyph+style. Stacking, auto-expiry, a corner overlay, and structured
+job-name constructors stay out of scope (YAGNI).

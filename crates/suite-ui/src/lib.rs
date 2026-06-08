@@ -9,7 +9,8 @@
 //!   ([`centered_rect`], [`centered_fixed`]);
 //! - common overlays — [`HelpSheet`], [`ConfirmModal`], [`Toast`], and the
 //!   command-palette chrome [`PaletteFrame`];
-//! - a persistent [`StatusBar`] job-status segment ([`JobState`]);
+//! - a persistent [`StatusBar`] job-status segment ([`JobState`]), with the
+//!   shared [`Outcome`] glyph/style mapping every job-event widget renders through;
 //! - a [`SearchBar`] live-filter input affordance;
 //! - a [`KeyHints`] footer strip of `key → label` shortcut hints;
 //! - shared keymap conventions ([`keys`]).
@@ -40,6 +41,6 @@ mod widgets;
 pub use key_hints::KeyHints;
 pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, ToastKind};
 pub use search_bar::SearchBar;
-pub use status_bar::{JobState, StatusBar};
+pub use status_bar::{JobState, Outcome, StatusBar};
 pub use theme::{ColorChoice, Health, Theme, ThemeChoice};
 pub use widgets::{centered_fixed, centered_rect, pane};
