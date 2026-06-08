@@ -14,7 +14,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **ToolFoundry** | Tool lifecycle, ownership, and health             | Active       |
 | **Workstate**   | Read-only state compiler — emits the v3 snapshot  | Active       |
 | **Proto**       | Guided protocol / checklist runner — emits session records | Active       |
-| **RexOps**      | Operations cockpit + suite launcher               | Active       |
+| **RexOps**      | Operations cockpit + suite launcher (`rex run` for full refresh) | Active |
 
 ## How They Work Together
 
@@ -25,6 +25,21 @@ This repository is the **contract and index headquarters** for the suite. Each t
 - **Workstate** compiles the other tools' feeds into one versioned `snapshot.json` (schema v3) that **RexOps** consumes as its source of truth. The shape is pinned by `contracts/workstate.snapshot.schema.json` and validated in both repos' CI.
 - Also live: **Bulwark → Toolbox Bridge → ScriptVault** for risk sidecars.
 - **Proto** reads human-authored protocols (YAML checklists) and emits one `session` JSON per run, pinned by `contracts/proto.session.schema.json`. It is read-only — it guides and records, it never acts on your behalf.
+
+## Running a full suite refresh
+
+```bash
+rex run
+```
+
+- No arguments needed.
+- Automatically detects the current project folder (git toplevel, falling back to pwd) and passes it to tools that scan or read manifests.
+- First thing you see is the celebration banner ("Rex and Baby Grok built this. Enjoy.") with a cute detailed ASCII baby and fireworks.
+- Then runs the producers and aggregator in the correct order: ToolFoundry → Bulwark → Proto → ScriptVault → Workstate.
+- Everything is optional and best-effort; missing tools are skipped (graceful degradation).
+- A small status summary is printed from the resulting Workstate v3 snapshot when present.
+
+`bin/rex` is the reference implementation (bash). The real RexOps TUI (in its own repo) will eventually provide the interactive cockpit and launcher on top of the same contracts.
 
 ## Design Principles
 

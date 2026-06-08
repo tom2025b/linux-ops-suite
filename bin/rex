@@ -42,11 +42,24 @@ BANNER
 run_step() {
     local desc="$1"
     shift
+    local cmd="$1"
+    shift
     echo "▶ $desc"
-    if command -v "$1" >/dev/null 2>&1; then
-        "$@" 2>&1 || echo "  (exited non-zero; continuing)"
+    # Resolve the tool: prefer the bare name if it's on PATH (e.g. a `cargo install`ed
+    # binary), else fall back to the ~/bin/r-<tool> wrapper from the r-* family. Shell
+    # aliases don't exist in a non-interactive script, so the wrapper is what actually
+    # makes `workstate`/`toolfoundry`/`bulwark` runnable here.
+    local bin=""
+    if command -v "$cmd" >/dev/null 2>&1; then
+        bin="$cmd"
+    elif [ -x "$HOME/bin/r-$cmd" ]; then
+        bin="$HOME/bin/r-$cmd"
+    fi
+
+    if [ -n "$bin" ]; then
+        "$bin" "$@" 2>&1 || echo "  (exited non-zero; continuing)"
     else
-        echo "  (not found on PATH; skipping)"
+        echo "  (not found on PATH or as ~/bin/r-$cmd; skipping)"
     fi
     echo
 }
@@ -58,6 +71,13 @@ do_run() {
         project_dir=$(pwd)
     fi
 
+    # Workstate publishes its compiled snapshot to the standard path RexOps reads:
+    # $XDG_DATA_HOME/rexops/feeds/workstate.snapshot.json (fallback ~/.local/share).
+    # We pass this explicitly to `workstate` (its argv[1] override) and then read it
+    # back for the summary, so both ends agree on one location.
+    local data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+    local snapshot="$data_home/rexops/feeds/workstate.snapshot.json"
+
     print_banner
 
     echo "Detected project folder: $project_dir"
@@ -67,14 +87,37 @@ do_run() {
     # Order: ToolFoundry -> Bulwark -> Proto -> ScriptVault -> Workstate
     run_step "ToolFoundry" toolfoundry workstate-feed "$project_dir" --as-of "$(date +%F)"
     run_step "Bulwark" bulwark workstate-feed "$project_dir"
-    run_step "Proto" proto feed
-    run_step "ScriptVault" scriptvault export
-    run_step "Workstate" workstate snapshot
+    # Proto defaults --dir to a relative `protocols/`, which won't exist in an
+    # arbitrary project dir; point it at Proto's own protocol library so the step
+    # lists real protocols. If that dir is absent, fall back to the bare default
+    # (still degrades gracefully).
+    local proto_dir="$HOME/projects/proto/protocols"
+    if [ -d "$proto_dir" ]; then
+        run_step "Proto" proto --dir "$proto_dir" list
+    else
+        run_step "Proto" proto list
+    fi
+    run_step "ScriptVault" scriptvault search
+    # Workstate takes NO subcommand: argv[1] is the snapshot output path.
+    run_step "Workstate" workstate "$snapshot"
 
-    # Print summary from Workstate snapshot if available
-    if command -v jq >/dev/null 2>&1 && [ -f "$HOME/.workstate/snapshot.json" ]; then
+    # Print summary from the Workstate snapshot if available. The snapshot has no
+    # `.summary` field; build one from the real shape (built_at + each section's
+    # status and record count).
+    if command -v jq >/dev/null 2>&1 && [ -f "$snapshot" ]; then
         echo "Suite Summary:"
-        jq -r '.summary // "No summary available"' "$HOME/.workstate/snapshot.json" 2>/dev/null || true
+        jq -r '
+            # A section status is either a plain string ("Fresh"/"Stale"/"Missing")
+            # or a single-key object ("Failed"/"UnsupportedVersion"); render either
+            # as a short label rather than dumping raw JSON mid-line.
+            def status_label: if type == "string" then . else (keys[0]) end;
+            "  built:    \(.built_at)",
+            "  scripts:  \(.scripts.status | status_label)  (\(.scripts.data.scripts | length) record(s))",
+            "  tools:    \(.tools.status | status_label)  (\(.tools.data.tool_count // (.tools.data.tools | length) // 0) tool(s))",
+            "  findings: \(.findings.status | status_label)  (\(.findings.data.findings | length) finding(s))"
+        ' "$snapshot" 2>/dev/null || echo "  (snapshot present but could not be summarized)"
+    else
+        echo "Suite Summary: (no Workstate snapshot at $snapshot)"
     fi
 
     echo "Suite run complete."
