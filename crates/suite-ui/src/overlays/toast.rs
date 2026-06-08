@@ -5,29 +5,41 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+use crate::status_bar::Outcome;
 use crate::theme::Theme;
-use crate::Health;
 
 /// What a toast reports. Each kind picks a leading glyph and a style; the caller
 /// always supplies the message text. The three job-lifecycle kinds
-/// ([`Success`], [`Failure`], [`Cancelled`]) deliberately reuse the
-/// [`StatusBar`](crate::StatusBar) glyphs and styles, so a transient toast and
-/// the persistent status segment read identically. Every kind leads with a glyph
-/// (or an `[err]` marker) so it stays distinguishable under `NO_COLOR`, where the
-/// hues drop away.
+/// ([`Success`], [`Failure`], [`Cancelled`]) render through the shared
+/// [`Outcome`] mapping, so a transient toast and the persistent
+/// [`StatusBar`](crate::StatusBar) segment read identically. Every kind leads
+/// with a glyph (or an `[err]` marker) so it stays distinguishable under
+/// `NO_COLOR`, where the hues drop away.
+///
+/// # `Error` vs `Failure`
+///
+/// These look similar (both red) but mean different things and must not be used
+/// interchangeably:
+/// - [`Error`] is a **generic UI/application error** — something the app itself
+///   couldn't do (a bad path, a refused action, a config problem). It carries an
+///   `[err]` marker, not an outcome glyph, because no job lifecycle is involved.
+/// - [`Failure`] is specifically a **job lifecycle failure** — a background job
+///   ran and exited non-zero. It shares the `✗` glyph and red style with the
+///   status bar's failed-job state, because it *is* that same event flashed.
 ///
 /// [`Success`]: ToastKind::Success
 /// [`Failure`]: ToastKind::Failure
 /// [`Cancelled`]: ToastKind::Cancelled
+/// [`Error`]: ToastKind::Error
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastKind {
     /// A neutral, informational flash (dim, no glyph).
     Info,
-    /// A generic error (red / bold, `[err]` marker).
+    /// A generic UI/app error, unrelated to any job: red / bold, `[err]` marker.
     Error,
     /// A job finished cleanly: `✓` + the green health style.
     Success,
-    /// A job failed: `✗` + the red failure style.
+    /// A job failed (ran and exited non-zero): `✗` + the red failure style.
     Failure,
     /// A job was cancelled or killed: `■` + the yellow working style.
     Cancelled,
@@ -71,17 +83,16 @@ impl Toast<'_> {
                 Span::styled("[err] ", theme.status_error()),
                 Span::styled(text, theme.status_error()),
             ]),
-            ToastKind::Success => {
-                let style = theme.health(Health::Healthy);
-                Line::from(vec![Span::styled("✓ ", style), Span::styled(text, style)])
-            }
-            ToastKind::Failure => {
-                let style = theme.status_error();
-                Line::from(vec![Span::styled("✗ ", style), Span::styled(text, style)])
-            }
-            ToastKind::Cancelled => {
-                let style = theme.working();
-                Line::from(vec![Span::styled("■ ", style), Span::styled(text, style)])
+            ToastKind::Success | ToastKind::Failure | ToastKind::Cancelled => {
+                // Same (glyph, style) source the StatusBar uses, so a flash and the
+                // persistent segment can never disagree on how an outcome looks.
+                let outcome = match self.kind {
+                    ToastKind::Success => Outcome::Success,
+                    ToastKind::Failure => Outcome::Failure,
+                    _ => Outcome::Cancelled,
+                };
+                let (glyph, style) = outcome.glyph_style(theme);
+                Line::from(vec![Span::styled(glyph, style), Span::styled(text, style)])
             }
         }
     }

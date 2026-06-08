@@ -13,11 +13,42 @@
 //! ScriptVault show the same status segment from one source.
 
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::theme::Theme;
+
+/// How a finished job ended, reduced to the three outcomes the suite paints the
+/// same way everywhere: a clean exit, a failure, or a cancel/signal. This is the
+/// single source of the outcome → (glyph, style) mapping — [`StatusBar`] (its
+/// [`Done`](JobState::Done)/[`Cancelled`](JobState::Cancelled) states) and
+/// [`Toast`](crate::Toast) (its job-lifecycle kinds) both render through it, so a
+/// transient flash and the persistent status segment can never drift apart, and a
+/// consumer's own history/footer rows can reuse the identical styling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The job finished cleanly (exit 0): `✓` + the green health style.
+    Success,
+    /// The job failed (non-zero exit): `✗` + the red failure style.
+    Failure,
+    /// The job was cancelled or killed by a signal: `■` + the yellow working style.
+    Cancelled,
+}
+
+impl Outcome {
+    /// The leading glyph (with a trailing space) and the style this outcome is
+    /// painted in. `✓` green, `✗` red, `■` yellow — the glyph carries the outcome
+    /// under `NO_COLOR`, where the hues drop away.
+    pub fn glyph_style(self, theme: Theme) -> (&'static str, Style) {
+        match self {
+            Outcome::Success => ("✓ ", theme.health(crate::Health::Healthy)),
+            Outcome::Failure => ("✗ ", theme.status_error()),
+            Outcome::Cancelled => ("■ ", theme.working()),
+        }
+    }
+}
 
 /// The state of the one tracked background job, as far as the status bar shows
 /// it. A consumer maps its own job model onto this: a live handle → [`Running`],
@@ -70,21 +101,27 @@ impl StatusBar<'_> {
                 Span::styled("● ", theme.live_marker()),
                 Span::styled(format!("running {name}"), theme.title()),
             ]),
-            JobState::Done { name, ok: true } => Line::from(vec![
-                Span::styled("✓ ", theme.health(crate::Health::Healthy)),
-                Span::styled(
-                    format!("{name} — done"),
-                    theme.health(crate::Health::Healthy),
-                ),
-            ]),
-            JobState::Done { name, ok: false } => Line::from(vec![
-                Span::styled("✗ ", theme.status_error()),
-                Span::styled(format!("{name} — failed"), theme.status_error()),
-            ]),
-            JobState::Cancelled { name } => Line::from(vec![
-                Span::styled("■ ", theme.working()),
-                Span::styled(format!("{name} — cancelled"), theme.working()),
-            ]),
+            JobState::Done { name, ok: true } => {
+                let (glyph, style) = Outcome::Success.glyph_style(theme);
+                Line::from(vec![
+                    Span::styled(glyph, style),
+                    Span::styled(format!("{name} — done"), style),
+                ])
+            }
+            JobState::Done { name, ok: false } => {
+                let (glyph, style) = Outcome::Failure.glyph_style(theme);
+                Line::from(vec![
+                    Span::styled(glyph, style),
+                    Span::styled(format!("{name} — failed"), style),
+                ])
+            }
+            JobState::Cancelled { name } => {
+                let (glyph, style) = Outcome::Cancelled.glyph_style(theme);
+                Line::from(vec![
+                    Span::styled(glyph, style),
+                    Span::styled(format!("{name} — cancelled"), style),
+                ])
+            }
         }
     }
 
@@ -111,6 +148,20 @@ mod tests {
     /// survives regardless of colour.
     fn text(job: JobState, theme: Theme) -> String {
         spans(job, theme).iter().map(|s| s.content.to_string()).collect()
+    }
+
+    #[test]
+    fn outcome_glyph_style_is_the_single_mapping() {
+        // The glyphs are colour-independent; the hues are the suite's standard
+        // health/error/working styles. Asserting both here pins the one place the
+        // mapping lives, so Toast and StatusBar can't drift from it.
+        let lit = Theme::with_color(true);
+        assert_eq!(Outcome::Success.glyph_style(lit).0, "✓ ");
+        assert_eq!(Outcome::Failure.glyph_style(lit).0, "✗ ");
+        assert_eq!(Outcome::Cancelled.glyph_style(lit).0, "■ ");
+        assert_eq!(Outcome::Success.glyph_style(lit).1.fg, Some(Color::Green));
+        assert_eq!(Outcome::Failure.glyph_style(lit).1.fg, Some(Color::Red));
+        assert_eq!(Outcome::Cancelled.glyph_style(lit).1.fg, Some(Color::Yellow));
     }
 
     #[test]
