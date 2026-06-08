@@ -9,8 +9,8 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Terminal;
 
 use suite_ui::{
-    centered_rect, pane, ConfirmModal, Health, HelpSheet, JobState, PaletteFrame, PaletteItem,
-    SearchBar, StatusBar, Theme, ThemeChoice, Toast, ToastKind,
+    centered_rect, pane, ConfirmModal, Health, HelpSheet, JobState, KeyHints, PaletteFrame,
+    PaletteItem, SearchBar, StatusBar, Theme, ThemeChoice, Toast, ToastKind,
 };
 
 fn main() {
@@ -92,6 +92,18 @@ fn print_frame(theme: Theme) {
             selected: Some(0),
         }
         .render(frame, area, theme);
+    });
+    print_overlay("key hints (footer strip)", theme, |frame, area, theme| {
+        let [row, _] = Layout::vertical([Constraint::Length(1), Constraint::Fill(1)])
+            .areas(centered_rect(80, 40, area));
+        let hints = [
+            ("q", "quit"),
+            ("^P", "palette"),
+            ("r", "refresh"),
+            ("?", "help"),
+            ("1-7", "screens"),
+        ];
+        KeyHints { hints: &hints }.render(frame, row, theme);
     });
     print_overlay("search bar (empty + active)", theme, |frame, area, theme| {
         let [empty_row, active_row] =
