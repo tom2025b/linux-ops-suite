@@ -72,8 +72,11 @@ crate in [`crates/suite-ui`](../crates/suite-ui) that holds the suite's common T
 rounded pane styling, health-status styles, the common overlays (help sheet,
 confirm modal, toast, command-palette frame), and the shared status-line widgets:
 a persistent **`StatusBar`** job-status segment (running / done / failed /
-cancelled / idle) and a **`SearchBar`** live-filter input (prompt + query + match
-count). RexOps and ScriptVault are the intended consumers.
+cancelled / idle), a **`SearchBar`** live-filter input (prompt + query + match
+count), and a **`KeyHints`** footer strip of `key → label` shortcut hints (keys
+accented, labels dim — the same `(key, label)` pairs the help-sheet popup uses, so
+the inline hints and the popup can't drift apart). RexOps and ScriptVault are the
+intended consumers.
 
 This does **not** reopen the coupling the file-contract rule prevents, because of
 *what* `suite-ui` shares:

@@ -11,6 +11,7 @@
 //!   command-palette chrome [`PaletteFrame`];
 //! - a persistent [`StatusBar`] job-status segment ([`JobState`]);
 //! - a [`SearchBar`] live-filter input affordance;
+//! - a [`KeyHints`] footer strip of `key → label` shortcut hints;
 //! - shared keymap conventions ([`keys`]).
 //!
 //! ## Scope: chrome, not logic
@@ -29,12 +30,14 @@
 //! them. Consumers that don't use clap stay lean.
 
 pub mod keys;
+mod key_hints;
 mod overlays;
 mod search_bar;
 mod status_bar;
 mod theme;
 mod widgets;
 
+pub use key_hints::KeyHints;
 pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, ToastKind};
 pub use search_bar::SearchBar;
 pub use status_bar::{JobState, StatusBar};
