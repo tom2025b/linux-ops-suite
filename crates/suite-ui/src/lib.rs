@@ -10,6 +10,7 @@
 //! - common overlays — [`HelpSheet`], [`ConfirmModal`], [`Toast`], and the
 //!   command-palette chrome [`PaletteFrame`];
 //! - a persistent [`StatusBar`] job-status segment ([`JobState`]);
+//! - a [`SearchBar`] live-filter input affordance;
 //! - shared keymap conventions ([`keys`]).
 //!
 //! ## Scope: chrome, not logic
@@ -29,11 +30,13 @@
 
 pub mod keys;
 mod overlays;
+mod search_bar;
 mod status_bar;
 mod theme;
 mod widgets;
 
 pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, ToastKind};
+pub use search_bar::SearchBar;
 pub use status_bar::{JobState, StatusBar};
 pub use theme::{ColorChoice, Health, Theme, ThemeChoice};
 pub use widgets::{centered_fixed, centered_rect, pane};

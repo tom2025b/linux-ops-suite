@@ -10,7 +10,7 @@ use ratatui::Terminal;
 
 use suite_ui::{
     centered_rect, pane, ConfirmModal, Health, HelpSheet, JobState, PaletteFrame, PaletteItem,
-    StatusBar, Theme, ThemeChoice, Toast, ToastKind,
+    SearchBar, StatusBar, Theme, ThemeChoice, Toast, ToastKind,
 };
 
 fn main() {
@@ -92,6 +92,23 @@ fn print_frame(theme: Theme) {
             selected: Some(0),
         }
         .render(frame, area, theme);
+    });
+    print_overlay("search bar (empty + active)", theme, |frame, area, theme| {
+        let [empty_row, active_row] =
+            Layout::vertical([Constraint::Length(1), Constraint::Length(1)])
+                .areas(centered_rect(60, 10, area));
+        SearchBar {
+            query: "",
+            placeholder: "type to filter adapters",
+            match_count: None,
+        }
+        .render(frame, empty_row, theme);
+        SearchBar {
+            query: "bul",
+            placeholder: "type to filter adapters",
+            match_count: Some(1),
+        }
+        .render(frame, active_row, theme);
     });
     print_overlay("status bar (job states)", theme, |frame, area, theme| {
         let rows: [Rect; 5] = Layout::vertical([Constraint::Length(1); 5])
