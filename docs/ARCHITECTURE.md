@@ -69,9 +69,11 @@ remains the default: tools talk through file contracts, not code.
 There is exactly **one** sanctioned exception to "no shared code": `suite-ui`, the
 crate in [`crates/suite-ui`](../crates/suite-ui) that holds the suite's common TUI
 *chrome* — the theme/palette (cyan/amber accents + a single `NO_COLOR` gate), the
-rounded pane styling, health-status styles, and the common overlays (help sheet,
-confirm modal, toast, command-palette frame). RexOps and ScriptVault are the intended
-consumers.
+rounded pane styling, health-status styles, the common overlays (help sheet,
+confirm modal, toast, command-palette frame), and the shared status-line widgets:
+a persistent **`StatusBar`** job-status segment (running / done / failed /
+cancelled / idle) and a **`SearchBar`** live-filter input (prompt + query + match
+count). RexOps and ScriptVault are the intended consumers.
 
 This does **not** reopen the coupling the file-contract rule prevents, because of
 *what* `suite-ui` shares:
