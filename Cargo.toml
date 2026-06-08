@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["crates/suite-ui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["tomb"]
+license = "MIT"
+repository = "https://github.com/tom2025b/linux-ops-suite"
+
+[workspace.dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+clap = { version = "4", features = ["derive"] }

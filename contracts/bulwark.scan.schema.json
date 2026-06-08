@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/bulwark.scan.schema.json",
   "title": "Bulwark scan export",
-  "description": "STATUS: PROVISIONAL — Bulwark does not yet emit a stable, versioned scan JSON. This stub fixes only the universal envelope fields. Real field shape (inventory entries, risk classification, language detection) will be added when Bulwark ships its versioned export. Do not treat the item shape below as final.",
+  "description": "STATUS: PROVISIONAL — Bulwark does not yet emit a stable, versioned scan JSON. This contract fixes only the universal envelope fields. Real field shape (inventory entries, risk classification, language detection) will be added when Bulwark ships its versioned export. Do not treat the item shape below as final.",
   "type": "object",
   "required": ["schema_version", "source_tool"],
   "additionalProperties": true,

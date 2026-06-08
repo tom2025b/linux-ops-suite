@@ -44,7 +44,8 @@ rex run
 ## Design Principles
 
 - One job per tool
-- File-based contracts over shared code
+- File-based contracts over shared code — for logic and data. The lone exception is
+  `suite-ui` (shared TUI *chrome* only); see below.
 - Read-only by default
 - Low-resource friendly (Linux Mint)
 - Rust-first where it makes sense
@@ -58,6 +59,22 @@ rex run
 - [Workstate](https://github.com/tom2025b/workstate) — State compiler
 - [Proto](https://github.com/tom2025b/proto) — Guided protocol / checklist runner
 - [RexOps](https://github.com/tom2025b/rexops) — Suite cockpit
+
+## Shared UI (`suite-ui`)
+
+The one piece of shared *code* in the suite lives in this repo:
+[`crates/suite-ui`](crates/suite-ui) — the common TUI chrome (cyan/amber theme with
+`NO_COLOR` support, rounded panes, health styles, and the help / confirm / toast /
+command-palette overlays). It is **pure presentation** — no domain logic, no data flow
+— so it doesn't reintroduce the coupling the file-contracts rule prevents. RexOps and
+ScriptVault are the intended consumers. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#shared-ui-chrome-suite-ui) for the why.
+
+```bash
+# build + test the crate, and see every component rendered in each theme:
+cargo test -p suite-ui
+cargo run -p suite-ui --example gallery
+```
 
 ---
 

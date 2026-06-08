@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/rexops.snapshot.schema.json",
   "title": "RexOps snapshot",
-  "description": "STATUS: PROVISIONAL — RexOps is the suite consumer; this is the unified view it assembles from all producer feeds. RexOps does not yet emit this. This stub fixes only the universal envelope fields. Real shape will be added when RexOps ships its versioned snapshot.",
+  "description": "STATUS: PROVISIONAL — RexOps is the suite consumer; this is the unified view it assembles from all producer feeds. RexOps does not yet emit this. This contract fixes only the universal envelope fields. Real shape will be added when RexOps ships its versioned snapshot.",
   "type": "object",
   "required": ["schema_version", "source_tool"],
   "additionalProperties": true,

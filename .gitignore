@@ -1,3 +1,4 @@
-# No source code lives here — this is a landing/index repository.
+# Contract & index HQ for the suite, plus the one shared UI crate (crates/suite-ui).
+/target
 .DS_Store
 Thumbs.db

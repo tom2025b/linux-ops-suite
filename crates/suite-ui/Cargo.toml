@@ -1,0 +1,21 @@
+[package]
+name = "suite-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared terminal-UI chrome for the Linux Ops Suite: theme/palette (cyan/amber + NO_COLOR), rounded panes, and common overlays."
+
+[features]
+default = []
+clap = ["dep:clap"]
+
+[dependencies]
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+clap = { workspace = true, optional = true }
+
+[[example]]
+name = "gallery"
+path = "examples/gallery.rs"
