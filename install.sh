@@ -195,19 +195,34 @@ ensure_repo() {
 
 install_rust_tool() {
   local repo="$1" bin="$2" dir="$3"
+  local dest="${BIN_DIR}/${bin}"
 
-  if [ "$FORCE" -eq 0 ] && command -v "$bin" >/dev/null 2>&1; then
-    skip "$bin already installed ($(command -v "$bin")) — use --force to rebuild"
+  if [ "$FORCE" -eq 0 ] && [ -x "$dest" ]; then
+    skip "$bin already installed ($dest) — use --force to rebuild"
     return 0
   fi
 
-  step "Building $repo (cargo install)"
-  local force_flag=()
-  [ "$FORCE" -eq 1 ] && force_flag=(--force)
-  if run cargo install --path "$dir" --root "${BIN_DIR%/bin}" "${force_flag[@]}"; then
-    ok "$bin → ${BIN_DIR}/${bin}"
+  # Build a release binary in the repo, then copy it onto PATH. (Clone/pull
+  # already happened in ensure_repo.) We `cargo build --release` rather than
+  # `cargo install` so the artifact stays in the repo's target/ and we control
+  # exactly what lands in BIN_DIR.
+  step "Building $repo (cargo build --release)"
+  if ! run cargo build --release --manifest-path "${dir}/Cargo.toml"; then
+    warn "$repo: cargo build --release failed — skipping"
+    return 1
+  fi
+
+  local artifact="${dir}/target/release/${bin}"
+  if [ "$DRY_RUN" -eq 0 ] && [ ! -f "$artifact" ]; then
+    warn "$repo: built but no binary at target/release/${bin} (different bin name?) — skipping"
+    return 1
+  fi
+
+  run mkdir -p "$BIN_DIR"
+  if run install -m 0755 "$artifact" "$dest"; then
+    ok "$bin → ${dest}"
   else
-    warn "$repo: cargo install failed — skipping"
+    warn "$repo: failed to copy binary to ${dest} — skipping"
     return 1
   fi
 }
