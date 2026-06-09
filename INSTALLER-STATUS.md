@@ -26,7 +26,8 @@ launcher and writes a `r-<tool>` wrapper + `~/.rust_aliases.sh` alias per tool.
 | Branch `fix/installer-build-release` | ✅ pushed to origin |
 | Validation | ✅ `bash -n` OK · `shellcheck` 0.9.0 clean · `--dry-run` exercises full flow |
 | Real test | ✅ wrapper/alias generation tested in a sandbox (idempotent) |
-| Merged to `main` | ❌ not yet (PR open below) |
+| Merged to `main` | ✅ PR #4 merged 2026-06-09 (`fix/installer-build-release` → `main`) |
+| First real end-to-end run | 🔄 in progress (full build+copy of all tools) |
 
 ### Branch lineage
 
@@ -47,14 +48,15 @@ fix/installer-build-release  (pushed, not merged)
 
 ## What still needs to be done
 
-1. **Open a PR** for `fix/installer-build-release` → `main` and merge it (this
-   makes the build-and-copy installer + README the canonical version on `main`).
-2. **Delete** the now-redundant `feat/installer-docs` branch (local + remote if
-   pushed).
-3. **First real end-to-end run** on a clean-ish environment: `./install.sh`
-   (currently only `--dry-run` + a sandboxed sub-step have been executed; the
-   full build+copy of all six Rust tools has not been run for real yet).
+1. ~~**Open a PR** for `fix/installer-build-release` → `main` and merge it.~~
+   ✅ Done — PR #4 merged 2026-06-09; build-and-copy installer + README are now
+   the canonical version on `main`.
+2. ~~**Delete** the redundant installer/feat branches.~~ ✅ Done — redundant
+   remote branches pruned; stale local branches deleted.
+3. **First real end-to-end run** — `./install.sh` 🔄 in progress (this run is the
+   first full build+copy of all six Rust tools + toolbox-bridge for real; prior
+   to this only `--dry-run` + a sandboxed sub-step had been executed).
 4. **Confirm binary names** hold after any tool restructure — the `repo:binary`
    map in `install.sh` is correct today (notably `rexops`' binary comes from the
-   `rexops-cli` package but is named `rexops`).
+   `rexops-cli` package but is named `rexops`). Verify against this real run.
 5. **Optional:** richer `r-<tool>` aliases if `alias r-foo='foo'` isn't enough.
