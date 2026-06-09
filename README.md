@@ -16,6 +16,74 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **Proto**       | Guided protocol / checklist runner — emits session records | Active       |
 | **RexOps**      | Operations cockpit + suite launcher (`rex run` for full refresh) | Active |
 
+## Installation
+
+The whole suite installs with **one command**. Because each tool lives in its own
+repo, [`install.sh`](install.sh) is an *orchestrator*: it clones (or updates) every
+tool repo, builds it, and puts the binaries on your `PATH` — then installs the
+`rex` launcher and the per-tool `r-<tool>` wrappers.
+
+```bash
+# Fresh machine: clone this repo, then run the installer.
+git clone https://github.com/tom2025b/linux-ops-suite.git
+cd linux-ops-suite
+./install.sh
+```
+
+That's it. Re-run it any time to update — it's **idempotent** (skips what's already
+built unless you pass `--force`).
+
+### What it does
+
+For each tool it: **clone or `git pull`** the repo → **`cargo build --release`** →
+**copy `target/release/<binary>` into `~/.local/bin/`**. Specifically:
+
+- **Rust tools** (Bulwark, ScriptVault, ToolFoundry, Workstate, Proto, RexOps) are
+  built from source with `cargo build --release` and the resulting binary is copied
+  to `~/.local/bin/`.
+- **Toolbox Bridge** (Python) is installed via `pipx`, or a self-contained virtualenv
+  with a launcher on your `PATH` if `pipx` isn't available.
+- The **`rex`** launcher is installed to `~/.local/bin/rex`.
+- A `r-<tool>` wrapper is written to `~/bin/` and an alias appended to
+  `~/.rust_aliases.sh` for every tool.
+
+The installer **never edits your shell config**. If `~/.local/bin` or `~/bin` isn't
+on your `PATH`, it prints the exact line to add.
+
+### Prerequisites
+
+- **`git`** and a **Rust toolchain** (`cargo`) — required. Install Rust via
+  [rustup](https://rustup.rs): `curl https://sh.rustup.rs -sSf | sh`.
+- **`pipx`** or **`python3`** — optional, only for Toolbox Bridge (the Rust tools
+  install fine without it).
+
+### Options
+
+```bash
+./install.sh --dry-run        # show exactly what would happen; change nothing
+./install.sh --force          # rebuild/reinstall even if already present
+./install.sh --local          # use existing local clones; never clone/pull
+./install.sh --only a,b       # operate on just these tools (comma-separated)
+./install.sh --skip-aliases   # don't write r-<tool> wrappers or aliases
+./install.sh --help
+```
+
+### After installing
+
+If the installer reported that a directory isn't on your `PATH`, add it to your
+shell rc (`~/.bashrc` or `~/.zshrc`) and source the aliases once:
+
+```bash
+export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+[ -f "$HOME/.rust_aliases.sh" ] && source "$HOME/.rust_aliases.sh"
+```
+
+Then kick off a full suite refresh:
+
+```bash
+rex run
+```
+
 ## How They Work Together
 
 - Data flows **one way** through files (mostly JSON).
