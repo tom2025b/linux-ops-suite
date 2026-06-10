@@ -65,7 +65,7 @@ Create `crates/suite-ui/src/app/tui.rs`:
 use std::io::{self, IsTerminal, Write, stdout};
 
 use crossterm::execute;
-use crossterm::terminal::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use ratatui::DefaultTerminal;
 
 /// What can go wrong setting up the terminal.
