@@ -11,7 +11,11 @@ use super::tui::{Tui, TuiError, TuiOptions};
 use crate::Theme;
 
 /// What a key handler tells the loop to do next.
+///
+/// `#[must_use]`: a dropped `Flow` is almost always a bug — it means an
+/// `on_key`/`dispatch_key` result said "quit" and the caller silently ignored it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use]
 pub enum Flow {
     /// Keep running.
     Continue,
@@ -37,6 +41,65 @@ fn dispatch_key(screen: &mut impl Screen, event: Event) -> Flow {
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => screen.on_key(key),
         _ => Flow::Continue,
+    }
+}
+
+/// A thin runner over [`Tui`]. Construct with a [`Theme`], optionally tweak the
+/// envelope and tick rate, then `run` a [`Screen`].
+///
+/// `run` drives the common-denominator loop: draw → poll(tick) → dispatch a key
+/// (or `on_tick` on timeout) → repeat, with the terminal restored on the way
+/// out by the underlying `Tui`. It deliberately has **no** background-channel
+/// draining or adaptive polling — reach for [`Tui`] directly when you need
+/// either (see RexOps/ScriptVault).
+pub struct App {
+    theme: Theme,
+    opts: TuiOptions,
+    tick: Duration,
+}
+
+impl App {
+    /// Start from a resolved [`Theme`]. Defaults: hide the cursor, 200ms tick.
+    pub fn new(theme: Theme) -> Self {
+        Self {
+            theme,
+            opts: TuiOptions {
+                hide_cursor: true,
+                ..Default::default()
+            },
+            tick: Duration::from_millis(200),
+        }
+    }
+
+    /// Override the terminal envelope (mouse capture, require_tty, cursor).
+    pub fn with_options(mut self, opts: TuiOptions) -> Self {
+        self.opts = opts;
+        self
+    }
+
+    /// Override the poll timeout / tick cadence (default 200ms).
+    pub fn tick_rate(mut self, tick: Duration) -> Self {
+        self.tick = tick;
+        self
+    }
+
+    /// Set up the terminal, run the loop to completion, and restore on exit.
+    pub fn run(self, mut root: impl Screen) -> Result<(), TuiError> {
+        let mut tui = Tui::new(self.opts)?;
+        loop {
+            tui.terminal()
+                .draw(|f| root.render(f, self.theme))
+                .map_err(TuiError::Io)?;
+            if event::poll(self.tick).map_err(TuiError::Io)? {
+                let ev = event::read().map_err(TuiError::Io)?;
+                if dispatch_key(&mut root, ev) == Flow::Exit {
+                    break;
+                }
+            } else {
+                root.on_tick();
+            }
+        }
+        Ok(()) // `tui` drops here → guaranteed restore
     }
 }
 

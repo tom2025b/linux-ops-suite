@@ -14,6 +14,5 @@
 mod runner;
 mod tui;
 
-pub use runner::{Flow, Screen};
-// TODO(Task 6): add App to the runner re-export
+pub use runner::{App, Flow, Screen};
 pub use tui::{Tui, TuiError, TuiOptions};
