@@ -122,10 +122,12 @@ impl Tui {
     pub fn suspended<T>(&mut self, f: impl FnOnce() -> T) -> io::Result<T> {
         // Same ordering as `with_suspended` (unit-tested): leave, run, then
         // ALWAYS re-enter. Inlined because both steps need &mut self.terminal.
-        let leave_result = self
-            .terminal
-            .show_cursor()
-            .and_then(|()| ratatui::try_restore());
+        // Attempt BOTH the cursor-show and the restore regardless of the first's
+        // outcome — `suspended` must leave the terminal clean for the child, and
+        // that runs before Drop. `.and(..)` keeps the first error if both ran.
+        let show_result = self.terminal.show_cursor();
+        let restore_result = ratatui::try_restore();
+        let leave_result = show_result.and(restore_result);
 
         let value = f();
 
@@ -255,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn suspended_reenters_even_if_leave_then_body_panics_path() {
+    fn suspended_reenters_even_if_leave_fails() {
         // If re-enter fails, the error surfaces; if leave fails, we still try to
         // re-enter so the terminal isn't stuck. Assert: leave error short-circuits
         // before the body but still re-enters.
@@ -270,5 +272,23 @@ mod tests {
         );
         assert!(result.is_err(), "leave failure surfaces as an error");
         assert_eq!(reentered, 1, "re-enter still runs after a leave failure");
+    }
+
+    #[test]
+    fn with_suspended_reenter_error_dominates_when_both_fail() {
+        // When BOTH leave and re-enter fail, the re-enter error is the one
+        // returned (current terminal state matters most). Locks the documented
+        // precedence: `reenter_result?` runs before `leave_result?`.
+        let result = with_suspended(
+            || Err::<(), io::Error>(io::Error::other("leave failed")),
+            || (),
+            || Err::<(), io::Error>(io::Error::other("reenter failed")),
+        );
+        let err = result.expect_err("both failing must surface an error");
+        assert_eq!(
+            err.to_string(),
+            "reenter failed",
+            "the re-enter error dominates"
+        );
     }
 }
