@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Linux Ops Suite — Data Flow</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --ink: #e6edf3;
+    --dim: #8b949e;
+    --line: #30363d;
+    --producer: #2f81f7;
+    --compiler: #d29922;
+    --consumer: #3fb950;
+    --side: #a371f7;
+    --bridge: #db6d28;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    padding: 32px 20px 60px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 20px; letter-spacing: .04em; margin: 0 0 4px; }
+  .subtitle { color: var(--dim); margin: 0 0 28px; font-size: 13px; }
+
+  /* Column headers */
+  .colheads {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 10px;
+  }
+  .colhead { text-align: center; color: var(--dim); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+
+  /* The diagram canvas: SVG connectors layered under HTML boxes */
+  .stage { position: relative; }
+  svg.links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+  .grid {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px 40px;
+    align-items: center;
+  }
+
+  .node {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    position: relative;
+  }
+  .node .name { font-weight: 700; font-size: 15px; }
+  .node .desc { color: var(--dim); font-size: 12px; margin-top: 3px; }
+  .node .repo { color: var(--dim); font-size: 11px; margin-top: 6px; opacity: .7; }
+
+  .node.producer { border-left: 3px solid var(--producer); }
+  .node.compiler { border: 1px solid var(--compiler); box-shadow: 0 0 0 1px rgba(210,153,34,.25), 0 8px 30px rgba(210,153,34,.10); padding: 18px 16px; }
+  .node.consumer { border: 1px solid var(--consumer); box-shadow: 0 0 0 1px rgba(63,185,80,.25); padding: 16px; }
+  .node .badge { display:inline-block; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--compiler); border:1px solid var(--compiler); border-radius:5px; padding:1px 6px; margin-bottom:8px; }
+  .node.consumer .badge { color: var(--consumer); border-color: var(--consumer); }
+
+  /* edge labels sitting over the connector lines */
+  .edge-label {
+    position: absolute;
+    z-index: 2;
+    font-size: 11px;
+    color: var(--ink);
+    background: rgba(13,17,23,.85);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 2px 7px;
+    white-space: nowrap;
+    transform: translate(-50%, -50%);
+  }
+  .edge-label .k { color: var(--producer); }
+
+  .producers-col { display: flex; flex-direction: column; gap: 16px; }
+
+  /* Side channel */
+  .side {
+    margin-top: 30px;
+    border: 1px dashed var(--side);
+    border-radius: 10px;
+    padding: 16px 18px;
+    background: rgba(163,113,247,.05);
+  }
+  .side h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--side); margin: 0 0 14px; }
+  .side .row { display: flex; align-items: center; gap: 0; flex-wrap: wrap; }
+  .side .chip {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 13px; font-weight: 600; font-size: 13px;
+  }
+  .side .chip.bridge { border-color: var(--bridge); border-left: 3px solid var(--bridge); }
+  .side .arrow { color: var(--side); padding: 0 4px; display: inline-flex; flex-direction: column; align-items: center; min-width: 130px; }
+  .side .arrow .lbl { font-size: 10px; color: var(--dim); }
+  .side .arrow .ln { font-size: 18px; line-height: 1; }
+  .side .note { color: var(--dim); font-size: 12px; margin-top: 12px; }
+
+  /* Legend + rules */
+  .legend { margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .legend h3 { font-size: 12px; letter-spacing:.08em; text-transform: uppercase; color: var(--dim); margin: 0 0 10px; }
+  .legend ul { margin: 0; padding-left: 18px; }
+  .legend li { font-size: 12.5px; color: var(--ink); margin-bottom: 7px; }
+  .legend li .muted { color: var(--dim); }
+  .swatch { display:inline-block; width:11px; height:11px; border-radius:3px; vertical-align:middle; margin-right:7px; }
+  .s-producer{background:var(--producer);} .s-compiler{background:var(--compiler);}
+  .s-consumer{background:var(--consumer);} .s-side{background:var(--side);}
+
+  .caveat { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 16px; color: var(--dim); font-size: 12px; }
+  .caveat strong { color: var(--ink); }
+  @media (max-width: 720px) {
+    .grid, .colheads { grid-template-columns: 1fr; }
+    svg.links { display: none; }
+    .edge-label { position: static; transform: none; display:block; margin: 4px 0; }
+    .legend { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Linux Ops Suite — Data Flow</h1>
+  <p class="subtitle">One-way, file-based contracts. Producers emit JSON · Workstate compiles · RexOps consumes.</p>
+
+  <div class="colheads">
+    <div class="colhead">Producers</div>
+    <div class="colhead">Compiler · source of truth</div>
+    <div class="colhead">Consumer · cockpit</div>
+  </div>
+
+  <div class="stage">
+    <!-- SVG connector layer: 3 curved feeds in, 1 curved snapshot out -->
+    <svg class="links" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#6e7681"/>
+        </marker>
+        <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#3fb950"/>
+        </marker>
+      </defs>
+      <!-- 3 workstate-feed producers (left col ~x=300) curve into the compiler (center ~x=500,y=180) -->
+      <path d="M300,55  C420,55 430,180 500,180"  fill="none" stroke="#6e7681" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <path d="M300,180 C420,180 440,180 500,180" fill="none" stroke="#6e7681" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <path d="M300,305 C420,305 430,180 500,180" fill="none" stroke="#6e7681" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <!-- compiler -> consumer (snapshot) -->
+      <path d="M700,180 C800,180 820,180 900,180" fill="none" stroke="#3fb950" stroke-width="2" marker-end="url(#arrowGreen)"/>
+    </svg>
+
+    <div class="grid">
+      <!-- PRODUCERS -->
+      <div class="producers-col">
+        <div class="node producer">
+          <div class="name">ToolFoundry</div>
+          <div class="desc">lifecycle · ownership · health per tool</div>
+          <div class="repo">Rust</div>
+        </div>
+        <div class="node producer">
+          <div class="name">Bulwark</div>
+          <div class="desc">scan results · risk classification</div>
+          <div class="repo">Rust</div>
+        </div>
+        <div class="node producer">
+          <div class="name">Proto</div>
+          <div class="desc">protocol / checklist session outcomes</div>
+          <div class="repo">Rust</div>
+        </div>
+      </div>
+
+      <!-- COMPILER -->
+      <div class="node compiler">
+        <span class="badge">compiler</span>
+        <div class="name">Workstate</div>
+        <div class="desc">ingests feeds → normalizes → compiles</div>
+        <div class="repo">fans in 3 feeds · fans out 1 snapshot</div>
+      </div>
+
+      <!-- CONSUMER -->
+      <div class="node consumer">
+        <span class="badge">cockpit</span>
+        <div class="name">RexOps</div>
+        <div class="desc">reads snapshot.json · launcher · <code>rex run</code></div>
+        <div class="repo">never talks to tools directly</div>
+      </div>
+    </div>
+
+    <!-- edge labels positioned over the SVG curves (percent-based) -->
+    <div class="edge-label" style="left:37%; top:15%;"> <span class="k">toolfoundry.workstate-feed.v1</span></div>
+    <div class="edge-label" style="left:37%; top:50%;"> <span class="k">bulwark.workstate-feed.v1</span></div>
+    <div class="edge-label" style="left:37%; top:85%;"> <span class="k">proto.workstate-feed.v1</span></div>
+    <div class="edge-label" style="left:80%; top:46%;"> snapshot.json <span class="muted">· v3</span></div>
+  </div>
+
+  <!-- SIDE CHANNEL -->
+  <div class="side">
+    <h2>Side channel — out of band (risk tagging)</h2>
+    <div class="row">
+      <span class="chip">Bulwark</span>
+      <span class="arrow"><span class="lbl">scan JSON</span><span class="ln">⟶</span></span>
+      <span class="chip bridge">Toolbox Bridge</span>
+      <span class="arrow"><span class="lbl">risk:* tag-classification</span><span class="ln">⟶</span></span>
+      <span class="chip">ScriptVault sidecars</span>
+    </div>
+    <p class="note">
+      Bulwark’s risk classification is written back onto ScriptVault’s scripts as sidecar
+      tags (<code>.scriptvault.yaml</code>). ScriptVault is a suite producer too, but it has
+      no <code>workstate-feed</code>: its <code>scriptvault.export.json</code> is consumed by
+      <strong>RexOps</strong> (provisional), not by Workstate. So these risk tags reach the
+      RexOps view through ScriptVault’s export, while Workstate sees only the three feeds above.
+    </p>
+  </div>
+
+  <!-- LEGEND + RULES -->
+  <div class="legend">
+    <div>
+      <h3>Legend</h3>
+      <ul style="list-style:none; padding:0;">
+        <li><span class="swatch s-producer"></span>Producer — own repo, read-only, emits a feed</li>
+        <li><span class="swatch s-compiler"></span>Compiler — the only thing that reads feeds</li>
+        <li><span class="swatch s-consumer"></span>Consumer — reads the snapshot only</li>
+        <li><span class="swatch s-side"></span>Side channel — separate risk-tag path</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Rules this encodes</h3>
+      <ul>
+        <li>One-way, file-based contracts — <span class="muted">no tool imports another’s code; JSON only.</span></li>
+        <li>Shapes pinned by JSON Schemas in the umbrella <code>contracts/</code> dir, validated in CI.</li>
+        <li>Workstate is the single compiler — fans in 3, fans out 1.</li>
+        <li>RexOps only ever reads <code>snapshot.json</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="caveat">
+    <strong>Note:</strong> feed names and the snapshot version verified against the 8
+    schemas in <code>contracts/</code> and <code>docs/INTEGRATION_MAP.md</code>. Only
+    ToolFoundry, Bulwark, and Proto emit a <code>workstate-feed</code>; ScriptVault’s
+    export is RexOps-bound. The Bulwark→Bridge→ScriptVault path is an indirect loop by design.
+  </p>
+</div>
+</body>
+</html>
