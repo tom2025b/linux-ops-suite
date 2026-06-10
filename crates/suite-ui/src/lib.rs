@@ -13,6 +13,7 @@
 //!   shared [`Outcome`] glyph/style mapping every job-event widget renders through;
 //! - a [`SearchBar`] live-filter input affordance;
 //! - a [`KeyHints`] footer strip of `key → label` shortcut hints;
+//! - a [`FilterChips`] row of active-filter chips (`[t:ci ✕]`);
 //! - shared keymap conventions ([`keys`]).
 //!
 //! ## Scope: chrome, not logic
@@ -31,6 +32,7 @@
 //! them. Consumers that don't use clap stay lean.
 
 pub mod keys;
+mod filter_chips;
 mod key_hints;
 mod overlays;
 mod search_bar;
@@ -38,6 +40,7 @@ mod status_bar;
 mod theme;
 mod widgets;
 
+pub use filter_chips::FilterChips;
 pub use key_hints::KeyHints;
 pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, ToastKind};
 pub use search_bar::SearchBar;
