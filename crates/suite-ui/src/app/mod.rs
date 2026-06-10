@@ -14,5 +14,4 @@
 mod tui;
 // TODO(Task 5/6): add `mod runner;` and re-export App/Flow/Screen
 
-pub use tui::TuiError;
-// TODO(Task 2): re-export Tui, TuiOptions once they exist
+pub use tui::{Tui, TuiError, TuiOptions};
