@@ -41,6 +41,7 @@
 //! [`ColorChoice`] so a consumer can parse `--theme`/`--color` straight into
 //! them. Consumers that don't use clap stay lean.
 
+mod app;
 mod attention_flag;
 mod badge;
 mod counted;
@@ -58,6 +59,7 @@ mod text;
 mod theme;
 mod widgets;
 
+pub use app::TuiError;
 pub use attention_flag::AttentionFlag;
 pub use badge::SeverityBadge;
 pub use counted::Counted;
