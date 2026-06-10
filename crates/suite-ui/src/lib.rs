@@ -59,7 +59,7 @@ mod text;
 mod theme;
 mod widgets;
 
-pub use app::{Tui, TuiError, TuiOptions};
+pub use app::{Flow, Screen, Tui, TuiError, TuiOptions};
 pub use attention_flag::AttentionFlag;
 pub use badge::SeverityBadge;
 pub use counted::Counted;

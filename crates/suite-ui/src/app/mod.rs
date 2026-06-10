@@ -11,7 +11,9 @@
 //! There is no `Component`/`Action`/event-bus here by design — `App` is sugar,
 //! `Tui` is the contract.
 
+mod runner;
 mod tui;
-// TODO(Task 5/6): add `mod runner;` and re-export App/Flow/Screen
 
+pub use runner::{Flow, Screen};
+// TODO(Task 6): add App to the runner re-export
 pub use tui::{Tui, TuiError, TuiOptions};
