@@ -24,7 +24,11 @@
 //! - an [`EmptyState`] centered placeholder for an empty region;
 //! - a [`Freshness`] provenance stamp (`just now`, `2h ago`, stale-aware);
 //! - Unicode-aware [`truncate_path`]/[`truncate_desc`] helpers (one `…`);
-//! - shared keymap conventions ([`keys`]).
+//! - shared keymap conventions ([`keys`]);
+//! - a minimal App runtime — a RAII [`Tui`] terminal scope guard (setup +
+//!   panic-safe teardown + ordered post-exit stdout) every tool can adopt, and
+//!   a thin [`App`] runner (`App::new(theme).run(root)`) over a [`Screen`] for
+//!   the simple case;
 //!
 //! ## Scope: chrome, not logic
 //!
@@ -35,12 +39,21 @@
 //! what lets two otherwise-decoupled tools share presentation without coupling
 //! their internals.
 //!
+//! ## The App runtime: guard first, runner on top
+//!
+//! [`Tui`] owns the terminal *lifecycle* (mechanism every tool repeats), not
+//! application logic. Drive your own loop via [`Tui::terminal`] when you need
+//! background channels or adaptive polling; use [`App`] when you don't. `App` is
+//! implemented entirely on `Tui`'s public API — anything it does, a hand-written
+//! loop can do too.
+//!
 //! ## The `clap` feature
 //!
 //! Off by default. Enabling it derives `clap::ValueEnum` on [`ThemeChoice`] and
 //! [`ColorChoice`] so a consumer can parse `--theme`/`--color` straight into
 //! them. Consumers that don't use clap stay lean.
 
+mod app;
 mod attention_flag;
 mod badge;
 mod counted;
@@ -58,6 +71,7 @@ mod text;
 mod theme;
 mod widgets;
 
+pub use app::{App, Flow, Screen, Tui, TuiError, TuiOptions};
 pub use attention_flag::AttentionFlag;
 pub use badge::SeverityBadge;
 pub use counted::Counted;
