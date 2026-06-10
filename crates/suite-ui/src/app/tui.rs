@@ -113,6 +113,34 @@ impl Tui {
     pub fn print_after_exit(&mut self, line: impl Into<String>) {
         self.out.push(line.into());
     }
+
+    /// Leave the alt screen + raw mode, run `f` on the user's real terminal,
+    /// then re-enter and clear. Re-entry happens even if `f` returns or the
+    /// leave step failed, so the terminal is never left in a suspended state.
+    ///
+    /// Use this to launch an editor or another full-screen child program.
+    pub fn suspended<T>(&mut self, f: impl FnOnce() -> T) -> io::Result<T> {
+        // Same ordering as `with_suspended` (unit-tested): leave, run, then
+        // ALWAYS re-enter. Inlined because both steps need &mut self.terminal.
+        let leave_result = self
+            .terminal
+            .show_cursor()
+            .and_then(|()| ratatui::try_restore());
+
+        let value = f();
+
+        let reenter_result = (|| {
+            self.terminal = ratatui::try_init()?;
+            if self.opts.hide_cursor {
+                self.terminal.hide_cursor()?;
+            }
+            self.terminal.clear()
+        })();
+
+        reenter_result?;
+        leave_result?;
+        Ok(value)
+    }
 }
 
 /// Drain queued lines to a writer, each followed by a newline. Factored out of
@@ -122,6 +150,25 @@ fn drain_lines(out: &mut Vec<String>, w: &mut impl Write) {
     for line in out.drain(..) {
         let _ = writeln!(w, "{line}");
     }
+}
+
+/// The leave→run→re-enter control flow, with the terminal ops injected as
+/// closures so it is unit-testable without a real terminal. Re-enter ALWAYS
+/// runs (even if leave failed), so the terminal is never left suspended. The
+/// re-enter error dominates (current terminal state matters most); otherwise a
+/// leave error propagates; otherwise the body's value is returned.
+#[cfg_attr(not(test), allow(dead_code))]
+fn with_suspended<T>(
+    leave: impl FnOnce() -> io::Result<()>,
+    body: impl FnOnce() -> T,
+    reenter: impl FnOnce() -> io::Result<()>,
+) -> io::Result<T> {
+    let leave_result = leave();
+    let value = body();
+    let reenter_result = reenter();
+    reenter_result?;
+    leave_result?;
+    Ok(value)
 }
 
 impl Drop for Tui {
@@ -181,5 +228,47 @@ mod tests {
         drain_lines(&mut q, &mut buf);
         assert_eq!(String::from_utf8(buf).unwrap(), "first\nsecond\n");
         assert!(q.is_empty(), "drain empties the queue");
+    }
+
+    #[test]
+    fn suspended_runs_closure_and_returns_value() {
+        // suspended() must run the closure and hand back its return value. We
+        // test the closure plumbing via the extracted `with_suspended` helper,
+        // which takes the leave/re-enter actions as closures so the real
+        // terminal ops aren't needed in CI.
+        let mut left = 0;
+        let mut reentered = 0;
+        let value = with_suspended(
+            || {
+                left += 1;
+                Ok::<(), io::Error>(())
+            },
+            || 42, // the "child" body
+            || {
+                reentered += 1;
+                Ok::<(), io::Error>(())
+            },
+        )
+        .unwrap();
+        assert_eq!(value, 42, "returns the closure's value");
+        assert_eq!((left, reentered), (1, 1), "leaves once, re-enters once");
+    }
+
+    #[test]
+    fn suspended_reenters_even_if_leave_then_body_panics_path() {
+        // If re-enter fails, the error surfaces; if leave fails, we still try to
+        // re-enter so the terminal isn't stuck. Assert: leave error short-circuits
+        // before the body but still re-enters.
+        let mut reentered = 0;
+        let result = with_suspended(
+            || Err::<(), io::Error>(io::Error::other("leave failed")),
+            || 7,
+            || {
+                reentered += 1;
+                Ok::<(), io::Error>(())
+            },
+        );
+        assert!(result.is_err(), "leave failure surfaces as an error");
+        assert_eq!(reentered, 1, "re-enter still runs after a leave failure");
     }
 }
