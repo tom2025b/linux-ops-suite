@@ -31,7 +31,9 @@ pub trait Screen {
     fn render(&mut self, frame: &mut Frame, theme: Theme);
     /// Handle one key press; return [`Flow::Exit`] to quit.
     fn on_key(&mut self, key: KeyEvent) -> Flow;
-    /// Called once per tick when no key arrived (e.g. clear a transient status).
+    /// Called once per tick when no key arrived within the poll timeout (e.g.
+    /// clear a transient status). Not called before the first draw, and not
+    /// called on iterations where a key WAS handled. Default: do nothing.
     fn on_tick(&mut self) {}
 }
 
@@ -72,12 +74,17 @@ impl App {
     }
 
     /// Override the terminal envelope (mouse capture, require_tty, cursor).
+    ///
+    /// This REPLACES all options, including the `hide_cursor: true` that
+    /// [`App::new`] sets — pass `hide_cursor: true` in `opts` if you still want
+    /// the cursor hidden.
     pub fn with_options(mut self, opts: TuiOptions) -> Self {
         self.opts = opts;
         self
     }
 
-    /// Override the poll timeout / tick cadence (default 200ms).
+    /// Override the poll timeout — the `Duration` `run` waits for a key each
+    /// iteration before calling [`Screen::on_tick`] (default 200ms).
     pub fn tick_rate(mut self, tick: Duration) -> Self {
         self.tick = tick;
         self
