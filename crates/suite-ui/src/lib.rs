@@ -24,7 +24,11 @@
 //! - an [`EmptyState`] centered placeholder for an empty region;
 //! - a [`Freshness`] provenance stamp (`just now`, `2h ago`, stale-aware);
 //! - Unicode-aware [`truncate_path`]/[`truncate_desc`] helpers (one `…`);
-//! - shared keymap conventions ([`keys`]).
+//! - shared keymap conventions ([`keys`]);
+//! - a minimal App runtime — a RAII [`Tui`] terminal scope guard (setup +
+//!   panic-safe teardown + ordered post-exit stdout) every tool can adopt, and
+//!   a thin [`App`] runner (`App::new(theme).run(root)`) over a [`Screen`] for
+//!   the simple case;
 //!
 //! ## Scope: chrome, not logic
 //!
@@ -34,6 +38,14 @@
 //! application — `suite-ui` draws the box; the app owns the behaviour. This is
 //! what lets two otherwise-decoupled tools share presentation without coupling
 //! their internals.
+//!
+//! ## The App runtime: guard first, runner on top
+//!
+//! [`Tui`] owns the terminal *lifecycle* (mechanism every tool repeats), not
+//! application logic. Drive your own loop via [`Tui::terminal`] when you need
+//! background channels or adaptive polling; use [`App`] when you don't. `App` is
+//! implemented entirely on `Tui`'s public API — anything it does, a hand-written
+//! loop can do too.
 //!
 //! ## The `clap` feature
 //!
