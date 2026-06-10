@@ -9,8 +9,9 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Terminal;
 
 use suite_ui::{
-    centered_rect, pane, ConfirmModal, Health, HelpSheet, JobState, KeyHints, PaletteFrame,
-    PaletteItem, SearchBar, StatusBar, Theme, ThemeChoice, Toast, ToastKind,
+    centered_rect, pane, pane_titled, truncate_desc, truncate_path, ConfirmModal, Counted,
+    EmptyState, FilterChips, Health, HelpSheet, JobState, KeyHints, PaletteFrame, PaletteItem,
+    SearchBar, StatusBar, StatusStrip, Theme, ThemeChoice, Toast, ToastKind,
 };
 
 fn main() {
@@ -105,50 +106,147 @@ fn print_frame(theme: Theme) {
         ];
         KeyHints { hints: &hints }.render(frame, row, theme);
     });
-    print_overlay("search bar (empty + active)", theme, |frame, area, theme| {
-        let [empty_row, active_row] =
-            Layout::vertical([Constraint::Length(1), Constraint::Length(1)])
-                .areas(centered_rect(60, 10, area));
-        SearchBar {
-            query: "",
-            placeholder: "type to filter adapters",
-            match_count: None,
-        }
-        .render(frame, empty_row, theme);
-        SearchBar {
-            query: "bul",
-            placeholder: "type to filter adapters",
-            match_count: Some(1),
-        }
-        .render(frame, active_row, theme);
-    });
+    print_overlay(
+        "search bar (empty + active)",
+        theme,
+        |frame, area, theme| {
+            let [empty_row, active_row] =
+                Layout::vertical([Constraint::Length(1), Constraint::Length(1)])
+                    .areas(centered_rect(60, 10, area));
+            SearchBar {
+                query: "",
+                placeholder: "type to filter adapters",
+                match_count: None,
+            }
+            .render(frame, empty_row, theme);
+            SearchBar {
+                query: "bul",
+                placeholder: "type to filter adapters",
+                match_count: Some(1),
+            }
+            .render(frame, active_row, theme);
+        },
+    );
     print_overlay("status bar (job states)", theme, |frame, area, theme| {
-        let rows: [Rect; 5] = Layout::vertical([Constraint::Length(1); 5])
-            .areas(centered_rect(60, 40, area));
+        let rows: [Rect; 5] =
+            Layout::vertical([Constraint::Length(1); 5]).areas(centered_rect(60, 40, area));
         for (row, job) in rows.into_iter().zip([
             JobState::Running { name: "backup" },
-            JobState::Done { name: "backup", ok: true },
-            JobState::Done { name: "rescan", ok: false },
+            JobState::Done {
+                name: "backup",
+                ok: true,
+            },
+            JobState::Done {
+                name: "rescan",
+                ok: false,
+            },
             JobState::Cancelled { name: "deploy" },
             JobState::Idle,
         ]) {
             StatusBar { job }.render(frame, row, theme);
         }
     });
-    print_overlay("toast (info + error + job events)", theme, |frame, area, theme| {
-        let rows: [Rect; 5] = Layout::vertical([Constraint::Length(1); 5])
-            .areas(centered_rect(60, 40, area));
-        let toasts = [
-            ("saved search 'deploys'", ToastKind::Info),
-            ("reload failed: permission denied", ToastKind::Error),
-            ("backup — done", ToastKind::Success),
-            ("rescan — failed", ToastKind::Failure),
-            ("deploy — cancelled", ToastKind::Cancelled),
-        ];
-        for (row, (text, kind)) in rows.into_iter().zip(toasts) {
-            Toast { text, kind }.render(frame, row, theme);
+    print_overlay(
+        "toast (info + error + job events)",
+        theme,
+        |frame, area, theme| {
+            let rows: [Rect; 5] =
+                Layout::vertical([Constraint::Length(1); 5]).areas(centered_rect(60, 40, area));
+            let toasts = [
+                ("saved search 'deploys'", ToastKind::Info),
+                ("reload failed: permission denied", ToastKind::Error),
+                ("backup — done", ToastKind::Success),
+                ("rescan — failed", ToastKind::Failure),
+                ("deploy — cancelled", ToastKind::Cancelled),
+            ];
+            for (row, (text, kind)) in rows.into_iter().zip(toasts) {
+                Toast { text, kind }.render(frame, row, theme);
+            }
+        },
+    );
+    print_overlay(
+        "filter chips (active filters)",
+        theme,
+        |frame, area, theme| {
+            let [row, _] = Layout::vertical([Constraint::Length(1), Constraint::Fill(1)])
+                .areas(centered_rect(70, 20, area));
+            let labels = ["t:ci", "lang:bash", "risk:high"];
+            FilterChips { labels: &labels }.render(frame, row, theme);
+        },
+    );
+    print_overlay("status strip (· segments)", theme, |frame, area, theme| {
+        let [row, _] = Layout::vertical([Constraint::Length(1), Constraint::Fill(1)])
+            .areas(centered_rect(70, 20, area));
+        let segments = ["All", "Auto", "312"];
+        StatusStrip {
+            segments: &segments,
         }
+        .render(frame, row, theme);
     });
+    print_overlay(
+        "pane_titled + Counted (narrowed vs full count)",
+        theme,
+        |frame, area, theme| {
+            let [narrowed, full] = Layout::vertical([Constraint::Length(3), Constraint::Length(3)])
+                .areas(centered_rect(70, 60, area));
+            // A narrowed view: the count is emphasised inside the pane title.
+            let title = title_with_count(
+                "results",
+                Counted {
+                    shown: 48,
+                    total: 312,
+                },
+                theme,
+            );
+            frame.render_widget(pane_titled(title, theme), narrowed);
+            // A full view: the same title, count now dim.
+            let title = title_with_count(
+                "results",
+                Counted {
+                    shown: 312,
+                    total: 312,
+                },
+                theme,
+            );
+            frame.render_widget(pane_titled(title, theme), full);
+        },
+    );
+    print_overlay(
+        "empty state (message + hint)",
+        theme,
+        |frame, area, theme| {
+            let block = pane("results", theme);
+            let inner = block.inner(centered_rect(70, 70, area));
+            frame.render_widget(block, centered_rect(70, 70, area));
+            EmptyState {
+                message: "No items match the current filter.",
+                hint: Some("Press Esc to clear the filter."),
+            }
+            .render(frame, inner, theme);
+        },
+    );
+    print_truncation(theme);
+}
+
+/// Build a `results (N of M)` pane title with the count in [`Counted`]'s style.
+fn title_with_count(label: &str, count: Counted, theme: Theme) -> ratatui::text::Line<'static> {
+    use ratatui::text::{Line, Span};
+    Line::from(vec![
+        Span::styled(format!(" {label} ("), theme.title()),
+        count.span(theme),
+        Span::styled(") ", theme.title()),
+    ])
+}
+
+/// The truncation helpers aren't drawn into a frame — show them as plain
+/// before → after text so the gallery documents the one shared ellipsis (`…`).
+fn print_truncation(_theme: Theme) {
+    println!("--- truncate_path / truncate_desc (one shared `…`) ---");
+    let path = "/very/deeply/nested/directory/structure/backup-tool.sh";
+    let desc = "  backs up the NAS every night to the offsite mirror  ";
+    println!("  path[20]: {}", truncate_path(path, 20));
+    println!("  desc[28]: {}", truncate_desc(desc, 28));
+    println!();
 }
 
 fn render_health_rows(frame: &mut ratatui::Frame, area: Rect, theme: Theme) {

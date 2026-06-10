@@ -1,19 +1,50 @@
 //! Shared widget chrome: the consistent rounded pane and centering helpers.
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::text::Span;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Padding};
 
 use crate::theme::Theme;
 
 /// The consistent rounded, padded pane every screen frames content with: a
 /// rounded border in the dim neutral, with the title painted in the accent.
+///
+/// For a title that needs embedded styling — a coloured count, say — use
+/// [`pane_titled`] and supply the whole title [`Line`] (this is just that with
+/// the title wrapped in [`Theme::title`](crate::Theme::title)).
 pub fn pane(title: &str, theme: Theme) -> Block<'static> {
+    pane_titled(
+        Line::from(Span::styled(format!(" {title} "), theme.title())),
+        theme,
+    )
+}
+
+/// The same chrome as [`pane`] — rounded border, dim border style, one-column
+/// horizontal padding — but the caller supplies the whole title [`Line`], so it
+/// can embed styled spans the plain-string [`pane`] can't.
+///
+/// This is what a "results (N of M)" title wants: build the line with a
+/// [`Counted`](crate::Counted) span for the count and the rest in
+/// [`Theme::title`](crate::Theme::title), and the pane no longer has to be
+/// reproduced by hand to carry it.
+///
+/// ```no_run
+/// # use suite_ui::{pane_titled, Counted, Theme};
+/// # use ratatui::text::{Line, Span};
+/// # let theme = Theme::with_color(true);
+/// let title = Line::from(vec![
+///     Span::styled(" results (", theme.title()),
+///     Counted { shown: 48, total: 312 }.span(theme),
+///     Span::styled(") ", theme.title()),
+/// ]);
+/// let block = pane_titled(title, theme);
+/// ```
+pub fn pane_titled(title: Line<'static>, theme: Theme) -> Block<'static> {
     Block::bordered()
         .border_type(BorderType::Rounded)
         .border_style(theme.dim())
         .padding(Padding::horizontal(1))
-        .title(Span::styled(format!(" {title} "), theme.title()))
+        .title(title)
 }
 
 /// A `Rect` centered as a percentage of `area` (e.g. 60% wide, 40% tall).
@@ -79,5 +110,26 @@ mod tests {
         let r = centered_rect(50, 50, parent);
         assert_eq!((r.width, r.height), (50, 50));
         assert_eq!((r.x, r.y), (25, 25));
+    }
+
+    #[test]
+    fn pane_renders_into_an_area_with_a_titled_border() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        // Render `pane` into a buffer and assert the title text actually shows in
+        // the top border — proving `pane` (built on `pane_titled`) frames + titles.
+        let mut term = Terminal::new(TestBackend::new(20, 4)).unwrap();
+        term.draw(|f| f.render_widget(pane("adapters", Theme::with_color(true)), f.area()))
+            .unwrap();
+        let buf = term.backend().buffer().clone();
+        let top: String = (0..buf.area.width)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol().to_string())
+            .collect();
+        assert!(
+            top.contains("adapters"),
+            "pane draws its title in the border"
+        );
+        assert!(top.contains('╮'), "pane uses a rounded border");
     }
 }

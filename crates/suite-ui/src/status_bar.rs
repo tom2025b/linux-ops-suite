@@ -147,7 +147,10 @@ mod tests {
     /// Concatenated glyph text of the segment — for asserting the leading marker
     /// survives regardless of colour.
     fn text(job: JobState, theme: Theme) -> String {
-        spans(job, theme).iter().map(|s| s.content.to_string()).collect()
+        spans(job, theme)
+            .iter()
+            .map(|s| s.content.to_string())
+            .collect()
     }
 
     #[test]
@@ -161,7 +164,10 @@ mod tests {
         assert_eq!(Outcome::Cancelled.glyph_style(lit).0, "■ ");
         assert_eq!(Outcome::Success.glyph_style(lit).1.fg, Some(Color::Green));
         assert_eq!(Outcome::Failure.glyph_style(lit).1.fg, Some(Color::Red));
-        assert_eq!(Outcome::Cancelled.glyph_style(lit).1.fg, Some(Color::Yellow));
+        assert_eq!(
+            Outcome::Cancelled.glyph_style(lit).1.fg,
+            Some(Color::Yellow)
+        );
     }
 
     #[test]
@@ -170,8 +176,22 @@ mod tests {
         // exactly where they have to carry the distinction alone.
         let dark = Theme::with_color(false);
         assert!(text(JobState::Running { name: "backup" }, dark).starts_with('●'));
-        assert!(text(JobState::Done { name: "backup", ok: true }, dark).starts_with('✓'));
-        assert!(text(JobState::Done { name: "backup", ok: false }, dark).starts_with('✗'));
+        assert!(text(
+            JobState::Done {
+                name: "backup",
+                ok: true
+            },
+            dark
+        )
+        .starts_with('✓'));
+        assert!(text(
+            JobState::Done {
+                name: "backup",
+                ok: false
+            },
+            dark
+        )
+        .starts_with('✗'));
         assert!(text(JobState::Cancelled { name: "backup" }, dark).starts_with('■'));
         assert_eq!(text(JobState::Idle, dark), "idle");
     }
@@ -182,10 +202,19 @@ mod tests {
         for job in [
             JobState::Running { name: "backup" },
             JobState::Cancelled { name: "backup" },
-            JobState::Done { name: "backup", ok: true },
-            JobState::Done { name: "backup", ok: false },
+            JobState::Done {
+                name: "backup",
+                ok: true,
+            },
+            JobState::Done {
+                name: "backup",
+                ok: false,
+            },
         ] {
-            assert!(text(job, lit).contains("backup"), "{job:?} must name the job");
+            assert!(
+                text(job, lit).contains("backup"),
+                "{job:?} must name the job"
+            );
         }
     }
 
@@ -194,13 +223,32 @@ mod tests {
         let lit = Theme::with_color(true);
         // Running uses the green live marker; done-ok the green health style;
         // done-failed the red failure style. (We assert the leading glyph's fg.)
-        assert_eq!(spans(JobState::Running { name: "j" }, lit)[0].style.fg, Some(Color::Green));
         assert_eq!(
-            spans(JobState::Done { name: "j", ok: true }, lit)[0].style.fg,
+            spans(JobState::Running { name: "j" }, lit)[0].style.fg,
             Some(Color::Green)
         );
         assert_eq!(
-            spans(JobState::Done { name: "j", ok: false }, lit)[0].style.fg,
+            spans(
+                JobState::Done {
+                    name: "j",
+                    ok: true
+                },
+                lit
+            )[0]
+            .style
+            .fg,
+            Some(Color::Green)
+        );
+        assert_eq!(
+            spans(
+                JobState::Done {
+                    name: "j",
+                    ok: false
+                },
+                lit
+            )[0]
+            .style
+            .fg,
             Some(Color::Red)
         );
         assert_eq!(
@@ -216,11 +264,20 @@ mod tests {
             JobState::Idle,
             JobState::Running { name: "j" },
             JobState::Cancelled { name: "j" },
-            JobState::Done { name: "j", ok: true },
-            JobState::Done { name: "j", ok: false },
+            JobState::Done {
+                name: "j",
+                ok: true,
+            },
+            JobState::Done {
+                name: "j",
+                ok: false,
+            },
         ] {
             for span in spans(job, dark) {
-                assert_eq!(span.style.fg, None, "{job:?} must have no fg under NO_COLOR");
+                assert_eq!(
+                    span.style.fg, None,
+                    "{job:?} must have no fg under NO_COLOR"
+                );
             }
         }
         // The states still differ without hue: running/done are bold, idle dim.
