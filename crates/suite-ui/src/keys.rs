@@ -21,6 +21,13 @@ pub const UP: char = 'k';
 /// Move the selection down (vi-style; `Down` arrow is the alternate).
 pub const DOWN: char = 'j';
 
+/// Accept / activate the current selection. A [`KeyCode`] (not a `char`) because
+/// it's the Enter key; both TUIs treat Enter as "confirm".
+pub const CONFIRM: KeyCode = KeyCode::Enter;
+/// Cancel / dismiss the current mode (close an overlay, clear a filter, back out
+/// of a confirm). A [`KeyCode`] because it's the Esc key.
+pub const CANCEL: KeyCode = KeyCode::Esc;
+
 /// True if this key event opens the command palette: `Ctrl-P` or a bare `:`.
 /// The one bit of shared *interpretation* worth centralizing, since it spans a
 /// modifier chord and a plain char.
@@ -31,10 +38,59 @@ pub fn is_palette(key: KeyEvent) -> bool {
     )
 }
 
+/// True if this key event confirms (Enter). A trivial match, paired with
+/// [`is_cancel`] so a consumer's key handling reads off the shared names rather
+/// than bare [`KeyCode`] literals.
+pub fn is_confirm(key: KeyEvent) -> bool {
+    key.code == CONFIRM
+}
+
+/// True if this key event cancels/dismisses (Esc). The counterpart to
+/// [`is_confirm`].
+pub fn is_cancel(key: KeyEvent) -> bool {
+    key.code == CANCEL
+}
+
 /// The conventional footer hint line, e.g.
 /// `↑/↓ move · Enter select · ? help · q quit`. Callers can append their own
 /// tool-specific keys; this covers the shared core so the wording stays
 /// consistent across tools.
 pub fn key_hint() -> &'static str {
     "↑/↓ move · Enter select · ^P palette · ? help · q quit"
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ev(code: KeyCode, ctrl: bool) -> KeyEvent {
+        let mods = if ctrl {
+            KeyModifiers::CONTROL
+        } else {
+            KeyModifiers::NONE
+        };
+        KeyEvent::new(code, mods)
+    }
+
+    #[test]
+    fn is_palette_matches_ctrl_p_and_bare_colon_only() {
+        assert!(is_palette(ev(KeyCode::Char('p'), true)), "Ctrl-P opens it");
+        assert!(is_palette(ev(KeyCode::Char(':'), false)), "bare : opens it");
+        // A bare 'p' or a Ctrl-':' do NOT (the chord/plain split is the point).
+        assert!(!is_palette(ev(KeyCode::Char('p'), false)));
+        assert!(!is_palette(ev(KeyCode::Char(':'), true)));
+    }
+
+    #[test]
+    fn confirm_and_cancel_match_enter_and_esc() {
+        assert!(is_confirm(ev(KeyCode::Enter, false)));
+        assert!(is_cancel(ev(KeyCode::Esc, false)));
+        // And not each other / anything else.
+        assert!(!is_confirm(ev(KeyCode::Esc, false)));
+        assert!(!is_cancel(ev(KeyCode::Enter, false)));
+        assert!(!is_confirm(ev(KeyCode::Char('q'), false)));
+    }
 }

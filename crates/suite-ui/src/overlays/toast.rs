@@ -158,9 +158,18 @@ mod tests {
         let lit = Theme::with_color(true);
         // Success → green (health Healthy); failure → red; cancelled → yellow.
         // Same hues the StatusBar paints, so a toast and the status segment agree.
-        assert_eq!(spans("j", ToastKind::Success, lit)[0].style.fg, Some(Color::Green));
-        assert_eq!(spans("j", ToastKind::Failure, lit)[0].style.fg, Some(Color::Red));
-        assert_eq!(spans("j", ToastKind::Cancelled, lit)[0].style.fg, Some(Color::Yellow));
+        assert_eq!(
+            spans("j", ToastKind::Success, lit)[0].style.fg,
+            Some(Color::Green)
+        );
+        assert_eq!(
+            spans("j", ToastKind::Failure, lit)[0].style.fg,
+            Some(Color::Red)
+        );
+        assert_eq!(
+            spans("j", ToastKind::Cancelled, lit)[0].style.fg,
+            Some(Color::Yellow)
+        );
     }
 
     #[test]
@@ -174,7 +183,10 @@ mod tests {
             ToastKind::Cancelled,
         ] {
             for span in spans("j", kind, dark) {
-                assert_eq!(span.style.fg, None, "{kind:?} must have no fg under NO_COLOR");
+                assert_eq!(
+                    span.style.fg, None,
+                    "{kind:?} must have no fg under NO_COLOR"
+                );
             }
         }
         // The kinds still differ without hue: success/failure stay bold, the glyph

@@ -74,7 +74,10 @@ mod tests {
     }
 
     fn text(hints: &[(&str, &str)], theme: Theme) -> String {
-        spans(hints, theme).iter().map(|s| s.content.to_string()).collect()
+        spans(hints, theme)
+            .iter()
+            .map(|s| s.content.to_string())
+            .collect()
     }
 
     #[test]

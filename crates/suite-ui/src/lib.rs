@@ -5,7 +5,8 @@
 //!
 //! - a [`Theme`] with cyan/amber accents and a single `NO_COLOR` gate
 //!   ([`ThemeChoice`], [`ColorChoice`]), plus [`Health`] status styling;
-//! - the consistent rounded [`pane`] and centering helpers
+//! - the consistent rounded [`pane`] (titled), [`pane_titled`] (styled title)
+//!   and [`pane_blank`] (untitled) frames, plus centering helpers
 //!   ([`centered_rect`], [`centered_fixed`]);
 //! - common overlays — [`HelpSheet`], [`ConfirmModal`], [`Toast`], and the
 //!   command-palette chrome [`PaletteFrame`];
@@ -14,6 +15,10 @@
 //! - a [`SearchBar`] live-filter input affordance;
 //! - a [`KeyHints`] footer strip of `key → label` shortcut hints;
 //! - a [`FilterChips`] row of active-filter chips (`[t:ci ✕]`);
+//! - a [`StatusStrip`] of `·`-joined state segments (`All · Auto · 312`);
+//! - a [`Counted`] "N of M" count span (accented when the list is narrowed);
+//! - an [`EmptyState`] centered placeholder for an empty region;
+//! - Unicode-aware [`truncate_path`]/[`truncate_desc`] helpers (one `…`);
 //! - shared keymap conventions ([`keys`]).
 //!
 //! ## Scope: chrome, not logic
@@ -31,19 +36,27 @@
 //! [`ColorChoice`] so a consumer can parse `--theme`/`--color` straight into
 //! them. Consumers that don't use clap stay lean.
 
-pub mod keys;
+mod counted;
+mod empty_state;
 mod filter_chips;
 mod key_hints;
+pub mod keys;
 mod overlays;
 mod search_bar;
 mod status_bar;
+mod status_strip;
+mod text;
 mod theme;
 mod widgets;
 
+pub use counted::Counted;
+pub use empty_state::EmptyState;
 pub use filter_chips::FilterChips;
 pub use key_hints::KeyHints;
 pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, ToastKind};
 pub use search_bar::SearchBar;
 pub use status_bar::{JobState, Outcome, StatusBar};
+pub use status_strip::{StatusStrip, STATUS_SEP};
+pub use text::{truncate_desc, truncate_path};
 pub use theme::{ColorChoice, Health, Theme, ThemeChoice};
-pub use widgets::{centered_fixed, centered_rect, pane};
+pub use widgets::{centered_fixed, centered_rect, pane, pane_blank, pane_titled};

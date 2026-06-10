@@ -58,7 +58,10 @@ impl FilterChips<'_> {
             // The cyan filter accent — `match_label` keeps the NO_COLOR gate (it
             // drops to dim when colour is off), so the chips stay legible without
             // hue and never leak a foreground colour under NO_COLOR.
-            spans.push(Span::styled(Self::chip_text(label), theme.match_label(Color::Cyan)));
+            spans.push(Span::styled(
+                Self::chip_text(label),
+                theme.match_label(Color::Cyan),
+            ));
             spans.push(Span::raw(" "));
         }
         Line::from(spans)
@@ -84,7 +87,10 @@ mod tests {
     }
 
     fn text(labels: &[&str], theme: Theme) -> String {
-        spans(labels, theme).iter().map(|s| s.content.to_string()).collect()
+        spans(labels, theme)
+            .iter()
+            .map(|s| s.content.to_string())
+            .collect()
     }
 
     #[test]
