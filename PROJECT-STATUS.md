@@ -22,7 +22,7 @@ This umbrella repo is the **contract and index HQ**, not a monorepo. The rules:
   behalf (Proto guides and records, it never executes).
 - **The one shared-code exception:** `crates/suite-ui` — pure TUI *chrome* (theme,
   panes, overlays), no domain logic or data flow, so it doesn't reintroduce
-  coupling. RexOps and ScriptVault consume it.
+  coupling. Bulwark, RexOps, and ScriptVault consume it.
 
 ### Data flow
 
@@ -48,11 +48,13 @@ own repo and will provide the interactive cockpit on the same contracts.
   bulwark/proto/toolfoundry, `proto.session`, `rexops.snapshot`,
   `scriptvault.export`, `workstate.snapshot`). CI validates JSON contracts.
 - **`suite-ui`:** active shared crate (theme + overlays + key-hints/search/status
-  bars); the sole workspace member in the root `Cargo.toml`. The `feat/suite-ui-*`
-  branches (key-hints, search-bar, status-bar, toast kinds) are all **merged to
-  `main`**. Consumers pull it as a **git dependency** pinned to an umbrella `main`
-  rev (currently `0a8dadc`) — no `path =` deps, so consumers build from a fresh
-  clone with no sibling checkout.
+  bars + the `App`/`Tui` runtime); the sole workspace member in the root
+  `Cargo.toml`. The `feat/suite-ui-*` branches (key-hints, search-bar, status-bar,
+  toast kinds, app-runtime) are all **merged to `main`**. **All three** consumers —
+  Bulwark, RexOps, and ScriptVault — pull it as a **git dependency** pinned to
+  umbrella `main` rev `cf97f07` (no `path =` deps), so each builds from a fresh
+  clone with no sibling umbrella checkout. Verified by a fresh-clone simulation
+  (empty `CARGO_HOME`, no sibling folder, `cargo build --locked`).
 - **Installer:** `install.sh` (build-and-copy method) **merged to `main` (PR #4)**
   and exercised in a **real end-to-end run** — all 6 Rust tools + the Python tool
   built and installed; verified fresh-clone-safe. See `INSTALLER-STATUS.md`.
@@ -61,19 +63,17 @@ own repo and will provide the interactive cockpit on the same contracts.
 
 | Tool | Lang | ~LOC | Working branch | Notes |
 |---|---|---|---|---|
-| **Bulwark** | Rust | ~5.6k | `main` | Scanner + risk classifier. Stable. |
-| **ScriptVault** | Rust | ~13.5k | `feature/p2-tui-wiring` | Largest tool; mid-redesign (see below). |
+| **Bulwark** | Rust | ~5.6k | `main` | Scanner + risk classifier. Stable. Consumes suite-ui via git dep (`tui` feature). |
+| **ScriptVault** | Rust | ~13.5k | `main` | Largest tool. Consumes suite-ui via git dep (`clap` feature). |
 | **Toolbox Bridge** | Python | ~0.7k | `main` | Bulwark→ScriptVault sidecars; has pytest suite. |
 | **ToolFoundry** | Rust | ~4.4k | `main` | Lifecycle/ownership/health. |
-| **Workstate** | Rust | ~3.2k | `cleanup-workstate-cruft` | State compiler (snapshot v3). |
+| **Workstate** | Rust | ~3.2k | `main` | State compiler (snapshot v3). |
 | **Proto** | Rust | ~6.2k | `main` | Guided protocol/checklist runner. |
-| **RexOps** | Rust | ~7.6k | `main` | Cockpit (cli + tui crates). suite-ui git-dep landed; builds standalone from a fresh clone. |
+| **RexOps** | Rust | ~7.6k | `main` | Cockpit (cli + tui crates). Consumes suite-ui via git dep. |
 
-All seven are functional ("Active"). RexOps' suite-ui git-dependency refactor is
-merged to `main`. A couple of tools still sit on working branches with
-in-progress work: **ScriptVault** (`feature/p2-tui-wiring`) and **Workstate**
-(`cleanup-workstate-cruft`, dirty + 1 unpushed commit). Proto's `main` also has
-substantial uncommitted local changes (~40 files) not yet reviewed/landed.
+All seven are functional ("Active") and currently sit on a clean `main`. Bulwark,
+RexOps, and ScriptVault each carry one unpushed commit: the suite-ui
+path→git-dependency conversion (see "Done since last snapshot"), pending push.
 
 ## Where we are in development
 
@@ -81,34 +81,34 @@ substantial uncommitted local changes (~40 files) not yet reviewed/landed.
   CI-validated, and the end-to-end dataflow (feeds → Workstate snapshot → RexOps)
   is wired.
 - Recent focus (now landed): **shared `suite-ui` chrome** extraction/adoption,
-  the **git-dependency refactor** so consumers build standalone from GitHub, and a
-  **one-command installer** for fresh-machine reinstalls (proven by a real run).
+  the **git-dependency refactor** so all three consumers build standalone from
+  GitHub, and a **one-command installer** for fresh-machine reinstalls (proven by
+  a real run).
 - **ScriptVault** is the most actively evolving tool — a phased "world-class TUI"
-  redesign: P1 (a core query/filter/frecency-ranking engine) is merged; P2
-  (wiring the TUI + CLI to that engine, deleting logic that leaked into the UI) is
-  in progress on `feature/p2-tui-wiring`.
+  redesign: a core query/filter/frecency-ranking engine with the TUI + CLI wired
+  to it. Latest work is merged to `main`.
 
 ## Done since last snapshot
 
 - ✅ **Installer landed** (PR #4) + first real end-to-end run (all tools built,
   fresh-clone-safe).
-- ✅ **`suite-ui` `feat/*` branches merged** to `main`.
-- ✅ **`suite-ui` git-dependency refactor landed** on RexOps `main` (PR #3, rev
-  bumped to `0a8dadc`); a fresh clone with no sibling umbrella builds via the git
-  dep — confirmed by an actual no-sibling `cargo build --release`. ScriptVault
-  doesn't consume `suite-ui`, so nothing to convert there.
+- ✅ **`suite-ui` `feat/*` branches merged** to `main` (incl. the `App`/`Tui`
+  runtime).
+- ✅ **`suite-ui` path→git-dependency conversion across ALL consumers** — Bulwark,
+  RexOps, and ScriptVault now pin suite-ui to umbrella rev `cf97f07` as a git dep;
+  no `path =` deps remain. Each consumer's CI dropped its sibling-checkout
+  workaround for a plain root checkout. Confirmed fresh-clone-safe by a no-sibling,
+  empty-`CARGO_HOME`, `cargo build --locked` simulation for all three. (Commits
+  pending push.)
 
 ## Major remaining work
 
-1. **Finish ScriptVault P2** (TUI/CLI on the core engine) and continue its phased
-   plan (keymap/layout, parameterized run, tag browser, palette/bulk, polish).
-   Working branch: `feature/p2-tui-wiring`.
-2. **RexOps TUI** — promote from the bash `bin/rex` reference to the real
+1. **Push the suite-ui git-dep conversion** — Bulwark, RexOps, and ScriptVault
+   each have the conversion committed on `main` but not yet pushed.
+2. **Continue ScriptVault's phased TUI redesign** (keymap/layout, parameterized
+   run, tag browser, palette/bulk, polish) on top of the merged core engine.
+3. **RexOps TUI** — promote from the bash `bin/rex` reference to the real
    interactive cockpit on the shared contracts + `suite-ui`.
-3. **Reconcile in-progress tool work** not yet landed:
-   - **Workstate** (`cleanup-workstate-cruft`): dirty tree + 1 unpushed commit.
-   - **Proto** (`main`): ~40 files of uncommitted local changes — decide whether
-     they move to a feature branch and land.
 4. **Suite-wide consistency** — bump the `suite-ui` git-dep rev in consumers when
    the shared crate changes; keep contract schemas in lockstep as tools evolve.
 

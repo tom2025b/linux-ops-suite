@@ -134,9 +134,10 @@ The one piece of shared *code* in the suite lives in this repo:
 [`crates/suite-ui`](crates/suite-ui) — the common TUI chrome (cyan/amber theme with
 `NO_COLOR` support, rounded panes, health styles, and the help / confirm / toast /
 command-palette overlays). It is **pure presentation** — no domain logic, no data flow
-— so it doesn't reintroduce the coupling the file-contracts rule prevents. RexOps and
-ScriptVault are the intended consumers. See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#shared-ui-chrome-suite-ui) for the why.
+— so it doesn't reintroduce the coupling the file-contracts rule prevents. Bulwark,
+RexOps, and ScriptVault consume it as a **git dependency** pinned to a commit of this
+repo (no `path =` deps), so each builds from a fresh clone without a sibling checkout.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#shared-ui-chrome-suite-ui) for the why.
 
 ```bash
 # build + test the crate, and see every component rendered in each theme:

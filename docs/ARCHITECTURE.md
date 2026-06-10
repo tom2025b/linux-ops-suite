@@ -94,8 +94,9 @@ reason shared *logic* is not: it has no semantics that two tools could disagree 
 
 `suite-ui` lives here (rather than in its own repo) so the contract HQ also owns the
 one cosmetic thing every front-end must agree on. It is built and tested in this repo's
-workspace; consumers wire it in per-repo (git or path dependency) as a documented
-follow-up.
+workspace; consumers (Bulwark, RexOps, ScriptVault) wire it in per-repo as a **git
+dependency pinned to a commit of this repo** — no `path =` deps — so each builds from a
+fresh clone without a sibling checkout.
 
 ## How RexOps consumes exports
 
