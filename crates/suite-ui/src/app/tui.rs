@@ -65,6 +65,8 @@ pub struct TuiOptions {
 pub struct Tui {
     terminal: DefaultTerminal,
     opts: TuiOptions,
+    /// Lines queued via [`Tui::print_after_exit`] to print to real stdout after
+    /// the terminal is restored (drained on `Drop`, skipped on panic).
     out: Vec<String>,
 }
 
@@ -97,6 +99,49 @@ impl Tui {
     pub fn simple() -> Result<Self, TuiError> {
         Self::new(TuiOptions::default())
     }
+
+    /// Borrow the terminal to drive your own event loop. The escape hatch for
+    /// tools that need background-channel draining or adaptive poll timeouts —
+    /// they keep full control of the loop and still get the guard's teardown.
+    pub fn terminal(&mut self) -> &mut DefaultTerminal {
+        &mut self.terminal
+    }
+
+    /// Queue a line to print to real stdout AFTER the terminal is restored, so
+    /// it lands in the user's shell (not the alt screen). Drained on `Drop` —
+    /// except on a panic, where nothing was "picked" so nothing is printed.
+    pub fn print_after_exit(&mut self, line: impl Into<String>) {
+        self.out.push(line.into());
+    }
+}
+
+/// Drain queued lines to a writer, each followed by a newline. Factored out of
+/// `Drop` so it is unit-testable without a real terminal: `Drop` calls it with
+/// `stdout()`, tests call it with an in-memory buffer.
+fn drain_lines(out: &mut Vec<String>, w: &mut impl Write) {
+    for line in out.drain(..) {
+        let _ = writeln!(w, "{line}");
+    }
+}
+
+impl Drop for Tui {
+    fn drop(&mut self) {
+        // Best-effort: undo the optional envelope bits we turned on, in reverse.
+        if self.opts.mouse_capture {
+            let _ = execute!(stdout(), DisableMouseCapture);
+        }
+        if self.opts.hide_cursor {
+            let _ = self.terminal.show_cursor();
+        }
+        // Baseline restore: disable raw mode + leave alt screen. Idempotent, so
+        // it is safe even though the panic hook may have already run it.
+        ratatui::restore();
+        // Flush queued stdout — but NOT while panicking: a crash picked nothing,
+        // so a queued result must not leak out as if it were a real selection.
+        if !std::thread::panicking() {
+            drain_lines(&mut self.out, &mut stdout());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -124,5 +169,17 @@ mod tests {
             matches!(result, Err(TuiError::NotATerminal)),
             "require_tty must reject a non-tty before any setup"
         );
+    }
+
+    #[test]
+    fn drain_lines_writes_each_in_order_then_empties() {
+        // `print_after_exit` is a plain push; the drain (which Drop runs against
+        // stdout) writes each queued line + newline in order, then empties the
+        // queue. Tested without a terminal by draining into an in-memory buffer.
+        let mut q: Vec<String> = vec!["first".to_string(), "second".to_string()];
+        let mut buf: Vec<u8> = Vec::new();
+        drain_lines(&mut q, &mut buf);
+        assert_eq!(String::from_utf8(buf).unwrap(), "first\nsecond\n");
+        assert!(q.is_empty(), "drain empties the queue");
     }
 }
