@@ -4,7 +4,8 @@
 //! that RexOps and ScriptVault have in common, in one place:
 //!
 //! - a [`Theme`] with cyan/amber accents and a single `NO_COLOR` gate
-//!   ([`ThemeChoice`], [`ColorChoice`]), plus [`Health`] status styling;
+//!   ([`ThemeChoice`], [`ColorChoice`]), plus [`Health`] and [`Severity`]
+//!   status/risk styling;
 //! - the consistent rounded [`pane`] (titled), [`pane_titled`] (styled title)
 //!   and [`pane_blank`] (untitled) frames, plus centering helpers
 //!   ([`centered_rect`], [`centered_fixed`]);
@@ -12,12 +13,16 @@
 //!   command-palette chrome [`PaletteFrame`];
 //! - a persistent [`StatusBar`] job-status segment ([`JobState`]), with the
 //!   shared [`Outcome`] glyph/style mapping every job-event widget renders through;
+//! - a [`SeverityBadge`] risk tag (`[CRIT]`/`[HIGH]`) for a [`Severity`] level;
+//! - an [`AttentionFlag`] "needs attention" marker (`⚠ 3 high` vs a clear `✓`);
 //! - a [`SearchBar`] live-filter input affordance;
 //! - a [`KeyHints`] footer strip of `key → label` shortcut hints;
 //! - a [`FilterChips`] row of active-filter chips (`[t:ci ✕]`);
 //! - a [`StatusStrip`] of `·`-joined state segments (`All · Auto · 312`);
+//! - a [`HealthStrip`] of `glyph + label` health segments (`● bulwark  ◐ vault`);
 //! - a [`Counted`] "N of M" count span (accented when the list is narrowed);
 //! - an [`EmptyState`] centered placeholder for an empty region;
+//! - a [`Freshness`] provenance stamp (`just now`, `2h ago`, stale-aware);
 //! - Unicode-aware [`truncate_path`]/[`truncate_desc`] helpers (one `…`);
 //! - shared keymap conventions ([`keys`]).
 //!
@@ -36,9 +41,13 @@
 //! [`ColorChoice`] so a consumer can parse `--theme`/`--color` straight into
 //! them. Consumers that don't use clap stay lean.
 
+mod attention_flag;
+mod badge;
 mod counted;
 mod empty_state;
 mod filter_chips;
+mod freshness;
+mod health_strip;
 mod key_hints;
 pub mod keys;
 mod overlays;
@@ -49,14 +58,18 @@ mod text;
 mod theme;
 mod widgets;
 
+pub use attention_flag::AttentionFlag;
+pub use badge::SeverityBadge;
 pub use counted::Counted;
 pub use empty_state::EmptyState;
 pub use filter_chips::FilterChips;
+pub use freshness::Freshness;
+pub use health_strip::{HealthStrip, HEALTH_SEP};
 pub use key_hints::KeyHints;
 pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, ToastKind};
 pub use search_bar::SearchBar;
 pub use status_bar::{JobState, Outcome, StatusBar};
 pub use status_strip::{StatusStrip, STATUS_SEP};
 pub use text::{truncate_desc, truncate_path};
-pub use theme::{ColorChoice, Health, Theme, ThemeChoice};
+pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
 pub use widgets::{centered_fixed, centered_rect, pane, pane_blank, pane_titled};

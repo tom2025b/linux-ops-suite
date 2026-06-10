@@ -74,6 +74,24 @@ pub enum Health {
     Unknown,
 }
 
+/// Coarse severity / risk level for a finding (a flagged script, a risky
+/// operation, a review item). The suite's single risk vocabulary, ordered
+/// most-severe first so `Critical < High` reads the way the styling escalates.
+/// A consumer maps its own grading onto one of these and gets a consistent,
+/// `NO_COLOR`-safe style from [`Theme::severity`] (and a badge from
+/// [`SeverityBadge`](crate::SeverityBadge)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Severity {
+    /// The top level — red + bold. Demands action now.
+    Critical,
+    /// High risk — yellow + bold.
+    High,
+    /// Medium risk — plain (no hue), the neutral middle.
+    Medium,
+    /// Low risk — dim, recedes.
+    Low,
+}
+
 /// True if `NO_COLOR` is set to a NON-EMPTY value (an empty `NO_COLOR=` is
 /// treated as "not set", per the de-facto standard). The single env read for
 /// colour.
@@ -245,6 +263,25 @@ impl Theme {
         }
     }
 
+    /// Style for a severity / risk level. Colour: red+bold (critical),
+    /// yellow+bold (high), plain (medium), dim (low). Under `NO_COLOR` the hue
+    /// drops but an attribute survives so the levels stay distinguishable: bold
+    /// for critical/high, plain for medium, dim for low. Parallels [`health`](Self::health)
+    /// — the suite's two colour-coded status axes share one gating shape.
+    pub fn severity(self, severity: Severity) -> Style {
+        match (self.color, severity) {
+            (true, Severity::Critical) => Style::new().fg(Color::Red).bold(),
+            (true, Severity::High) => Style::new().fg(Color::Yellow).bold(),
+            (true, Severity::Medium) => Style::new(),
+            (true, Severity::Low) => Style::new().dim(),
+            // NO_COLOR: attributes only, never a foreground colour.
+            (false, Severity::Critical) => Style::new().bold(),
+            (false, Severity::High) => Style::new().bold(),
+            (false, Severity::Medium) => Style::new(),
+            (false, Severity::Low) => Style::new().dim(),
+        }
+    }
+
     /// The "refreshing…" / working indicator: yellow when colour is on, dim
     /// otherwise (so the transient state still reads without hue).
     pub fn working(self) -> Style {
@@ -370,6 +407,49 @@ mod tests {
             .health(Health::Unknown)
             .add_modifier
             .contains(ratatui::style::Modifier::DIM));
+    }
+
+    #[test]
+    fn severity_is_coloured_on_and_colourless_off() {
+        use ratatui::style::Modifier;
+        let lit = Theme::with_color(true);
+        assert_eq!(lit.severity(Severity::Critical).fg, Some(Color::Red));
+        assert_eq!(lit.severity(Severity::High).fg, Some(Color::Yellow));
+        assert_eq!(lit.severity(Severity::Medium).fg, None, "medium is neutral");
+        assert_eq!(lit.severity(Severity::Low).fg, None, "low is dim, no hue");
+
+        let dark = Theme::with_color(false);
+        for s in [
+            Severity::Critical,
+            Severity::High,
+            Severity::Medium,
+            Severity::Low,
+        ] {
+            assert_eq!(
+                dark.severity(s).fg,
+                None,
+                "{s:?} must have no fg under NO_COLOR"
+            );
+        }
+        // Severity still distinguishable without hue: critical/high bold, low dim.
+        assert!(dark
+            .severity(Severity::Critical)
+            .add_modifier
+            .contains(Modifier::BOLD));
+        assert!(dark
+            .severity(Severity::High)
+            .add_modifier
+            .contains(Modifier::BOLD));
+        assert!(dark
+            .severity(Severity::Low)
+            .add_modifier
+            .contains(Modifier::DIM));
+        // Medium is the neutral middle — neither bold nor dim, in either mode.
+        for theme in [lit, dark] {
+            let med = theme.severity(Severity::Medium).add_modifier;
+            assert!(!med.contains(Modifier::BOLD));
+            assert!(!med.contains(Modifier::DIM));
+        }
     }
 
     #[test]

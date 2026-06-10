@@ -4,14 +4,17 @@
 //!
 //! Run with:  cargo run -p suite-ui --example gallery
 
+use std::time::Duration;
+
 use ratatui::backend::TestBackend;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Terminal;
 
 use suite_ui::{
-    centered_rect, pane, pane_titled, truncate_desc, truncate_path, ConfirmModal, Counted,
-    EmptyState, FilterChips, Health, HelpSheet, JobState, KeyHints, PaletteFrame, PaletteItem,
-    SearchBar, StatusBar, StatusStrip, Theme, ThemeChoice, Toast, ToastKind,
+    centered_rect, pane, pane_titled, truncate_desc, truncate_path, AttentionFlag, ConfirmModal,
+    Counted, EmptyState, FilterChips, Freshness, Health, HealthStrip, HelpSheet, JobState,
+    KeyHints, PaletteFrame, PaletteItem, SearchBar, Severity, SeverityBadge, StatusBar,
+    StatusStrip, Theme, ThemeChoice, Toast, ToastKind,
 };
 
 fn main() {
@@ -183,6 +186,104 @@ fn print_frame(theme: Theme) {
         }
         .render(frame, row, theme);
     });
+    print_overlay(
+        "severity badges (CRIT / HIGH / MED / LOW)",
+        theme,
+        |frame, area, theme| {
+            use ratatui::text::{Line, Span};
+            use ratatui::widgets::Paragraph;
+            // All four badges on one line, each followed by a sample finding, so
+            // the relative loudness of the levels is visible side by side.
+            let [row, _] = Layout::vertical([Constraint::Length(1), Constraint::Fill(1)])
+                .areas(centered_rect(80, 20, area));
+            let mut spans: Vec<Span> = Vec::new();
+            for sev in [
+                Severity::Critical,
+                Severity::High,
+                Severity::Medium,
+                Severity::Low,
+            ] {
+                spans.push(SeverityBadge { severity: sev }.span(theme));
+                spans.push(Span::raw("  "));
+            }
+            frame.render_widget(Paragraph::new(Line::from(spans)), row);
+        },
+    );
+    print_overlay(
+        "attention flags (raised vs clear)",
+        theme,
+        |frame, area, theme| {
+            let rows: [Rect; 4] =
+                Layout::vertical([Constraint::Length(1); 4]).areas(centered_rect(60, 30, area));
+            let flags = [
+                AttentionFlag {
+                    count: 2,
+                    label: "critical",
+                    severity: Severity::Critical,
+                },
+                AttentionFlag {
+                    count: 5,
+                    label: "high",
+                    severity: Severity::High,
+                },
+                AttentionFlag {
+                    count: 3,
+                    label: "review due",
+                    severity: Severity::High,
+                },
+                AttentionFlag {
+                    count: 0,
+                    label: "high",
+                    severity: Severity::High,
+                },
+            ];
+            for (row, flag) in rows.into_iter().zip(flags) {
+                flag.render(frame, row, theme);
+            }
+        },
+    );
+    print_overlay(
+        "health strip (compact health summary)",
+        theme,
+        |frame, area, theme| {
+            let [row, _] = Layout::vertical([Constraint::Length(1), Constraint::Fill(1)])
+                .areas(centered_rect(80, 20, area));
+            let segments = [
+                (Health::Healthy, "bulwark"),
+                (Health::Degraded, "vault"),
+                (Health::Unavailable, "proto"),
+                (Health::Unknown, "scratch"),
+            ];
+            HealthStrip {
+                segments: &segments,
+            }
+            .render(frame, row, theme);
+        },
+    );
+    print_overlay(
+        "freshness stamps (just now → stale)",
+        theme,
+        |frame, area, theme| {
+            let rows: [Rect; 5] =
+                Layout::vertical([Constraint::Length(1); 5]).areas(centered_rect(60, 40, area));
+            // A spread of ages, ending with one past a 1-day staleness threshold so
+            // the stale warning style shows.
+            let day = Duration::from_secs(24 * 60 * 60);
+            let stamps = [
+                Freshness::from(Duration::from_secs(2)),
+                Freshness::from(Duration::from_secs(5 * 60)),
+                Freshness::from(Duration::from_secs(2 * 60 * 60)),
+                Freshness::from(Duration::from_secs(3 * 24 * 60 * 60)),
+                Freshness {
+                    age: Duration::from_secs(9 * 24 * 60 * 60),
+                    stale_after: Some(day),
+                },
+            ];
+            for (row, stamp) in rows.into_iter().zip(stamps) {
+                stamp.render(frame, row, theme);
+            }
+        },
+    );
     print_overlay(
         "pane_titled + Counted (narrowed vs full count)",
         theme,
