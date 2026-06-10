@@ -47,6 +47,22 @@ pub fn pane_titled(title: Line<'static>, theme: Theme) -> Block<'static> {
         .title(title)
 }
 
+/// The same rounded, dim, one-column-padded frame as [`pane`] but **without a
+/// title** — for a region that carries its own heading in the body (a header
+/// strip that prints its name and a status badge inline, say), so the border
+/// shouldn't repeat it.
+///
+/// This exists so those untitled frames stop reaching for a bare
+/// `Block::bordered()`/`Block::default().borders(..)` by hand, which is how
+/// square corners and off-palette borders creep in: route them through here and
+/// an untitled frame matches every titled [`pane`] exactly.
+pub fn pane_blank(theme: Theme) -> Block<'static> {
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(theme.dim())
+        .padding(Padding::horizontal(1))
+}
+
 /// A `Rect` centered as a percentage of `area` (e.g. 60% wide, 40% tall).
 /// The basis for percentage-sized overlays.
 pub fn centered_rect(pct_w: u16, pct_h: u16, area: Rect) -> Rect {
@@ -131,5 +147,27 @@ mod tests {
             "pane draws its title in the border"
         );
         assert!(top.contains('╮'), "pane uses a rounded border");
+    }
+
+    #[test]
+    fn pane_blank_is_a_rounded_border_with_no_title() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        // pane_blank frames a region the same way as `pane` (rounded corner in
+        // the top row) but writes no title text into the border.
+        let mut term = Terminal::new(TestBackend::new(20, 4)).unwrap();
+        term.draw(|f| f.render_widget(pane_blank(Theme::with_color(true)), f.area()))
+            .unwrap();
+        let buf = term.backend().buffer().clone();
+        let top: String = (0..buf.area.width)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol().to_string())
+            .collect();
+        assert!(top.contains('╮'), "pane_blank uses a rounded border");
+        // The top row is border only — the corners/edges, no letters.
+        assert!(
+            !top.chars().any(|c| c.is_alphabetic()),
+            "pane_blank draws no title text: {top:?}"
+        );
     }
 }

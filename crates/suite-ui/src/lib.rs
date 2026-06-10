@@ -5,7 +5,8 @@
 //!
 //! - a [`Theme`] with cyan/amber accents and a single `NO_COLOR` gate
 //!   ([`ThemeChoice`], [`ColorChoice`]), plus [`Health`] status styling;
-//! - the consistent rounded [`pane`] and centering helpers
+//! - the consistent rounded [`pane`] (titled), [`pane_titled`] (styled title)
+//!   and [`pane_blank`] (untitled) frames, plus centering helpers
 //!   ([`centered_rect`], [`centered_fixed`]);
 //! - common overlays — [`HelpSheet`], [`ConfirmModal`], [`Toast`], and the
 //!   command-palette chrome [`PaletteFrame`];
@@ -58,4 +59,4 @@ pub use status_bar::{JobState, Outcome, StatusBar};
 pub use status_strip::{StatusStrip, STATUS_SEP};
 pub use text::{truncate_desc, truncate_path};
 pub use theme::{ColorChoice, Health, Theme, ThemeChoice};
-pub use widgets::{centered_fixed, centered_rect, pane, pane_titled};
+pub use widgets::{centered_fixed, centered_rect, pane, pane_blank, pane_titled};
