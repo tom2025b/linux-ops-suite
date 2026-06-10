@@ -366,9 +366,7 @@ fn demo_app_runtime(theme: Theme) {
         message: "Screen::render drew this through App's theme.".to_string(),
     };
     let mut terminal = Terminal::new(TestBackend::new(80, 6)).expect("test backend");
-    terminal
-        .draw(|frame| screen.render(frame, theme))
-        .unwrap();
+    terminal.draw(|frame| screen.render(frame, theme)).unwrap();
     print!("{}", buffer_to_string(terminal));
 }
 

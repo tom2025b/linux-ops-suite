@@ -1,10 +1,10 @@
 //! `Tui`: a RAII terminal scope guard. Setup in `new`, guaranteed teardown in
 //! `Drop` (runs on normal return, `?` propagation, and panic unwind alike).
 
-use std::io::{self, IsTerminal, Write, stdout};
+use std::io::{self, stdout, IsTerminal, Write};
 
-use crossterm::execute;
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::execute;
 use ratatui::DefaultTerminal;
 
 /// What can go wrong setting up the terminal.
@@ -200,8 +200,14 @@ mod tests {
     #[test]
     fn not_a_terminal_display_is_actionable() {
         let msg = TuiError::NotATerminal.to_string();
-        assert!(msg.contains("interactive terminal"), "names the requirement");
-        assert!(msg.contains("CLI"), "points at the non-interactive fallback");
+        assert!(
+            msg.contains("interactive terminal"),
+            "names the requirement"
+        );
+        assert!(
+            msg.contains("CLI"),
+            "points at the non-interactive fallback"
+        );
     }
 
     #[test]

@@ -1,7 +1,9 @@
 name: CI
 
 # Run on every push to main and on PRs targeting main.
-# This repo holds JSON contract/schema files (no Rust), so CI validates JSON.
+# This repo holds both the shared `suite-ui` Rust crate and the JSON
+# contract/schema files, so CI verifies the crate (build + clippy + tests)
+# AND validates the JSON contracts.
 on:
   push:
     branches: [main]
@@ -9,6 +11,40 @@ on:
     branches: [main]
 
 jobs:
+  rust:
+    name: suite-ui crate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # Cache the cargo registry and target dir keyed on Cargo.lock, so most
+      # runs reuse compiled dependencies instead of rebuilding from scratch.
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      # Hard formatting gate: any rustfmt drift fails the job before lint/build.
+      - name: Check formatting
+        run: cargo fmt --check
+
+      # Lint with all features and all targets (examples included), warnings as
+      # errors. `--all-features` covers the `clap` feature ScriptVault relies on.
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # Explicit build step: a compile failure surfaces here with a clear label
+      # before tests run. Builds the gallery example too via --all-targets.
+      - name: Build
+        run: cargo build --workspace --all-targets --all-features
+
+      - name: Run tests
+        run: cargo test --workspace --all-features
+
   json:
     name: Validate JSON contracts
     runs-on: ubuntu-latest
