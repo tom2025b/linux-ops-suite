@@ -114,34 +114,49 @@ impl Tui {
         self.out.push(line.into());
     }
 
-    /// Leave the alt screen + raw mode, run `f` on the user's real terminal,
-    /// then re-enter and clear. Re-entry happens even if `f` returns or the
-    /// leave step failed, so the terminal is never left in a suspended state.
+    /// Leave the alt screen + raw mode (releasing mouse capture if it was on),
+    /// run `f` on the user's real terminal, then re-enter and clear.
+    ///
+    /// The child runs ONLY if the leave succeeded — it must never be launched
+    /// into a half-suspended terminal it would scribble over. Re-entry is
+    /// attempted regardless, so the terminal is never left in a suspended
+    /// state. On error, the re-enter error dominates (current terminal state
+    /// matters most), then a leave error.
     ///
     /// Use this to launch an editor or another full-screen child program.
     pub fn suspended<T>(&mut self, f: impl FnOnce() -> T) -> io::Result<T> {
-        // Same ordering as `with_suspended` (unit-tested): leave, run, then
-        // ALWAYS re-enter. Inlined because both steps need &mut self.terminal.
-        // Attempt BOTH the cursor-show and the restore regardless of the first's
-        // outcome — `suspended` must leave the terminal clean for the child, and
-        // that runs before Drop. `.and(..)` keeps the first error if both ran.
+        with_suspended(self, Self::leave_for_child, f, Self::reenter_after_child)
+    }
+
+    /// Undo the envelope for a child process: the reverse of setup, mirroring
+    /// `Drop` — mouse capture off first (or the child reads clicks as escape
+    /// garbage on stdin), cursor back, then the baseline raw-mode/alt-screen
+    /// restore. Attempts ALL steps even when an earlier one fails (`.and()`
+    /// keeps the first error) — the child should get the cleanest terminal we
+    /// can manage.
+    fn leave_for_child(&mut self) -> io::Result<()> {
+        let mouse_result = if self.opts.mouse_capture {
+            execute!(stdout(), DisableMouseCapture)
+        } else {
+            Ok(())
+        };
         let show_result = self.terminal.show_cursor();
         let restore_result = ratatui::try_restore();
-        let leave_result = show_result.and(restore_result);
+        mouse_result.and(show_result).and(restore_result)
+    }
 
-        let value = f();
-
-        let reenter_result = (|| {
-            self.terminal = ratatui::try_init()?;
-            if self.opts.hide_cursor {
-                self.terminal.hide_cursor()?;
-            }
-            self.terminal.clear()
-        })();
-
-        reenter_result?;
-        leave_result?;
-        Ok(value)
+    /// Re-establish the envelope after a child: same order as `new` (init,
+    /// cursor-hide, mouse capture), plus a `clear` so ratatui doesn't
+    /// diff-render against a buffer the child scribbled over.
+    fn reenter_after_child(&mut self) -> io::Result<()> {
+        self.terminal = ratatui::try_init()?;
+        if self.opts.hide_cursor {
+            self.terminal.hide_cursor()?;
+        }
+        if self.opts.mouse_capture {
+            execute!(stdout(), EnableMouseCapture)?;
+        }
+        self.terminal.clear()
     }
 }
 
@@ -154,23 +169,28 @@ fn drain_lines(out: &mut Vec<String>, w: &mut impl Write) {
     }
 }
 
-/// The leave→run→re-enter control flow, with the terminal ops injected as
-/// closures so it is unit-testable without a real terminal. Re-enter ALWAYS
-/// runs (even if leave failed), so the terminal is never left suspended. The
-/// re-enter error dominates (current terminal state matters most); otherwise a
-/// leave error propagates; otherwise the body's value is returned.
-#[cfg_attr(not(test), allow(dead_code))]
-fn with_suspended<T>(
-    leave: impl FnOnce() -> io::Result<()>,
+/// The leave→run→re-enter control flow behind [`Tui::suspended`], with the
+/// terminal ops injected as `ctx`-taking closures so the SAME code path is
+/// unit-testable without a real terminal (prod passes `&mut Tui`; tests pass a
+/// counter). The body runs ONLY on a clean leave — a child must never be
+/// launched into a half-suspended terminal. Re-enter ALWAYS runs (even if
+/// leave failed), so the terminal is never left suspended. The re-enter error
+/// dominates (current terminal state matters most); otherwise a leave error
+/// propagates; otherwise the body's value is returned.
+fn with_suspended<C, T>(
+    ctx: &mut C,
+    leave: impl FnOnce(&mut C) -> io::Result<()>,
     body: impl FnOnce() -> T,
-    reenter: impl FnOnce() -> io::Result<()>,
+    reenter: impl FnOnce(&mut C) -> io::Result<()>,
 ) -> io::Result<T> {
-    let leave_result = leave();
-    let value = body();
-    let reenter_result = reenter();
+    let leave_result = leave(ctx);
+    let value = match leave_result {
+        Ok(()) => Ok(body()),
+        Err(e) => Err(e),
+    };
+    let reenter_result = reenter(ctx);
     reenter_result?;
-    leave_result?;
-    Ok(value)
+    value
 }
 
 impl Drop for Tui {
@@ -238,57 +258,81 @@ mod tests {
         assert!(q.is_empty(), "drain empties the queue");
     }
 
+    /// Test context for `with_suspended`: counts leave/re-enter calls. Prod
+    /// passes `&mut Tui` here; tests only need the call accounting.
+    #[derive(Default)]
+    struct Calls {
+        left: u32,
+        reentered: u32,
+    }
+
     #[test]
     fn suspended_runs_closure_and_returns_value() {
         // suspended() must run the closure and hand back its return value. We
-        // test the closure plumbing via the extracted `with_suspended` helper,
-        // which takes the leave/re-enter actions as closures so the real
-        // terminal ops aren't needed in CI.
-        let mut left = 0;
-        let mut reentered = 0;
+        // test the control flow via `with_suspended` — the SAME helper prod
+        // uses — with the terminal ops replaced by counters so no tty is
+        // needed in CI.
+        let mut calls = Calls::default();
         let value = with_suspended(
-            || {
-                left += 1;
-                Ok::<(), io::Error>(())
+            &mut calls,
+            |c| {
+                c.left += 1;
+                Ok(())
             },
             || 42, // the "child" body
-            || {
-                reentered += 1;
-                Ok::<(), io::Error>(())
+            |c| {
+                c.reentered += 1;
+                Ok(())
             },
         )
         .unwrap();
         assert_eq!(value, 42, "returns the closure's value");
-        assert_eq!((left, reentered), (1, 1), "leaves once, re-enters once");
+        assert_eq!(
+            (calls.left, calls.reentered),
+            (1, 1),
+            "leaves once, re-enters once"
+        );
     }
 
     #[test]
-    fn suspended_reenters_even_if_leave_fails() {
-        // If re-enter fails, the error surfaces; if leave fails, we still try to
-        // re-enter so the terminal isn't stuck. Assert: leave error short-circuits
-        // before the body but still re-enters.
-        let mut reentered = 0;
+    fn suspended_skips_body_and_reenters_when_leave_fails() {
+        // A failed leave means the terminal is NOT safely on the user's real
+        // screen — the child must not run (it would scribble over the TUI).
+        // Re-enter still runs so the terminal isn't stuck, and the leave error
+        // surfaces to the caller.
+        let mut calls = Calls::default();
+        let mut body_ran = false;
         let result = with_suspended(
-            || Err::<(), io::Error>(io::Error::other("leave failed")),
-            || 7,
+            &mut calls,
+            |_| Err(io::Error::other("leave failed")),
             || {
-                reentered += 1;
-                Ok::<(), io::Error>(())
+                body_ran = true;
+                7
+            },
+            |c| {
+                c.reentered += 1;
+                Ok(())
             },
         );
         assert!(result.is_err(), "leave failure surfaces as an error");
-        assert_eq!(reentered, 1, "re-enter still runs after a leave failure");
+        assert!(!body_ran, "the child must NOT run after a failed leave");
+        assert_eq!(
+            calls.reentered, 1,
+            "re-enter still runs after a leave failure"
+        );
     }
 
     #[test]
     fn with_suspended_reenter_error_dominates_when_both_fail() {
         // When BOTH leave and re-enter fail, the re-enter error is the one
         // returned (current terminal state matters most). Locks the documented
-        // precedence: `reenter_result?` runs before `leave_result?`.
+        // precedence: `reenter_result?` runs before the leave error.
+        let mut calls = Calls::default();
         let result = with_suspended(
-            || Err::<(), io::Error>(io::Error::other("leave failed")),
+            &mut calls,
+            |_| Err(io::Error::other("leave failed")),
             || (),
-            || Err::<(), io::Error>(io::Error::other("reenter failed")),
+            |_| Err(io::Error::other("reenter failed")),
         );
         let err = result.expect_err("both failing must surface an error");
         assert_eq!(
