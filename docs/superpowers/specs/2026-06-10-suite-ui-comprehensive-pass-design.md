@@ -1,7 +1,8 @@
 # suite-ui — comprehensive pass: shared widgets + consistency
 
 **Date:** 2026-06-10
-**Status:** Approved, building
+**Status:** Landed (`feat/suite-ui-comprehensive-pass`) — suite-ui only; consumer
+migration is the documented follow-up.
 
 ## Summary
 
