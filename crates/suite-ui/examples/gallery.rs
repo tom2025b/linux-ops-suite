@@ -11,10 +11,10 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Terminal;
 
 use suite_ui::{
-    centered_rect, pane, pane_titled, truncate_desc, truncate_path, App, AttentionFlag,
-    ConfirmModal, Counted, EmptyState, FilterChips, Flow, Freshness, Health, HealthStrip,
-    HelpSheet, JobState, KeyHints, PaletteFrame, PaletteItem, Screen, SearchBar, Severity,
-    SeverityBadge, StatusBar, StatusStrip, Theme, ThemeChoice, Toast, ToastKind,
+    centered_rect, pane, pane_titled, truncate_desc, truncate_path, AttentionFlag, ConfirmModal,
+    Counted, EmptyState, FilterChips, Freshness, Health, HealthStrip, HelpSheet, JobState,
+    KeyHints, PaletteFrame, PaletteItem, SearchBar, Severity, SeverityBadge, StatusBar,
+    StatusStrip, Theme, ThemeChoice, Toast, ToastKind,
 };
 
 fn main() {
@@ -25,7 +25,6 @@ fn main() {
     ] {
         println!("\n================ theme: {name} ================");
         print_frame(theme);
-        demo_app_runtime(theme);
     }
 }
 
@@ -328,46 +327,6 @@ fn print_frame(theme: Theme) {
         },
     );
     print_truncation(theme);
-}
-
-/// Demonstrates the App runtime's public surface: a real `Screen` implementation
-/// rendered through the in-memory backend (the gallery never opens a real
-/// terminal, and `App::run` would block, so we show the wiring, not a live loop).
-fn demo_app_runtime(theme: Theme) {
-    use crossterm::event::{KeyCode, KeyEvent};
-    use ratatui::widgets::Paragraph;
-
-    struct Demo {
-        message: String,
-    }
-    impl Screen for Demo {
-        fn render(&mut self, frame: &mut ratatui::Frame, theme: Theme) {
-            let block = pane("app runtime", theme);
-            let inner = block.inner(frame.area());
-            frame.render_widget(block, frame.area());
-            frame.render_widget(Paragraph::new(self.message.as_str()), inner);
-        }
-        fn on_key(&mut self, key: KeyEvent) -> Flow {
-            if key.code == KeyCode::Char('q') {
-                Flow::Exit
-            } else {
-                Flow::Continue
-            }
-        }
-    }
-
-    // Construct an App to prove the builder is reachable from outside the crate.
-    // We do NOT call `run()` (it would take over the real terminal and block).
-    let _app = App::new(theme).tick_rate(Duration::from_millis(100));
-
-    // Render the Screen once via the in-memory backend, like every other widget
-    // in this gallery, so the demo participates in the visual smoke test.
-    let mut screen = Demo {
-        message: "Screen::render drew this through App's theme.".to_string(),
-    };
-    let mut terminal = Terminal::new(TestBackend::new(80, 6)).expect("test backend");
-    terminal.draw(|frame| screen.render(frame, theme)).unwrap();
-    print!("{}", buffer_to_string(terminal));
 }
 
 /// Build a `results (N of M)` pane title with the count in [`Counted`]'s style.

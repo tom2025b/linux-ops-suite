@@ -48,7 +48,7 @@ own repo and will provide the interactive cockpit on the same contracts.
   bulwark/proto/toolfoundry, `proto.session`, `rexops.snapshot`,
   `scriptvault.export`, `workstate.snapshot`). CI validates JSON contracts.
 - **`suite-ui`:** active shared crate (theme + overlays + key-hints/search/status
-  bars + the `App`/`Tui` runtime); the sole workspace member in the root
+  bars + the `Tui` terminal guard); the sole workspace member in the root
   `Cargo.toml`. The `feat/suite-ui-*` branches (key-hints, search-bar, status-bar,
   toast kinds, app-runtime) are all **merged to `main`**. **All three** consumers —
   Bulwark, RexOps, and ScriptVault — pull it as a **git dependency** pinned to
@@ -92,8 +92,8 @@ path→git-dependency conversion (see "Done since last snapshot"), pending push.
 
 - ✅ **Installer landed** (PR #4) + first real end-to-end run (all tools built,
   fresh-clone-safe).
-- ✅ **`suite-ui` `feat/*` branches merged** to `main` (incl. the `App`/`Tui`
-  runtime).
+- ✅ **`suite-ui` `feat/*` branches merged** to `main` (incl. the `Tui` guard;
+  the unused `App` runner was later removed — all tools drive their own loops).
 - ✅ **`suite-ui` path→git-dependency conversion across ALL consumers** — Bulwark,
   RexOps, and ScriptVault now pin suite-ui to umbrella rev `cf97f07` as a git dep;
   no `path =` deps remain. Each consumer's CI dropped its sibling-checkout
