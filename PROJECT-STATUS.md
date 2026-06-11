@@ -36,7 +36,8 @@ ScriptVault ─┘
                                              │
                                           RexOps  (cockpit / launcher; `rex run`)
 
-side channel:  Bulwark ──> Toolbox Bridge ──> ScriptVault sidecars (risk tags)
+sidecar loop:  snapshot.json ──> Toolbox-Bridge ──> feeds/toolbox-bridge.json
+               (risk/owner sidecar metadata for ScriptVault — via Workstate only)
 ```
 
 `bin/rex` is the reference orchestrator (bash); the real RexOps TUI lives in its
@@ -44,20 +45,22 @@ own repo and will provide the interactive cockpit on the same contracts.
 
 ## Current state — umbrella
 
-- **Contracts:** 8 schemas present (`bulwark.scan`, `*.workstate-feed.v1` for
-  bulwark/proto/toolfoundry, `proto.session`, `rexops.snapshot`,
+- **Contracts:** 9 schemas present (`bulwark.scan`, `*.workstate-feed.v1` for
+  bulwark/proto/toolfoundry/toolbox-bridge, `proto.session`, `rexops.snapshot`,
   `scriptvault.export`, `workstate.snapshot`). CI validates JSON contracts.
 - **`suite-ui`:** active shared crate (theme + overlays + key-hints/search/status
-  bars + the `Tui` terminal guard); the sole workspace member in the root
-  `Cargo.toml`. The `feat/suite-ui-*` branches (key-hints, search-bar, status-bar,
+  bars + the `Tui` terminal guard); a workspace member in the root `Cargo.toml`
+  alongside `toolbox-bridge`. The `feat/suite-ui-*` branches (key-hints, search-bar, status-bar,
   toast kinds, app-runtime) are all **merged to `main`**. **All three** consumers —
   Bulwark, RexOps, and ScriptVault — pull it as a **git dependency** pinned to
   umbrella `main` rev `cf97f07` (no `path =` deps), so each builds from a fresh
   clone with no sibling umbrella checkout. Verified by a fresh-clone simulation
   (empty `CARGO_HOME`, no sibling folder, `cargo build --locked`).
 - **Installer:** `install.sh` (build-and-copy method) **merged to `main` (PR #4)**
-  and exercised in a **real end-to-end run** — all 6 Rust tools + the Python tool
-  built and installed; verified fresh-clone-safe. See `INSTALLER-STATUS.md`.
+  and exercised in a **real end-to-end run**; verified fresh-clone-safe. Now
+  all-Rust: it builds the six sibling-repo tools plus the in-workspace
+  `toolbox-bridge` (the Python venv/pipx path was removed with the Python
+  bridge). See `INSTALLER-STATUS.md`.
 
 ## Current state — the tools
 
@@ -65,7 +68,7 @@ own repo and will provide the interactive cockpit on the same contracts.
 |---|---|---|---|---|
 | **Bulwark** | Rust | ~5.6k | `main` | Scanner + risk classifier. Stable. Consumes suite-ui via git dep (`tui` feature). |
 | **ScriptVault** | Rust | ~13.5k | `main` | Largest tool. Consumes suite-ui via git dep (`clap` feature). |
-| **Toolbox Bridge** | Python | ~0.7k | `main` | Bulwark→ScriptVault sidecars; has pytest suite. |
+| **Toolbox-Bridge** | Rust | ~0.6k | `main` (umbrella workspace) | Workstate snapshot → ScriptVault sidecar feed; unit + integration tests. Replaced the Python bridge. |
 | **ToolFoundry** | Rust | ~4.4k | `main` | Lifecycle/ownership/health. |
 | **Workstate** | Rust | ~3.2k | `main` | State compiler (snapshot v3). |
 | **Proto** | Rust | ~6.2k | `main` | Guided protocol/checklist runner. |

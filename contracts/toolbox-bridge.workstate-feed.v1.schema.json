@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/toolbox-bridge.workstate-feed.v1.schema.json",
+  "title": "Toolbox-Bridge Workstate feed (v1)",
+  "description": "ScriptVault sidecar metadata derived from Bulwark findings in the Workstate snapshot, emitted by `toolbox-bridge` into Workstate's feeds directory for ScriptVault to consume. The bridge's only input is the Workstate snapshot and its only output is this feed — no direct tool-to-tool communication.",
+  "$comment": "Modeled from crates/toolbox-bridge/src/feed.rs (SidecarFeed/SidecarRecord). Sidecar fields (`tags`, `desc`) use ScriptVault's own sidecar field names so ScriptVault can merge them with its usual sidecar-wins rules; the bridge only ever emits `risk:`/`owner:` tags.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_tool",
+    "generated_at",
+    "item_count",
+    "sidecars"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Integer major version. Bumped only on a breaking change."
+    },
+    "source_tool": {
+      "type": "string",
+      "const": "toolbox-bridge"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the bridge generated this feed, as an RFC3339 timestamp."
+    },
+    "source_generated_at": {
+      "type": "string",
+      "description": "Bulwark's own generation stamp (RFC3339 or YYYY-MM-DD), carried through from the snapshot's findings section so consumers can judge the age of the underlying scan."
+    },
+    "item_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of records in `sidecars`."
+    },
+    "sidecars": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/sidecar" }
+    }
+  },
+  "definitions": {
+    "sidecar": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": true,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Absolute path of the script this sidecar metadata annotates."
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Bridge-managed tags, always prefixed `risk:` or `owner:`. ScriptVault keeps user tags untouched when merging."
+        },
+        "desc": {
+          "type": "string",
+          "description": "One-line description (max 200 chars of body) with a trailing `[RISK: …]` badge for medium/high/critical subjects."
+        }
+      }
+    }
+  }
+}

@@ -7,8 +7,8 @@ How tools produce and consume data across the suite. Contracts live in
 
 | Producer | Output | Consumer | Format | Schema | Status |
 |---|---|---|---|---|---|
-| Bulwark | risk data | Bridge | (internal to Bridge) | — | **now** |
-| Bridge | sidecar metadata | ScriptVault | YAML sidecar | — | **now** |
+| Workstate | snapshot | Toolbox-Bridge | JSON | [workstate.snapshot](../contracts/workstate.snapshot.schema.json) | **now** |
+| Toolbox-Bridge | `workstate-feed` (sidecar metadata) | ScriptVault | JSON | [toolbox-bridge.workstate-feed.v1](../contracts/toolbox-bridge.workstate-feed.v1.schema.json) | **real (v1)** |
 | ToolFoundry | `workstate-feed` | Workstate | JSON | [toolfoundry.workstate-feed.v1](../contracts/toolfoundry.workstate-feed.v1.schema.json) | **real (v1)** |
 | Bulwark | `workstate-feed` | Workstate | JSON | [bulwark.workstate-feed.v1](../contracts/bulwark.workstate-feed.v1.schema.json) | **real (v1)** |
 | Bulwark | scan export | RexOps | JSON | [bulwark.scan](../contracts/bulwark.scan.schema.json) | provisional |
@@ -24,6 +24,7 @@ How tools produce and consume data across the suite. Contracts live in
 |---|---|---|
 | ToolFoundry | `toolfoundry workstate-feed <manifest-dir> --as-of <YYYY-MM-DD>` | **Exists.** JSON-only, read-only, and exits zero even when attention is required. |
 | Bulwark | `bulwark workstate-feed [PATHS] --output <path>` | **Exists.** Versioned Workstate feed; `scan --json` remains the general inventory report. |
+| Toolbox-Bridge | `toolbox-bridge [--snapshot <path>] [--output <path>] [--dry-run]` | **Exists.** Reads the Workstate snapshot's findings section (never Bulwark directly), converts to ScriptVault sidecar metadata, writes the versioned feed. `--dry-run` previews to stdout. |
 | ScriptVault | (export subcommand TBD) | Should export scripts + favorites + recents. |
 | Workstate | (snapshot subcommand TBD) | Read-only; emits versioned snapshot. |
 | Proto | `proto run <id>` | **Exists.** Walks a protocol interactively and writes one session JSON per run. Read-only — it records outcomes, it never executes the steps. `proto list` / `proto validate` are the non-interactive companions. |
@@ -62,6 +63,7 @@ Paths are RexOps's read locations; producers may also print to stdout. Defaults 
 |---|---|
 | ToolFoundry workstate-feed | `…/workstate/feeds/toolfoundry.json` |
 | Bulwark workstate-feed | `…/workstate/feeds/bulwark.json` |
+| Toolbox-Bridge workstate-feed | `…/workstate/feeds/toolbox-bridge.json` (sidecar metadata for ScriptVault, derived from the snapshot's findings) |
 | Bulwark scan | `…/rexops/feeds/bulwark.scan.json` |
 | ScriptVault export | `…/rexops/feeds/scriptvault.export.json` |
 | Workstate snapshot | `…/rexops/feeds/workstate.snapshot.json` |
@@ -70,7 +72,10 @@ Paths are RexOps's read locations; producers may also print to stdout. Defaults 
 
 ## What exists now vs planned
 
-- **Now:** Bulwark → Bridge → ScriptVault (sidecar YAML). ToolFoundry and Bulwark
+- **Now:** Bulwark → Workstate → Toolbox-Bridge → sidecar feed for ScriptVault —
+  the bridge is pure Rust ([`crates/toolbox-bridge`](../crates/toolbox-bridge)) and
+  talks ONLY through Workstate artifacts (it replaced the retired Python bridge,
+  which invoked Bulwark and wrote sidecar YAML directly). ToolFoundry and Bulwark
   `workstate-feed` JSON contracts are real v1 producer contracts with passing
   contract tests. Proto's `session` JSON is a real v1 producer contract
   ([example](../examples/proto.session.example.json)); RexOps consumption is planned.
@@ -80,4 +85,6 @@ Paths are RexOps's read locations; producers may also print to stdout. Defaults 
   Workstate ingests recent Proto runs the same way it ingests its other feeds.
 - **Planned:** RexOps consuming the feeds above, in the order set by
   [ROADMAP.md](ROADMAP.md). ScriptVault/Workstate JSON exports are provisional
-  until those tools ship versioned outputs.
+  until those tools ship versioned outputs. ScriptVault reading the
+  Toolbox-Bridge sidecar feed (merging it with its usual sidecar-wins rules) is
+  the consumption half of the bridge contract.

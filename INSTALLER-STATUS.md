@@ -6,8 +6,9 @@ Focused status for the Linux Ops Suite one-command installer (`install.sh`).
 
 `install.sh` at the umbrella root is an **orchestrator** that rebuilds the whole
 suite on a fresh Linux box. The umbrella is a "contracts HQ", not a monorepo, so
-the installer clones/updates each tool's own repo and installs it — it does **not**
-build one workspace.
+the installer clones/updates each tool's own repo and installs it. The one
+exception is `toolbox-bridge`, which lives in this repo's own cargo workspace
+and is built from here directly (`cargo build --release -p toolbox-bridge`).
 
 Per tool: **clone or `git pull`** → **`cargo build --release`** → **copy
 `target/release/<binary>` to `~/.local/bin/`**. It also installs the `rex`
@@ -28,6 +29,7 @@ launcher and writes a `r-<tool>` wrapper + `~/.rust_aliases.sh` alias per tool.
 | Real test | ✅ wrapper/alias generation tested in a sandbox (idempotent) |
 | Merged to `main` | ✅ PR #4 merged 2026-06-09 (`fix/installer-build-release` → `main`) |
 | First real end-to-end run | 🔄 in progress (full build+copy of all tools) |
+| All-Rust suite | ✅ 2026-06-11 — `toolbox-bridge` rewritten in Rust (umbrella workspace crate); the Python venv/pipx install path was removed from `install.sh` |
 
 ### Branch lineage
 
@@ -55,7 +57,10 @@ fix/installer-build-release  (pushed, not merged)
    remote branches pruned; stale local branches deleted.
 3. **First real end-to-end run** — `./install.sh` 🔄 in progress (this run is the
    first full build+copy of all six Rust tools + toolbox-bridge for real; prior
-   to this only `--dry-run` + a sandboxed sub-step had been executed).
+   to this only `--dry-run` + a sandboxed sub-step had been executed). Note:
+   that run installed the then-Python bridge; toolbox-bridge has since been
+   rewritten in Rust and now builds from the umbrella workspace — rerun
+   `./install.sh --force --only toolbox-bridge` to replace the old launcher.
 4. **Confirm binary names** hold after any tool restructure — the `repo:binary`
    map in `install.sh` is correct today (notably `rexops`' binary comes from the
    `rexops-cli` package but is named `rexops`). Verify against this real run.

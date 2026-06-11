@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "source_tool": "bulwark",
+  "generated_at": "2026-06-10T08:00:00Z",
+  "item_count": 5,
+  "items": [
+    {
+      "id": "/home/tom/bin/deploy-prod.sh",
+      "name": "deploy-prod.sh",
+      "severity": "critical",
+      "path": "/home/tom/bin/deploy-prod.sh",
+      "language": "Bash",
+      "description": "AWS access key ID detected",
+      "risk": "critical",
+      "category": "secret_leakage",
+      "owner": "tom"
+    },
+    {
+      "id": "/home/tom/bin/cleanup-logs.py",
+      "name": "cleanup-logs.py",
+      "severity": "low",
+      "path": "/home/tom/bin/cleanup-logs.py",
+      "language": "Python",
+      "description": "──  Email address found   in  comments",
+      "risk": "low",
+      "category": "pii",
+      "owner": "user"
+    },
+    {
+      "id": "orphan-finding",
+      "name": "orphan-finding",
+      "severity": "high",
+      "description": "finding with no path passthrough"
+    },
+    {
+      "id": "/home/tom/bin/deploy-prod.sh.scriptvault.yaml",
+      "name": "deploy-prod.sh.scriptvault.yaml",
+      "severity": "low",
+      "path": "/home/tom/bin/deploy-prod.sh.scriptvault.yaml",
+      "risk": "low",
+      "owner": "tom"
+    },
+    {
+      "id": "/home/tom/bin/healthcheck.sh",
+      "name": "healthcheck.sh",
+      "severity": "medium",
+      "path": "/home/tom/bin/healthcheck.sh",
+      "description": "curl piped to shell"
+    }
+  ]
+}

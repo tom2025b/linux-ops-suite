@@ -10,7 +10,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 |-----------------|---------------------------------------------------|--------------|
 | **Bulwark**     | Read-only scanner + risk classifier               | Active       |
 | **ScriptVault** | Fast TUI script launcher + favorites & recents    | Active       |
-| **Toolbox Bridge** | Converts Bulwark risk data into ScriptVault sidecars | Active    |
+| **Toolbox-Bridge** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active    |
 | **ToolFoundry** | Tool lifecycle, ownership, and health             | Active       |
 | **Workstate**   | Read-only state compiler — emits the v3 snapshot  | Active       |
 | **Proto**       | Guided protocol / checklist runner — emits session records | Active       |
@@ -41,8 +41,9 @@ For each tool it: **clone or `git pull`** the repo → **`cargo build --release`
 - **Rust tools** (Bulwark, ScriptVault, ToolFoundry, Workstate, Proto, RexOps) are
   built from source with `cargo build --release` and the resulting binary is copied
   to `~/.local/bin/`.
-- **Toolbox Bridge** (Python) is installed via `pipx`, or a self-contained virtualenv
-  with a launcher on your `PATH` if `pipx` isn't available.
+- **Toolbox-Bridge** is the one Rust tool that lives in *this* repo's cargo workspace
+  ([`crates/toolbox-bridge`](crates/toolbox-bridge)); it is built and installed the
+  same way, no clone needed.
 - The **`rex`** launcher is installed to `~/.local/bin/rex`.
 - A `r-<tool>` wrapper is written to `~/bin/` and an alias appended to
   `~/.rust_aliases.sh` for every tool.
@@ -52,10 +53,9 @@ on your `PATH`, it prints the exact line to add.
 
 ### Prerequisites
 
-- **`git`** and a **Rust toolchain** (`cargo`) — required. Install Rust via
-  [rustup](https://rustup.rs): `curl https://sh.rustup.rs -sSf | sh`.
-- **`pipx`** or **`python3`** — optional, only for Toolbox Bridge (the Rust tools
-  install fine without it).
+- **`git`** and a **Rust toolchain** (`cargo`) — that's all. The whole suite is
+  Rust. Install Rust via [rustup](https://rustup.rs):
+  `curl https://sh.rustup.rs -sSf | sh`.
 
 ### Options
 
@@ -91,7 +91,10 @@ rex run
 - **RexOps** is the front door and only consumer — it reads summaries and lets you launch the other tools.
 - **ToolFoundry** emits `toolfoundry workstate-feed`; the shape is pinned by `contracts/toolfoundry.workstate-feed.v1.schema.json`.
 - **Workstate** compiles the other tools' feeds into one versioned `snapshot.json` (schema v3) that **RexOps** consumes as its source of truth. The shape is pinned by `contracts/workstate.snapshot.schema.json` and validated in both repos' CI.
-- Also live: **Bulwark → Toolbox Bridge → ScriptVault** for risk sidecars.
+- **Toolbox-Bridge** turns Bulwark findings into ScriptVault sidecar metadata *via
+  Workstate only*: it reads the compiled snapshot (never Bulwark directly) and writes
+  a versioned sidecar feed into Workstate's feeds directory for ScriptVault to
+  consume. The shape is pinned by `contracts/toolbox-bridge.workstate-feed.v1.schema.json`.
 - **Proto** reads human-authored protocols (YAML checklists) and emits one `session` JSON per run, pinned by `contracts/proto.session.schema.json`. It is read-only — it guides and records, it never acts on your behalf.
 
 ## Running a full suite refresh
@@ -122,7 +125,7 @@ rex run
 
 - [Bulwark](https://github.com/tom2025b/bulwark) — Scanner & risk
 - [ScriptVault](https://github.com/tom2025b/scriptvault) — Script launcher
-- [Toolbox Bridge](https://github.com/tom2025b/toolbox-bridge) — Bulwark → ScriptVault connector
+- Toolbox-Bridge — lives in this repo: [`crates/toolbox-bridge`](crates/toolbox-bridge) (Bulwark → Workstate → ScriptVault adapter)
 - [ToolFoundry](https://github.com/tom2025b/toolfoundry) — Lifecycle & ownership
 - [Workstate](https://github.com/tom2025b/workstate) — State compiler
 - [Proto](https://github.com/tom2025b/proto) — Guided protocol / checklist runner

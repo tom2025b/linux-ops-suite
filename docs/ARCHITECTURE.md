@@ -10,17 +10,18 @@ job, and never reaches into another tool's code.
 
 **This repo is the contract & index headquarters.** It holds the suite README, the
 shared architecture, the integration map, the contract rules, the JSON schemas, and
-example fixtures. It also hosts exactly **one** shared crate — `suite-ui`, the common
-TUI chrome (see [Shared UI chrome](#shared-ui-chrome-suite-ui) below) — which makes
-this a small Cargo workspace with a single member.
+example fixtures. It also hosts a small Cargo workspace with two members:
+`suite-ui`, the common TUI chrome (see
+[Shared UI chrome](#shared-ui-chrome-suite-ui) below), and `toolbox-bridge`, the
+thin Workstate-mediated adapter between Bulwark and ScriptVault.
 
 It is **not**:
 
-- a monorepo for the *tools* — each tool still lives in its own repository;
+- a monorepo for the *tools* — each tool still lives in its own repository
+  (Toolbox-Bridge is the one deliberate exception: it is a ~400-line adapter
+  whose whole job is defined by contracts that live here, so it lives next to
+  them);
 - a place that vendors or imports another tool's **domain logic**.
-
-The one build that lives here is `suite-ui`. It is pure presentation; it is not a
-tool and owns no domain logic or data flow.
 
 ## Tool responsibilities
 
@@ -28,7 +29,7 @@ tool and owns no domain logic or data flow.
 |---|---|
 | **Bulwark** | Read-only inventory + risk/language classification. Source of truth for risk/inventory. |
 | **ScriptVault** | Human-facing script search, preview, favorites/recents, and launch. |
-| **Bridge** | Converts Bulwark risk data into ScriptVault sidecar YAML. Idempotent, dry-run-first, non-clobbering. |
+| **Toolbox-Bridge** | Converts Bulwark findings — read from the Workstate snapshot, never from Bulwark — into ScriptVault sidecar metadata, published as a versioned Workstate feed. Pure Rust, dry-run-capable, atomic writes. |
 | **ToolFoundry** | Tool lifecycle, ownership, health, drift, manifests. Source of truth for lifecycle. |
 | **Workstate** | Read-only project/repository health. Never mutates repos. (Architecture phase.) |
 | **RexOps** | The only suite-level consumer/orchestrator. Summarizes health/attention and launches. |
@@ -38,9 +39,10 @@ tool and owns no domain logic or data flow.
 Data moves in **one direction**: producers write files, consumers read them.
 
 ```
-Bulwark ──risk──▶ Bridge ──sidecar YAML──▶ ScriptVault
-Bulwark ───────────────── scan JSON ───────────────▶ RexOps
+Bulwark ───────────────── workstate-feed JSON ──────▶ Workstate
 ToolFoundry ───────────── workstate-feed JSON ──────▶ Workstate
+Workstate ──snapshot──▶ Toolbox-Bridge ──sidecar feed──▶ ScriptVault
+Bulwark ───────────────── scan JSON ───────────────▶ RexOps
 ScriptVault ───────────── export JSON ──────────────▶ RexOps
 Workstate ─────────────── snapshot JSON ────────────▶ RexOps
 ```
@@ -63,6 +65,11 @@ break another. By forbidding cross-tool imports **of domain logic and data** we 
 every such dependency to pass through a versioned, documented file contract — which is
 reviewable and stable. The cost (a little duplication) is deliberately accepted. This
 remains the default: tools talk through file contracts, not code.
+
+One narrow carve-out: Toolbox-Bridge deserializes the snapshot through Workstate's
+published `Snapshot` serde types (a git dependency pinned by rev). Those types ARE
+the file contract in Rust form — pure data shapes, no behaviour — so consuming them
+prevents producer/consumer drift instead of creating logic coupling.
 
 ## Shared UI chrome (`suite-ui`)
 

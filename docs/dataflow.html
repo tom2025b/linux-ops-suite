@@ -198,22 +198,23 @@
     <div class="edge-label" style="left:80%; top:46%;"> snapshot.json <span class="muted">· v3</span></div>
   </div>
 
-  <!-- SIDE CHANNEL -->
+  <!-- SIDECAR LOOP -->
   <div class="side">
-    <h2>Side channel — out of band (risk tagging)</h2>
+    <h2>Sidecar loop — risk tagging, via Workstate only</h2>
     <div class="row">
-      <span class="chip">Bulwark</span>
-      <span class="arrow"><span class="lbl">scan JSON</span><span class="ln">⟶</span></span>
-      <span class="chip bridge">Toolbox Bridge</span>
-      <span class="arrow"><span class="lbl">risk:* tag-classification</span><span class="ln">⟶</span></span>
-      <span class="chip">ScriptVault sidecars</span>
+      <span class="chip">Workstate snapshot</span>
+      <span class="arrow"><span class="lbl">findings (from Bulwark)</span><span class="ln">⟶</span></span>
+      <span class="chip bridge">Toolbox-Bridge</span>
+      <span class="arrow"><span class="lbl">toolbox-bridge.workstate-feed.v1</span><span class="ln">⟶</span></span>
+      <span class="chip">ScriptVault sidecar metadata</span>
     </div>
     <p class="note">
-      Bulwark’s risk classification is written back onto ScriptVault’s scripts as sidecar
-      tags (<code>.scriptvault.yaml</code>). ScriptVault is a suite producer too, but it has
-      no <code>workstate-feed</code>: its <code>scriptvault.export.json</code> is consumed by
-      <strong>RexOps</strong> (provisional), not by Workstate. So these risk tags reach the
-      RexOps view through ScriptVault’s export, while Workstate sees only the three feeds above.
+      Toolbox-Bridge (Rust, in the umbrella workspace) reads Bulwark’s findings from the
+      compiled <code>snapshot.json</code> — never from Bulwark directly — and publishes
+      <code>risk:*</code>/<code>owner:*</code> tags plus badged descriptions as a versioned
+      feed in Workstate’s feeds directory (<code>feeds/toolbox-bridge.json</code>).
+      ScriptVault consumes that feed and merges it with its usual sidecar-wins rules.
+      No tool talks to another tool directly; every hop is a Workstate artifact.
     </p>
   </div>
 
@@ -225,7 +226,7 @@
         <li><span class="swatch s-producer"></span>Producer — own repo, read-only, emits a feed</li>
         <li><span class="swatch s-compiler"></span>Compiler — the only thing that reads feeds</li>
         <li><span class="swatch s-consumer"></span>Consumer — reads the snapshot only</li>
-        <li><span class="swatch s-side"></span>Side channel — separate risk-tag path</li>
+        <li><span class="swatch s-side"></span>Sidecar loop — snapshot-derived risk-tag path</li>
       </ul>
     </div>
     <div>
@@ -240,10 +241,11 @@
   </div>
 
   <p class="caveat">
-    <strong>Note:</strong> feed names and the snapshot version verified against the 8
-    schemas in <code>contracts/</code> and <code>docs/INTEGRATION_MAP.md</code>. Only
-    ToolFoundry, Bulwark, and Proto emit a <code>workstate-feed</code>; ScriptVault’s
-    export is RexOps-bound. The Bulwark→Bridge→ScriptVault path is an indirect loop by design.
+    <strong>Note:</strong> feed names and the snapshot version verified against the 9
+    schemas in <code>contracts/</code> and <code>docs/INTEGRATION_MAP.md</code>.
+    ToolFoundry, Bulwark, Proto, and Toolbox-Bridge emit a <code>workstate-feed</code>;
+    ScriptVault’s export is RexOps-bound. The snapshot→Bridge→ScriptVault path is an
+    indirect loop by design — mediated entirely by Workstate artifacts.
   </p>
 </div>
 </body>

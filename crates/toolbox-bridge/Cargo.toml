@@ -1,0 +1,22 @@
+[package]
+name = "toolbox-bridge"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bridges Bulwark findings from the Workstate snapshot into a ScriptVault sidecar feed. Bulwark -> Workstate -> ScriptVault; no direct tool-to-tool calls."
+
+[dependencies]
+# The official Workstate library: the bridge deserializes snapshot.json through
+# Workstate's own `Snapshot`/`Finding` types so the contract cannot drift.
+# Pinned by rev like every other cross-repo suite dependency.
+workstate = { git = "https://github.com/tom2025b/workstate", rev = "72ea286f8cf6f6276d9106ac2e31961d5f921269" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

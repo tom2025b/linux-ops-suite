@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "source_tool": "toolbox-bridge",
+  "generated_at": "2026-06-11T12:00:00Z",
+  "source_generated_at": "2026-06-10T08:00:00Z",
+  "item_count": 2,
+  "sidecars": [
+    {
+      "path": "/home/tom/bin/deploy-prod.sh",
+      "tags": ["risk:critical", "owner:tom"],
+      "desc": "AWS access key ID detected  [RISK: CRITICAL]"
+    },
+    {
+      "path": "/home/tom/bin/cleanup-logs.py",
+      "tags": ["risk:low", "owner:user"],
+      "desc": "Email address found in comments"
+    }
+  ]
+}
