@@ -81,11 +81,12 @@ impl Tui {
             return Err(TuiError::NotATerminal);
         }
         let mut terminal = ratatui::try_init()?;
-        if opts.hide_cursor {
-            terminal.hide_cursor()?;
-        }
-        if opts.mouse_capture {
-            execute!(stdout(), EnableMouseCapture)?;
+        // A failure between try_init and Ok(Self) must undo the raw-mode/alt-
+        // screen setup HERE: `Self` was never built, so `Drop` can never run,
+        // and without this restore the user's shell would be left raw.
+        if let Err(e) = apply_envelope(&mut terminal, opts) {
+            ratatui::restore();
+            return Err(e.into());
         }
         Ok(Self {
             terminal,
@@ -149,15 +150,28 @@ impl Tui {
     /// cursor-hide, mouse capture), plus a `clear` so ratatui doesn't
     /// diff-render against a buffer the child scribbled over.
     fn reenter_after_child(&mut self) -> io::Result<()> {
+        // This assignment drops the OLD terminal AFTER the fresh init. Safe
+        // under ratatui 0.29: Terminal's Drop only re-shows a still-hidden
+        // cursor, and leave_for_child's show_cursor already cleared that flag.
         self.terminal = ratatui::try_init()?;
-        if self.opts.hide_cursor {
-            self.terminal.hide_cursor()?;
-        }
-        if self.opts.mouse_capture {
-            execute!(stdout(), EnableMouseCapture)?;
-        }
+        // Unlike in `new`, a failure here needs no manual restore: the fresh
+        // terminal is already assigned, so our own `Drop` will clean up.
+        apply_envelope(&mut self.terminal, self.opts)?;
         self.terminal.clear()
     }
+}
+
+/// Apply the optional envelope bits (cursor-hide, mouse capture) to a freshly
+/// initialised terminal — the steps shared by `new` and `reenter_after_child`,
+/// which differ only in how they clean up when a step fails.
+fn apply_envelope(terminal: &mut DefaultTerminal, opts: TuiOptions) -> io::Result<()> {
+    if opts.hide_cursor {
+        terminal.hide_cursor()?;
+    }
+    if opts.mouse_capture {
+        execute!(stdout(), EnableMouseCapture)?;
+    }
+    Ok(())
 }
 
 /// Drain queued lines to a writer, each followed by a newline. Factored out of
