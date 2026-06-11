@@ -8,7 +8,7 @@ How tools produce and consume data across the suite. Contracts live in
 | Producer | Output | Consumer | Format | Schema | Status |
 |---|---|---|---|---|---|
 | Workstate | snapshot | Toolbox-Bridge | JSON | [workstate.snapshot](../contracts/workstate.snapshot.schema.json) | **now** |
-| Toolbox-Bridge | `workstate-feed` (sidecar metadata) | ScriptVault | JSON | [toolbox-bridge.workstate-feed.v1](../contracts/toolbox-bridge.workstate-feed.v1.schema.json) | **real (v1)** |
+| Toolbox-Bridge | `workstate-feed` (sidecar metadata) | ScriptVault | JSON | [toolbox-bridge.workstate-feed.v1](../contracts/toolbox-bridge.workstate-feed.v1.schema.json) | **real (v1) — end-to-end** |
 | ToolFoundry | `workstate-feed` | Workstate | JSON | [toolfoundry.workstate-feed.v1](../contracts/toolfoundry.workstate-feed.v1.schema.json) | **real (v1)** |
 | Bulwark | `workstate-feed` | Workstate | JSON | [bulwark.workstate-feed.v1](../contracts/bulwark.workstate-feed.v1.schema.json) | **real (v1)** |
 | Bulwark | scan export | RexOps | JSON | [bulwark.scan](../contracts/bulwark.scan.schema.json) | provisional |
@@ -72,19 +72,23 @@ Paths are RexOps's read locations; producers may also print to stdout. Defaults 
 
 ## What exists now vs planned
 
-- **Now:** Bulwark → Workstate → Toolbox-Bridge → sidecar feed for ScriptVault —
-  the bridge is pure Rust ([`crates/toolbox-bridge`](../crates/toolbox-bridge)) and
-  talks ONLY through Workstate artifacts (it replaced the retired Python bridge,
-  which invoked Bulwark and wrote sidecar YAML directly). ToolFoundry and Bulwark
-  `workstate-feed` JSON contracts are real v1 producer contracts with passing
-  contract tests. Proto's `session` JSON is a real v1 producer contract
-  ([example](../examples/proto.session.example.json)); RexOps consumption is planned.
-  Proto also emits a real v1 `workstate-feed`
+- **Now:** Bulwark → Workstate → Toolbox-Bridge → ScriptVault — the full
+  end-to-end chain is live. The bridge is pure Rust
+  ([`crates/toolbox-bridge`](../crates/toolbox-bridge)) and talks ONLY through
+  Workstate artifacts (it replaced the retired Python bridge, which invoked
+  Bulwark and wrote sidecar YAML directly). ScriptVault now loads the bridge
+  feed (`…/workstate/feeds/toolbox-bridge.json`) at startup and on every reload
+  via `scriptvault-core::feed::FeedOverlay`; risk tags, owner tags, and
+  Bulwark descriptions are applied as an overlay on top of each script's own
+  header/sidecar metadata. The TUI shows a `[feed]` badge on entries that have
+  Bulwark data, a risk badge styled red, and the Bulwark scan timestamp in the
+  preview pane. ToolFoundry and Bulwark `workstate-feed` JSON contracts are real
+  v1 producer contracts with passing contract tests. Proto's `session` JSON is a
+  real v1 producer contract ([example](../examples/proto.session.example.json));
+  RexOps consumption is planned. Proto also emits a real v1 `workstate-feed`
   ([example](../examples/proto.workstate-feed.example.json)) into
   `…/workstate/feeds/proto.json`, the same envelope as Bulwark/ToolFoundry, so
   Workstate ingests recent Proto runs the same way it ingests its other feeds.
 - **Planned:** RexOps consuming the feeds above, in the order set by
   [ROADMAP.md](ROADMAP.md). ScriptVault/Workstate JSON exports are provisional
-  until those tools ship versioned outputs. ScriptVault reading the
-  Toolbox-Bridge sidecar feed (merging it with its usual sidecar-wins rules) is
-  the consumption half of the bridge contract.
+  until those tools ship versioned outputs.
