@@ -60,7 +60,10 @@ own repo and will provide the interactive cockpit on the same contracts.
   and exercised in a **real end-to-end run**; verified fresh-clone-safe. Now
   all-Rust: it builds the six sibling-repo tools plus the in-workspace
   `toolbox-bridge` (the Python venv/pipx path was removed with the Python
-  bridge). See `INSTALLER-STATUS.md`.
+  bridge). The installer is the canonical build-and-copy path now; the last
+  installer-specific verification was `bash -n`, `shellcheck`, `--dry-run`, and
+  the sandboxed wrapper/alias check, and the old `cargo install --path` route
+  is gone.
 
 ## Current state — the tools
 
