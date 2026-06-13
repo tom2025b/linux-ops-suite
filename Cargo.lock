@@ -832,6 +832,7 @@ dependencies = [
  "clap",
  "crossterm",
  "ratatui",
+ "thomas-tui",
 ]
 
 [[package]]
@@ -876,6 +877,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "thomas-tui"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "ratatui",
 ]
 
 [[package]]

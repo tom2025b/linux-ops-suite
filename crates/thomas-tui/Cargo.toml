@@ -1,0 +1,12 @@
+[package]
+name = "thomas-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A small, general-purpose terminal-UI toolkit: a RAII terminal scope guard (panic-safe setup/teardown, suspend-for-child) over ratatui + crossterm."
+
+[dependencies]
+ratatui = { workspace = true }
+crossterm = { workspace = true }

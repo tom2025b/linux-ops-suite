@@ -15,6 +15,7 @@ clap = ["dep:clap"]
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 clap = { workspace = true, optional = true }
+thomas-tui = { path = "../thomas-tui" }
 
 [[example]]
 name = "gallery"
