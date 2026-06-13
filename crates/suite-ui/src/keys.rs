@@ -113,10 +113,19 @@ mod tests {
         // The Esc-free escape for keyboards without a usable Esc key: Ctrl-G must
         // cancel exactly like Esc, so a user is never trapped in the palette or
         // filter (where every printable key types) with no way out but quitting.
-        assert!(is_cancel(ev(KeyCode::Char(CANCEL_ALT), true)), "Ctrl-G cancels");
+        assert!(
+            is_cancel(ev(KeyCode::Char(CANCEL_ALT), true)),
+            "Ctrl-G cancels"
+        );
         // The chord is required: a bare 'g' is an ordinary character (it must type
         // normally into a text field), and Ctrl on another key is not cancel.
-        assert!(!is_cancel(ev(KeyCode::Char('g'), false)), "bare g must NOT cancel");
-        assert!(!is_cancel(ev(KeyCode::Char('h'), true)), "Ctrl-h is not cancel");
+        assert!(
+            !is_cancel(ev(KeyCode::Char('g'), false)),
+            "bare g must NOT cancel"
+        );
+        assert!(
+            !is_cancel(ev(KeyCode::Char('h'), true)),
+            "Ctrl-h is not cancel"
+        );
     }
 }
