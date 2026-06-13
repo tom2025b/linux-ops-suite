@@ -2,16 +2,15 @@
 //!
 //! The visible counterpart to a screen's structured filters: each active filter
 //! shows as a bracketed chip with a `✕` remove marker, so the user can see at a
-//! glance what is narrowing the list and that each one is dismissable. Like the
-//! other status-line widgets ([`SearchBar`](crate::SearchBar),
-//! [`StatusBar`](crate::StatusBar)) it draws a single line, owns no state, and
+//! glance what is narrowing the list and that each one is dismissable. Like
+//! [`SearchBar`](crate::SearchBar) it draws a single line, owns no state, and
 //! borrows the labels the consumer passes in.
 //!
 //! The widget renders the chips' *look* — the `[label ✕]` framing and the chip
 //! accent — but knows nothing about WHERE the row sits or HOW a chip is removed:
 //! the consuming app lays out the row (e.g. on a pane's bottom border) and owns
-//! the key handling that pops a filter. That is what lets two tools show the same
-//! chip row from one source without sharing their filter models.
+//! the key handling that pops a filter. That is what lets an app show the chip
+//! row from one source without exposing its filter model.
 
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -25,7 +24,7 @@ use crate::theme::Theme;
 /// no application state and reads nothing from the environment.
 ///
 /// ```no_run
-/// # use suite_ui::{FilterChips, Theme};
+/// # use thomas_tui::{FilterChips, Theme};
 /// # use ratatui::{Frame, layout::Rect};
 /// # fn draw(frame: &mut Frame, row: Rect, theme: Theme) {
 /// let labels = ["t:ci", "lang:bash"];

@@ -51,14 +51,9 @@
 mod app;
 mod attention_flag;
 mod badge;
-mod filter_chips;
-mod freshness;
 mod health_strip;
-pub mod keys;
 mod overlays;
 mod status_bar;
-mod status_strip;
-mod widgets;
 
 /// The theme now lives in [`thomas_tui`]; re-exported here under the same path
 /// so suite code keeps using `crate::theme::*` (and `suite_ui::Theme`)
@@ -71,12 +66,12 @@ mod theme {
 pub use app::{Tui, TuiError, TuiOptions};
 pub use attention_flag::AttentionFlag;
 pub use badge::SeverityBadge;
-pub use filter_chips::FilterChips;
-pub use freshness::Freshness;
 pub use health_strip::{HealthStrip, HEALTH_SEP};
 pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, ToastKind};
 pub use status_bar::{JobState, Outcome, StatusBar};
-pub use status_strip::{StatusStrip, STATUS_SEP};
 pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
-pub use thomas_tui::{truncate_desc, truncate_path, Counted, EmptyState, KeyHints, SearchBar};
-pub use widgets::{centered_fixed, centered_rect, pane, pane_blank, pane_titled};
+pub use thomas_tui::keys;
+pub use thomas_tui::{
+    centered_fixed, centered_rect, pane, pane_blank, pane_titled, truncate_desc, truncate_path,
+    Counted, EmptyState, FilterChips, Freshness, KeyHints, SearchBar, StatusStrip, STATUS_SEP,
+};

@@ -1,5 +1,44 @@
 # Last Work
 
+## thomas-tui: eighth extraction — the whole easy Tier-B set (8 files)
+
+Drained the rest of the straight-move tier in one batch, same verbatim-rename +
+re-export pattern. All 8 tracked as git renames (R091–R099 — doc-only deltas):
+
+- `keys.rs`        → thomas-tui `pub mod keys` (PURE, crossterm-only). suite-ui
+                     re-exports the whole module: `pub use thomas_tui::keys;` so
+                     `suite_ui::keys::QUIT` etc. are unchanged. Generalized the
+                     module doc (dropped "both suite TUIs"/tool names).
+- `filter_chips.rs`→ theme-only; dropped a broken `crate::StatusBar` doc link.
+- `status_strip.rs`→ theme-only (StatusStrip + STATUS_SEP const).
+- `freshness.rs`   → theme-only pure formatter (uses truncate_path, already moved).
+- `overlays/{confirm,help,palette}.rs` → new `thomas-tui/src/overlays/` module.
+                     These used `crate::widgets::centered_*`; repointed to
+                     `crate::centered_*` (already in thomas-tui). suite-ui's
+                     `overlays/mod.rs` keeps only `toast` (domain-coupled) and
+                     re-exports the 3 generic ones from thomas_tui.
+- `widgets.rs`     → PARTIAL: only pane/pane_titled/pane_blank moved (the
+                     centering helpers went in extraction #2). suite-ui's
+                     widgets.rs is gone; lib.rs re-exports pane*/centered_* from
+                     thomas_tui.
+
+**Verified:** test count lossless — suite-ui unit 27 + thomas-tui unit 65 = 92
+conserved; doctests suite-ui 5 + thomas-tui 13. clippy -D warnings clean both
+crates (default AND --features clap); fmt clean; gallery builds.
+
+**thomas-tui now owns (the whole general toolkit):** Theme(+Severity/Health),
+Tui guard, text, layout (centering), widgets (panes), keys, SearchBar, KeyHints,
+EmptyState, Counted, FilterChips, StatusStrip, Freshness, overlays
+(Confirm/Help/Palette).
+
+**suite-ui is now down to its DOMAIN core (Tier-C only):** attention_flag,
+badge (SeverityBadge), health_strip, status_bar (JobState/Outcome), overlays/toast
+(ToastKind) — each welded to Severity/Health/JobState/Outcome. These are NOT
+straight moves; generalizing them is design work (a generic Badge<T>, a generic
+status segment), deferred pending a decision.
+
+---
+
 ## thomas-tui: seventh extraction — Counted span helper
 
 Moved `counted.rs` into thomas-tui (git `R090` — near-pure rename). Doc-only

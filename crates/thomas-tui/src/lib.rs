@@ -23,6 +23,8 @@
 //!   [`ColorChoice`]), with the semantic styles a renderer asks for by name
 //!   (`prompt`, `title`, `dim`, `selection`, …) plus the [`Severity`]/[`Health`]
 //!   status axes.
+//! - [`pane`] / [`pane_titled`] / [`pane_blank`] — the consistent rounded,
+//!   dim-bordered, padded frame every region is drawn in.
 //! - [`centered_rect`] / [`centered_fixed`] — center a `Rect` in another (by
 //!   percentage or at a fixed, parent-clamped size); the basis for any overlay.
 //! - [`truncate_path`] / [`truncate_desc`] — Unicode-aware string truncation
@@ -36,6 +38,18 @@
 //!   (dim+bold message, optional dimmer hint); text only, no border.
 //! - [`Counted`] — a "N of M" shown-of-total count span, accented when the list
 //!   is narrowed and dim when it shows everything.
+//! - [`keys`] — conventional keymap constants (vi movement, palette, quit/help,
+//!   confirm/cancel) plus `is_palette`/`is_confirm`/`is_cancel` helpers.
+//! - [`FilterChips`] — a one-line row of active-filter chips (`[t:ci ✕]`),
+//!   accented, with a `✕` remove marker per chip.
+//! - [`StatusStrip`] — a one-line run of dim `·`-joined status segments
+//!   (`All · Auto · 312`).
+//! - [`Freshness`] — a compact provenance stamp (`just now`, `2h ago`),
+//!   stale-aware; a pure formatter over an elapsed `Duration`.
+//! - generic overlays — [`ConfirmModal`] (yes/no prompt), [`HelpSheet`]
+//!   (key → description table), and the command-palette chrome
+//!   [`PaletteFrame`]/[`PaletteItem`]. Each clears its area and frames in the
+//!   accent border; the app owns the keys and state.
 //!
 //! ## The `clap` feature
 //!
@@ -45,18 +59,29 @@
 
 mod counted;
 mod empty_state;
+mod filter_chips;
+mod freshness;
 mod key_hints;
+pub mod keys;
 mod layout;
+mod overlays;
 mod search_bar;
+mod status_strip;
 mod text;
 mod theme;
 mod tui;
+mod widgets;
 
 pub use counted::Counted;
 pub use empty_state::EmptyState;
+pub use filter_chips::FilterChips;
+pub use freshness::Freshness;
 pub use key_hints::KeyHints;
 pub use layout::{centered_fixed, centered_rect};
+pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem};
 pub use search_bar::SearchBar;
+pub use status_strip::{StatusStrip, STATUS_SEP};
 pub use text::{truncate_desc, truncate_path};
 pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
 pub use tui::{Tui, TuiError, TuiOptions};
+pub use widgets::{pane, pane_blank, pane_titled};

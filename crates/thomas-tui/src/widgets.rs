@@ -1,13 +1,12 @@
-//! Shared widget chrome: the consistent rounded pane.
+//! Widget chrome: the consistent rounded pane.
 //!
-//! The centering helpers ([`centered_rect`], [`centered_fixed`]) are domain-free
-//! geometry and now live in [`thomas_tui`]; re-exported here unchanged so suite
-//! code can keep reaching for them via `suite_ui` / `crate::widgets`.
+//! One rounded, dim-bordered, one-column-padded frame so every pane matches and
+//! square corners / off-palette borders don't creep in by hand. For centering a
+//! `Rect` inside one, see [`centered_rect`](crate::centered_rect) /
+//! [`centered_fixed`](crate::centered_fixed).
 
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Padding};
-
-pub use thomas_tui::{centered_fixed, centered_rect};
 
 use crate::theme::Theme;
 
@@ -34,7 +33,7 @@ pub fn pane(title: &str, theme: Theme) -> Block<'static> {
 /// reproduced by hand to carry it.
 ///
 /// ```no_run
-/// # use suite_ui::{pane_titled, Counted, Theme};
+/// # use thomas_tui::{pane_titled, Counted, Theme};
 /// # use ratatui::text::{Line, Span};
 /// # let theme = Theme::with_color(true);
 /// let title = Line::from(vec![

@@ -12,8 +12,8 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
 use ratatui::Frame;
 
+use crate::centered_rect;
 use crate::theme::Theme;
-use crate::widgets::centered_rect;
 
 /// One selectable row in the palette: a short label and a longer description.
 pub struct PaletteItem<'a> {
@@ -27,7 +27,7 @@ pub struct PaletteItem<'a> {
 /// text, the already-filtered items, and which one is selected.
 ///
 /// ```no_run
-/// # use suite_ui::{PaletteFrame, PaletteItem, Theme};
+/// # use thomas_tui::{PaletteFrame, PaletteItem, Theme};
 /// # use ratatui::Frame;
 /// # fn draw(frame: &mut Frame, theme: Theme) {
 /// let items = [

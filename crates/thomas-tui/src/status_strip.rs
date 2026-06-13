@@ -29,7 +29,7 @@ pub const STATUS_SEP: &str = " · ";
 /// owns no application state and reads nothing from the environment.
 ///
 /// ```no_run
-/// # use suite_ui::{StatusStrip, Theme};
+/// # use thomas_tui::{StatusStrip, Theme};
 /// # use ratatui::{Frame, layout::Rect};
 /// # fn draw(frame: &mut Frame, row: Rect, theme: Theme) {
 /// let segments = ["All", "Auto", "312"];
