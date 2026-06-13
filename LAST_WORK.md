@@ -16,11 +16,16 @@ NEW crate layout (workspace members: suite-ui, thomas-tui, toolbox-bridge):
     overlays/toast). Depends on thomas-tui via PATH dep; re-exports everything
     moved; its clap feature forwards to thomas-tui/clap. Public API unchanged.
 
-REQUIRED FOLLOW-UP (per [[suite-ui-ci-sibling-checkout-ordering]]): suite-ui
-changed on umbrella main, so bump the pinned suite-ui git rev in the 3 consumers
-— Bulwark, RexOps, ScriptVault — each its own PR. thomas-tui needs no separate
-consumer dep (path dep inside the workspace, pulled transitively via suite-ui).
-NOT yet done.
+FOLLOW-UP (per [[suite-ui-ci-sibling-checkout-ordering]]) — DONE, 3 PRs OPEN:
+bumped the pinned suite-ui git rev to 71a4fe5 in all 3 consumers, each its own
+PR, each branched off its repo's main, each build+test green:
+  - RexOps:      https://github.com/tom2025b/rexops/pull/20      (118 tests green)
+  - Bulwark:     https://github.com/tom2025b/bulwark/pull/7       (tui-feature path)
+  - ScriptVault: https://github.com/tom2025b/scriptvault/pull/9  (270 tests; clap path)
+Each consumer's Cargo.lock now also resolves thomas-tui transitively from the same
+umbrella rev (path dep via suite-ui — no separate consumer dep). PRs not yet merged.
+Validated the suite-ui/clap -> thomas-tui/clap forwarding via ScriptVault (the
+only consumer that pins suite-ui with the clap feature).
 
 REMAINING (deferred, design work — not straight moves): the 5 Tier-C suite-ui
 widgets (badge/attention_flag/health_strip/status_bar/toast) could be generalized
