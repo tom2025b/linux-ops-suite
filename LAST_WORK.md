@@ -1,5 +1,34 @@
 # Last Work
 
+## thomas-tui: seventh extraction — Counted span helper
+
+Moved `counted.rs` into thomas-tui (git `R090` — near-pure rename). Doc-only
+delta: generalized the module-doc opener (dropped "in the suite" / "the rest of
+the crate") and pointed the doctest at `use thomas_tui::`. No logic changed.
+
+Counted only coupled to `Theme` (via `accent_bar()`/`dim()`), so
+`use crate::theme::Theme;` resolves verbatim in thomas-tui.
+
+Note: suite-ui's `widgets.rs` `pane_titled` doctest does
+`# use suite_ui::{pane_titled, Counted, Theme};` — still valid because Counted is
+re-exported at `suite_ui::Counted` (that suite-ui doctest count held at 12).
+
+**Wiring (suite-ui API identical):**
+- thomas-tui: `mod counted` + `pub use counted::Counted`.
+- suite-ui: dropped `mod counted`, now `pub use thomas_tui::Counted` — so
+  `suite_ui::Counted` and gallery's use are unchanged.
+
+**Verified:** test count lossless — suite-ui unit 55→50, thomas-tui unit 37→42
+(the 5 Counted tests moved); doctests suite-ui 13→12, thomas-tui 5→6. 92
+conserved. clippy -D warnings clean both crates; fmt clean; gallery builds.
+
+**thomas-tui now owns:** Theme (+Severity/Health), Tui guard, text truncation,
+centering helpers, SearchBar, KeyHints, EmptyState, Counted.
+
+**Remaining theme-only Tier-B widget:** FilterChips (last on the easy path).
+
+---
+
 ## thomas-tui: sixth extraction — EmptyState widget
 
 Moved `empty_state.rs` into thomas-tui (git `R099` — cleanest rename yet, the

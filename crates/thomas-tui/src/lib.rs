@@ -34,6 +34,8 @@
 //!   key accented, label dim, `•`-separated.
 //! - [`EmptyState`] — a centered, calm "nothing to show here" placeholder
 //!   (dim+bold message, optional dimmer hint); text only, no border.
+//! - [`Counted`] — a "N of M" shown-of-total count span, accented when the list
+//!   is narrowed and dim when it shows everything.
 //!
 //! ## The `clap` feature
 //!
@@ -41,6 +43,7 @@
 //! [`ColorChoice`] so a consumer can parse `--theme`/`--color` straight into
 //! them. Consumers that don't use clap stay lean.
 
+mod counted;
 mod empty_state;
 mod key_hints;
 mod layout;
@@ -49,6 +52,7 @@ mod text;
 mod theme;
 mod tui;
 
+pub use counted::Counted;
 pub use empty_state::EmptyState;
 pub use key_hints::KeyHints;
 pub use layout::{centered_fixed, centered_rect};

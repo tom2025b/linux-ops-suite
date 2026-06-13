@@ -1,15 +1,14 @@
 //! Counted: the "N of M" shown-of-total count, styled by one shared rule.
 //!
-//! Three screens in the suite show a "showing 48 of 312" count — in a pane
-//! title, a header line, a status strip — and every one of them encodes the same
-//! rule by hand: **emphasise the count when the list is narrowed, let it recede
-//! when it shows everything**. This is that rule in one place.
+//! Anywhere a "showing 48 of 312" count appears — a pane title, a header line, a
+//! status strip — the same rule applies: **emphasise the count when the list is
+//! narrowed, let it recede when it shows everything**. This is that rule in one
+//! place, so every count reads alike instead of being encoded by hand each time.
 //!
 //! It produces a styled [`Span`]/[`Line`], not a widget — a count is something
 //! you fold into a title or a row you're already composing, never a region you
-//! draw on its own. Like the rest of the crate it owns no state and routes its
-//! colour through the gated [`Theme`], so it drops to a bold-only emphasis under
-//! `NO_COLOR`.
+//! draw on its own. It owns no state and routes its colour through the gated
+//! [`Theme`], so it drops to a bold-only emphasis under `NO_COLOR`.
 
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
@@ -19,7 +18,7 @@ use crate::theme::Theme;
 /// A `shown`-of-`total` count. Cheap to copy; pass by value.
 ///
 /// ```
-/// use suite_ui::{Counted, Theme};
+/// use thomas_tui::{Counted, Theme};
 /// # let theme = Theme::with_color(true);
 /// // A narrowed view (a filter is active) → the count is emphasised.
 /// let c = Counted { shown: 48, total: 312 };
