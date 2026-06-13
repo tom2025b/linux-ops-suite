@@ -255,6 +255,12 @@ the visible cap. Intended fix: a **bounded `sync_channel` (backpressure)** plus 
     `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
 11. New repos → GitHub under `tom2025b`, **private** by default, with a generated
     `README.md`, via `gh repo create … --source=. --remote=origin --push`.
+12. **`suite-ui` changes land via pull request, never a direct push to `main`.**
+    `suite-ui` is the shared chrome every tool pins, so a change there ripples to
+    every consumer the moment its rev is bumped. Branch it, open a PR against
+    `linux-ops-suite` `main`, and only after it merges bump the pinned `rev` in
+    the consumers (rexops, scriptvault, bulwark) — each in its own PR. This also
+    applies to `toolbox-bridge` and anything else in this umbrella workspace.
 
 ---
 
