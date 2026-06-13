@@ -1,5 +1,34 @@
 # Last Work
 
+## thomas-tui extraction: MERGED to umbrella main (PR #11)
+
+The full `thomas-tui` extraction is MERGED to umbrella main.
+  PR #11: https://github.com/tom2025b/linux-ops-suite/pull/11 (merged, not squashed)
+  merge commit: 71a4fe5 ; CI green before merge.
+  Feature branch + worktree deleted; local main fast-forwarded.
+
+NEW crate layout (workspace members: suite-ui, thomas-tui, toolbox-bridge):
+  - thomas-tui = the general TUI toolkit (guard, Theme(+Severity/Health), text,
+    layout/centering, panes, keys, SearchBar, KeyHints, EmptyState, Counted,
+    FilterChips, StatusStrip, Freshness, Confirm/Help/Palette overlays). Deps:
+    ratatui + crossterm (+ optional clap for the Theme/Color ValueEnum derives).
+  - suite-ui = domain core only (attention_flag, badge, health_strip, status_bar,
+    overlays/toast). Depends on thomas-tui via PATH dep; re-exports everything
+    moved; its clap feature forwards to thomas-tui/clap. Public API unchanged.
+
+REQUIRED FOLLOW-UP (per [[suite-ui-ci-sibling-checkout-ordering]]): suite-ui
+changed on umbrella main, so bump the pinned suite-ui git rev in the 3 consumers
+— Bulwark, RexOps, ScriptVault — each its own PR. thomas-tui needs no separate
+consumer dep (path dep inside the workspace, pulled transitively via suite-ui).
+NOT yet done.
+
+REMAINING (deferred, design work — not straight moves): the 5 Tier-C suite-ui
+widgets (badge/attention_flag/health_strip/status_bar/toast) could be generalized
+into reusable primitives (generic Badge<T>, a generic status segment) that
+suite-ui then specializes.
+
+---
+
 ## thomas-tui: eighth extraction — the whole easy Tier-B set (8 files)
 
 Drained the rest of the straight-move tier in one batch, same verbatim-rename +
