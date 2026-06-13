@@ -21,7 +21,7 @@ use crate::theme::Theme;
 /// owns no application state and reads nothing from the environment.
 ///
 /// ```no_run
-/// # use suite_ui::{EmptyState, Theme};
+/// # use thomas_tui::{EmptyState, Theme};
 /// # use ratatui::{Frame, layout::Rect};
 /// # fn draw(frame: &mut Frame, body: Rect, theme: Theme) {
 /// EmptyState {

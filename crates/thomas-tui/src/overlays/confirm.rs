@@ -5,8 +5,8 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
 use ratatui::Frame;
 
+use crate::centered_fixed;
 use crate::theme::Theme;
-use crate::widgets::centered_fixed;
 
 /// A confirmation modal for an action the user must approve before it runs
 /// (delete a file, mutate state, …). The message is drawn in the attention
@@ -16,7 +16,7 @@ use crate::widgets::centered_fixed;
 /// what to do on each answer.
 ///
 /// ```no_run
-/// # use suite_ui::{ConfirmModal, Theme};
+/// # use thomas_tui::{ConfirmModal, Theme};
 /// # use ratatui::Frame;
 /// # fn draw(frame: &mut Frame, theme: Theme) {
 /// ConfirmModal { title: "Delete file", message: "Remove backup.sh?" }

@@ -36,7 +36,7 @@ const WEEK: u64 = 7 * DAY;
 ///
 /// ```
 /// use std::time::Duration;
-/// use suite_ui::{Freshness, Theme};
+/// use thomas_tui::{Freshness, Theme};
 /// # let theme = Theme::with_color(true);
 /// assert_eq!(Freshness::from(Duration::from_secs(2)).label(), "just now");
 /// assert_eq!(Freshness::from(Duration::from_secs(7200)).label(), "2h ago");

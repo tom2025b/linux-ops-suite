@@ -51,34 +51,27 @@
 mod app;
 mod attention_flag;
 mod badge;
-mod counted;
-mod empty_state;
-mod filter_chips;
-mod freshness;
 mod health_strip;
-mod key_hints;
-pub mod keys;
 mod overlays;
-mod search_bar;
 mod status_bar;
-mod status_strip;
-mod text;
-mod theme;
-mod widgets;
+
+/// The theme now lives in [`thomas_tui`]; re-exported here under the same path
+/// so suite code keeps using `crate::theme::*` (and `suite_ui::Theme`)
+/// unchanged. `Theme`, `Severity`, `Health`, and the choice enums are all the
+/// general toolkit's — suite-ui just re-exposes them.
+mod theme {
+    pub use thomas_tui::{ColorChoice, Health, Severity, Theme, ThemeChoice};
+}
 
 pub use app::{Tui, TuiError, TuiOptions};
 pub use attention_flag::AttentionFlag;
 pub use badge::SeverityBadge;
-pub use counted::Counted;
-pub use empty_state::EmptyState;
-pub use filter_chips::FilterChips;
-pub use freshness::Freshness;
 pub use health_strip::{HealthStrip, HEALTH_SEP};
-pub use key_hints::KeyHints;
 pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, ToastKind};
-pub use search_bar::SearchBar;
 pub use status_bar::{JobState, Outcome, StatusBar};
-pub use status_strip::{StatusStrip, STATUS_SEP};
-pub use text::{truncate_desc, truncate_path};
 pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
-pub use widgets::{centered_fixed, centered_rect, pane, pane_blank, pane_titled};
+pub use thomas_tui::keys;
+pub use thomas_tui::{
+    centered_fixed, centered_rect, pane, pane_blank, pane_titled, truncate_desc, truncate_path,
+    Counted, EmptyState, FilterChips, Freshness, KeyHints, SearchBar, StatusStrip, STATUS_SEP,
+};

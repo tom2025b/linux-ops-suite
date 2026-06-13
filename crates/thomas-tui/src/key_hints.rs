@@ -1,16 +1,15 @@
 //! KeyHints: a one-line strip of `key → label` shortcut hints for a footer.
 //!
-//! The inline counterpart to the [`HelpSheet`](crate::HelpSheet) popup: where the
-//! help sheet lists every binding in a modal, this renders the handful most
-//! relevant to the current screen on a single line, always visible at the bottom.
-//! Both take the same `(key, label)` pairs and paint the key with the same accent
-//! ([`Theme::prompt`](crate::Theme)), so the inline hints and the popup can't
-//! drift apart in look or wording.
+//! Renders the handful of bindings most relevant to the current screen on a
+//! single line, always visible at the bottom. The key is painted in the accent
+//! ([`Theme::prompt`](crate::Theme)) so a popup help sheet built from the same
+//! `(key, label)` pairs reads identically — the inline hints and a fuller help
+//! list can't drift apart in look or wording.
 //!
-//! Like the other status-line widgets it draws one line, owns no state, and
-//! borrows the pairs the consumer passes in. The key glyph is accented/bold so it
-//! reads as a key; the label is dim, and `•` separators sit between pairs — the
-//! visible key/label distinction a flat hint string lacks.
+//! Like a status-line widget it draws one line, owns no state, and borrows the
+//! pairs the consumer passes in. The key glyph is accented/bold so it reads as a
+//! key; the label is dim, and `•` separators sit between pairs — the visible
+//! key/label distinction a flat hint string lacks.
 
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
@@ -23,7 +22,7 @@ use crate::theme::Theme;
 /// owns no application state and reads nothing from the environment.
 ///
 /// ```no_run
-/// # use suite_ui::{KeyHints, Theme};
+/// # use thomas_tui::{KeyHints, Theme};
 /// # use ratatui::{Frame, layout::Rect};
 /// # fn draw(frame: &mut Frame, footer: Rect, theme: Theme) {
 /// let hints = [("q", "quit"), ("^P", "palette"), ("?", "help")];

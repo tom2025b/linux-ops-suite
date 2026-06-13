@@ -1,8 +1,8 @@
-//! Unicode-aware string truncation, shared so every tool truncates the same way
-//! with the same ellipsis.
+//! Unicode-aware string truncation, shared so every caller truncates the same
+//! way with the same ellipsis.
 //!
-//! Two shapes the suite's tables and status lines need: keep the **end** of a
-//! path (the filename is the useful part when scanning an inventory), or keep the
+//! Two shapes tables and status lines need: keep the **end** of a path (the
+//! filename is the useful part when scanning an inventory), or keep the
 //! **start** of a description. Both count by `char`, never by byte, so a
 //! multi-byte character is never split mid-codepoint, and both saturate on tiny
 //! widths rather than panicking.
@@ -10,8 +10,8 @@
 //! These are plain `String` helpers — no `Theme`, no rendering. A renderer
 //! truncates the text first, then styles the result.
 
-/// The single ellipsis glyph the whole suite truncates with — one `…`, not three
-/// ASCII dots, so truncated cells line up to one column regardless of tool.
+/// The single ellipsis glyph truncation marks the cut with — one `…`, not three
+/// ASCII dots, so truncated cells line up to one column regardless of caller.
 const ELLIPSIS: char = '…';
 
 /// Truncate `s` to at most `max` characters, keeping the **end** and marking the
@@ -23,7 +23,7 @@ const ELLIPSIS: char = '…';
 /// last `max - 1`. `max == 0` yields an empty string.
 ///
 /// ```
-/// use suite_ui::truncate_path;
+/// use thomas_tui::truncate_path;
 /// assert_eq!(truncate_path("/tmp/tool.sh", 48), "/tmp/tool.sh");
 /// let out = truncate_path("/very/deeply/nested/dir/backup-tool.sh", 20);
 /// assert!(out.starts_with('…'));
@@ -52,7 +52,7 @@ pub fn truncate_path(s: &str, max: usize) -> String {
 /// chars total. `max == 0` yields an empty string.
 ///
 /// ```
-/// use suite_ui::truncate_desc;
+/// use thomas_tui::truncate_desc;
 /// assert_eq!(truncate_desc("  backs up the NAS  ", 40), "backs up the NAS");
 /// let out = truncate_desc("this description is definitely too long to fit", 20);
 /// assert!(out.ends_with('…'));

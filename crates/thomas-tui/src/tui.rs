@@ -51,10 +51,10 @@ impl From<io::Error> for TuiError {
 /// not the event loop. Cheap to copy.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct TuiOptions {
-    /// Hide the cursor for the duration (Bulwark, RexOps: true; a tool with a
-    /// visible text cursor like ScriptVault: false).
+    /// Hide the cursor for the duration (true for a read-only dashboard; false
+    /// for a tool with a visible text cursor, e.g. a filter/search input).
     pub hide_cursor: bool,
-    /// Enable mouse capture (ScriptVault click-to-select: true; others: false).
+    /// Enable mouse capture (true for click-to-select; false otherwise).
     pub mouse_capture: bool,
     /// Fail fast with a friendly [`TuiError::NotATerminal`] when stdout is not a
     /// terminal, instead of entering raw mode in a non-interactive environment.

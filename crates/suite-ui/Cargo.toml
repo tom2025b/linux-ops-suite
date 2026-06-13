@@ -9,12 +9,15 @@ description = "Shared terminal-UI chrome for the Linux Ops Suite: theme/palette 
 
 [features]
 default = []
-clap = ["dep:clap"]
+# The ThemeChoice/ColorChoice `ValueEnum` derives now live in thomas-tui;
+# suite-ui's clap feature just forwards to theirs, so `suite-ui/clap` still
+# makes `--theme`/`--color` parse straight into the re-exported enums.
+clap = ["thomas-tui/clap"]
 
 [dependencies]
 ratatui = { workspace = true }
 crossterm = { workspace = true }
-clap = { workspace = true, optional = true }
+thomas-tui = { path = "../thomas-tui" }
 
 [[example]]
 name = "gallery"

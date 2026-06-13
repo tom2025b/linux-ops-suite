@@ -5,14 +5,14 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
 use ratatui::Frame;
 
+use crate::centered_rect;
 use crate::theme::Theme;
-use crate::widgets::centered_rect;
 
 /// A keybinding help overlay. The caller owns the rows — keeping them next to
 /// the app's real key handling, so the help can't drift from the bindings.
 ///
 /// ```no_run
-/// # use suite_ui::{HelpSheet, Theme};
+/// # use thomas_tui::{HelpSheet, Theme};
 /// # use ratatui::{Frame, layout::Rect};
 /// # fn draw(frame: &mut Frame, theme: Theme) {
 /// let rows = [

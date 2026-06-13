@@ -1,10 +1,11 @@
-//! Shared keymap *conventions* both suite TUIs already use.
+//! Conventional keymap constants for a TUI — vi-style movement, a command
+//! palette, quit/help, confirm/cancel — so several apps can share one name per
+//! binding instead of letting them drift apart.
 //!
 //! This is NOT a key handler — each app keeps its own `match` over key events.
-//! These constants just give the keys that BOTH tools share one name, so the
-//! bindings don't silently drift apart and the footer hint is built from the
-//! same source of truth. Tool-specific keys (ScriptVault's favorite toggle,
-//! RexOps's numbered screen switches) stay in their own keymaps.
+//! These are just the shared names (and a few `is_*` interpretation helpers), so
+//! a footer hint and the actual bindings come from one source of truth.
+//! App-specific keys stay in the app's own keymap.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -22,7 +23,7 @@ pub const UP: char = 'k';
 pub const DOWN: char = 'j';
 
 /// Accept / activate the current selection. A [`KeyCode`] (not a `char`) because
-/// it's the Enter key; both TUIs treat Enter as "confirm".
+/// it's the Enter key — the conventional "confirm".
 pub const CONFIRM: KeyCode = KeyCode::Enter;
 /// Cancel / dismiss the current mode (close an overlay, clear a filter, back out
 /// of a confirm). A [`KeyCode`] because it's the Esc key.
