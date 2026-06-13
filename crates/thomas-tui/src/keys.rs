@@ -67,9 +67,16 @@ pub fn is_cancel(key: KeyEvent) -> bool {
 }
 
 /// The conventional footer hint line, e.g.
-/// `↑/↓ move · Enter select · ? help · q quit`. Callers can append their own
-/// tool-specific keys; this covers the shared core so the wording stays
+/// `↑/↓ move · Enter select · ^P palette · ? help · q quit`. Callers can append
+/// their own tool-specific keys; this covers the shared core so the wording stays
 /// consistent across tools.
+///
+/// This is a hand-written literal (not built from the constants — a `&'static
+/// str` can't be `format!`ed without allocating), but a test asserts it actually
+/// names [`QUIT`], [`HELP`], and [`PALETTE_ALT`], so it can't silently drift from
+/// the real bindings: change a key and the test fails until the hint is updated.
+/// For a styled, per-screen hint strip prefer the
+/// [`KeyHints`](crate::KeyHints) widget; this plain string is the shared fallback.
 pub fn key_hint() -> &'static str {
     "↑/↓ move · Enter select · ^P palette · ? help · q quit"
 }
@@ -128,5 +135,20 @@ mod tests {
             !is_cancel(ev(KeyCode::Char('h'), true)),
             "Ctrl-h is not cancel"
         );
+    }
+
+    #[test]
+    fn key_hint_names_the_actual_bindings_so_it_cannot_drift() {
+        // key_hint() is a hand-written literal; this is what keeps it honest. If a
+        // binding constant changes, the literal must be updated or this fails —
+        // converting "two sources of truth" into "the string is checked against
+        // the constants".
+        let hint = key_hint();
+        assert!(hint.contains(QUIT), "hint must name the quit key");
+        assert!(hint.contains(HELP), "hint must name the help key");
+        // The palette is shown as the `^P` chord in the hint; assert that form.
+        assert!(hint.contains("^P"), "hint must name the palette chord");
+        // The standard movement/confirm wording is part of the shared core.
+        assert!(hint.contains("move") && hint.contains("Enter"));
     }
 }

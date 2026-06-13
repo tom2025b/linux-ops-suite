@@ -48,22 +48,23 @@
 //! [`ColorChoice`] so a consumer can parse `--theme`/`--color` straight into
 //! them. Consumers that don't use clap stay lean.
 
-mod app;
 mod attention_flag;
 mod badge;
 mod health_strip;
 mod overlays;
 mod status_bar;
 
-/// The theme now lives in [`thomas_tui`]; re-exported here under the same path
-/// so suite code keeps using `crate::theme::*` (and `suite_ui::Theme`)
-/// unchanged. `Theme`, `Severity`, `Health`, and the choice enums are all the
-/// general toolkit's — suite-ui just re-exposes them.
+/// The theme types live in [`thomas_tui`]. This module is the single internal
+/// seam suite-ui's own widgets import them through (`use crate::theme::{…}` in
+/// `badge`, `status_bar`, `health_strip`, `attention_flag`, `toast`) — kept on
+/// purpose so the dependency on the toolkit's theme is named in one place rather
+/// than repeated as `use thomas_tui::…` across every file. `Theme`, `Severity`,
+/// `Health`, and the choice enums are all the general toolkit's; suite-ui just
+/// re-exposes them (publicly, below, so `suite_ui::Theme` keeps working too).
 mod theme {
     pub use thomas_tui::{ColorChoice, Health, Severity, Theme, ThemeChoice};
 }
 
-pub use app::{Tui, TuiError, TuiOptions};
 pub use attention_flag::AttentionFlag;
 pub use badge::SeverityBadge;
 pub use health_strip::{HealthStrip, HEALTH_SEP};
@@ -71,7 +72,10 @@ pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, To
 pub use status_bar::{JobState, Outcome, StatusBar};
 pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
 pub use thomas_tui::keys;
+// The terminal guard and all the domain-free widgets live in thomas_tui; re-exported
+// here so consumers keep importing them as `suite_ui::*` unchanged.
 pub use thomas_tui::{
     centered_fixed, centered_rect, pane, pane_blank, pane_titled, truncate_desc, truncate_path,
-    Counted, EmptyState, FilterChips, Freshness, KeyHints, SearchBar, StatusStrip, STATUS_SEP,
+    Counted, EmptyState, FilterChips, Freshness, KeyHints, SearchBar, StatusStrip, Tui, TuiError,
+    TuiOptions, STATUS_SEP,
 };
