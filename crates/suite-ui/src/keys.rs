@@ -27,6 +27,13 @@ pub const CONFIRM: KeyCode = KeyCode::Enter;
 /// Cancel / dismiss the current mode (close an overlay, clear a filter, back out
 /// of a confirm). A [`KeyCode`] because it's the Esc key.
 pub const CANCEL: KeyCode = KeyCode::Esc;
+/// Alternate cancel binding: `Ctrl-G` (Emacs `keyboard-quit`). Provided because
+/// not every keyboard has a usable Esc key, and the two text-entry contexts
+/// (palette, filter) consume every printable key — so without an Esc-free cancel
+/// a user could get trapped in them with no exit but quitting the whole app.
+/// Ctrl-G is the conventional terminal "abort", never produces a printable
+/// character, and works the same inside a text field as outside it.
+pub const CANCEL_ALT: char = 'g';
 
 /// True if this key event opens the command palette: `Ctrl-P` or a bare `:`.
 /// The one bit of shared *interpretation* worth centralizing, since it spans a
@@ -45,10 +52,17 @@ pub fn is_confirm(key: KeyEvent) -> bool {
     key.code == CONFIRM
 }
 
-/// True if this key event cancels/dismisses (Esc). The counterpart to
-/// [`is_confirm`].
+/// True if this key event cancels/dismisses: the [`CANCEL`] key (Esc) or the
+/// [`CANCEL_ALT`] chord (`Ctrl-G`). The counterpart to [`is_confirm`]. Two
+/// bindings because not every keyboard has a usable Esc; Ctrl-G is the Esc-free
+/// escape that also works inside the palette/filter text fields (see
+/// [`CANCEL_ALT`]).
 pub fn is_cancel(key: KeyEvent) -> bool {
     key.code == CANCEL
+        || matches!(
+            (key.code, key.modifiers.contains(KeyModifiers::CONTROL)),
+            (KeyCode::Char(CANCEL_ALT), true)
+        )
 }
 
 /// The conventional footer hint line, e.g.
@@ -92,5 +106,17 @@ mod tests {
         assert!(!is_confirm(ev(KeyCode::Esc, false)));
         assert!(!is_cancel(ev(KeyCode::Enter, false)));
         assert!(!is_confirm(ev(KeyCode::Char('q'), false)));
+    }
+
+    #[test]
+    fn ctrl_g_is_an_esc_free_cancel() {
+        // The Esc-free escape for keyboards without a usable Esc key: Ctrl-G must
+        // cancel exactly like Esc, so a user is never trapped in the palette or
+        // filter (where every printable key types) with no way out but quitting.
+        assert!(is_cancel(ev(KeyCode::Char(CANCEL_ALT), true)), "Ctrl-G cancels");
+        // The chord is required: a bare 'g' is an ordinary character (it must type
+        // normally into a text field), and Ctrl on another key is not cancel.
+        assert!(!is_cancel(ev(KeyCode::Char('g'), false)), "bare g must NOT cancel");
+        assert!(!is_cancel(ev(KeyCode::Char('h'), true)), "Ctrl-h is not cancel");
     }
 }
