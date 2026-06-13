@@ -1,5 +1,28 @@
 # Last Work
 
+## thomas-tui: sixth extraction — EmptyState widget
+
+Moved `empty_state.rs` into thomas-tui (git `R099` — cleanest rename yet, the
+only delta is the doctest `use suite_ui::` → `use thomas_tui::`). No logic
+changed; the `[Theme]` doc link stays valid (Theme is in thomas-tui).
+
+EmptyState only coupled to `Theme` (via `dim()`), so `use crate::theme::Theme;`
+resolves verbatim in thomas-tui.
+
+**Wiring (suite-ui API identical):**
+- thomas-tui: `mod empty_state` + `pub use empty_state::EmptyState`.
+- suite-ui: dropped `mod empty_state`, now `pub use thomas_tui::EmptyState` — so
+  `suite_ui::EmptyState` and gallery's use are unchanged.
+
+**Verified:** test count lossless — suite-ui unit 59→55, thomas-tui unit 33→37
+(the 4 EmptyState tests moved); doctests suite-ui 14→13, thomas-tui 4→5. 92
+conserved. clippy -D warnings clean both crates; fmt clean; gallery builds.
+
+**thomas-tui now owns:** Theme (+Severity/Health), Tui guard, text truncation,
+centering helpers, SearchBar, KeyHints, EmptyState.
+
+---
+
 ## thomas-tui: fifth extraction — KeyHints widget
 
 Moved `key_hints.rs` into thomas-tui (git `R085` — near-pure rename). Doc-only

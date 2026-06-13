@@ -32,6 +32,8 @@
 //!   input.
 //! - [`KeyHints`] — a one-line footer strip of `key → label` shortcut hints,
 //!   key accented, label dim, `•`-separated.
+//! - [`EmptyState`] — a centered, calm "nothing to show here" placeholder
+//!   (dim+bold message, optional dimmer hint); text only, no border.
 //!
 //! ## The `clap` feature
 //!
@@ -39,6 +41,7 @@
 //! [`ColorChoice`] so a consumer can parse `--theme`/`--color` straight into
 //! them. Consumers that don't use clap stay lean.
 
+mod empty_state;
 mod key_hints;
 mod layout;
 mod search_bar;
@@ -46,6 +49,7 @@ mod text;
 mod theme;
 mod tui;
 
+pub use empty_state::EmptyState;
 pub use key_hints::KeyHints;
 pub use layout::{centered_fixed, centered_rect};
 pub use search_bar::SearchBar;
