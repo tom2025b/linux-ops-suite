@@ -1,5 +1,31 @@
 # Last Work
 
+## thomas-tui: fourth extraction — SearchBar widget
+
+Moved `search_bar.rs` into thomas-tui (git `R093` — near-pure rename). The 7%
+delta is 3 doc-only edits: generalized the module-doc opener, removed two now-
+broken intra-doc links (`crate::StatusBar`/`crate::Toast` — those stay in
+suite-ui), and pointed the doctest at `use thomas_tui::`. No logic changed.
+
+SearchBar only coupled to `Theme` (via `prompt()`/`dim()`/`match_text()`), which
+now lives in thomas-tui — so `use crate::theme::Theme;` resolves verbatim inside
+thomas-tui (it has its own `mod theme`). First Tier-B widget unblocked by the
+Theme move.
+
+**Wiring (suite-ui API identical):**
+- thomas-tui: `mod search_bar` + `pub use search_bar::SearchBar`.
+- suite-ui: dropped `mod search_bar`, now `pub use thomas_tui::SearchBar` at the
+  crate root — so `suite_ui::SearchBar` and gallery's use are unchanged.
+
+**Verified:** test count lossless — suite-ui unit 68→64, thomas-tui unit 24→28
+(the 4 SearchBar tests moved); doctests suite-ui 16→15, thomas-tui 2→3. 92
+conserved. clippy -D warnings clean both crates; fmt clean; gallery builds.
+
+**thomas-tui now owns:** Theme (+Severity/Health), Tui guard, text truncation,
+centering helpers, SearchBar.
+
+---
+
 ## thomas-tui: third extraction — the whole Theme (simplest move)
 
 Moved `theme.rs` **verbatim** into thomas-tui — git tracked it as `R100` (a

@@ -27,6 +27,9 @@
 //!   percentage or at a fixed, parent-clamped size); the basis for any overlay.
 //! - [`truncate_path`] / [`truncate_desc`] — Unicode-aware string truncation
 //!   with a single `…`, keeping the path tail or the description head.
+//! - [`SearchBar`] — a one-line live-filter input affordance (prompt glyph,
+//!   query or placeholder, optional match count). Renders only; never captures
+//!   input.
 //!
 //! ## The `clap` feature
 //!
@@ -35,11 +38,13 @@
 //! them. Consumers that don't use clap stay lean.
 
 mod layout;
+mod search_bar;
 mod text;
 mod theme;
 mod tui;
 
 pub use layout::{centered_fixed, centered_rect};
+pub use search_bar::SearchBar;
 pub use text::{truncate_desc, truncate_path};
 pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
 pub use tui::{Tui, TuiError, TuiOptions};

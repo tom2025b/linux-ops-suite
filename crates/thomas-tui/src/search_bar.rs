@@ -1,10 +1,9 @@
-//! SearchBar: a one-line live-filter input affordance shared across the suite.
+//! SearchBar: a one-line live-filter input affordance.
 //!
 //! The visible counterpart to a screen's filter string: a prompt glyph, the
 //! current query (or a dim placeholder when empty), and an optional match count.
-//! Like [`StatusBar`](crate::StatusBar) and [`Toast`](crate::Toast) it draws a
-//! single line and owns no state — the consumer keeps the query string and the
-//! filtered results, and hands this widget the values to show.
+//! It draws a single line and owns no state — the consumer keeps the query
+//! string and the filtered results, and hands this widget the values to show.
 //!
 //! The widget never captures input. Key handling (appending characters,
 //! backspace, clear-on-esc) stays in the application; this only renders what the
@@ -21,7 +20,7 @@ use crate::theme::Theme;
 /// owns no application state and reads nothing from the environment.
 ///
 /// ```no_run
-/// # use suite_ui::{SearchBar, Theme};
+/// # use thomas_tui::{SearchBar, Theme};
 /// # use ratatui::{Frame, layout::Rect};
 /// # fn draw(frame: &mut Frame, row: Rect, theme: Theme) {
 /// SearchBar {
