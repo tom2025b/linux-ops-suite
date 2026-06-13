@@ -2,8 +2,9 @@
 //! `Drop` (runs on normal return, `?` propagation, and panic unwind alike).
 
 use std::io::{self, stdout, IsTerminal, Write};
+use std::time::Duration;
 
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use ratatui::DefaultTerminal;
 
@@ -157,7 +158,8 @@ impl Tui {
         // Unlike in `new`, a failure here needs no manual restore: the fresh
         // terminal is already assigned, so our own `Drop` will clean up.
         apply_envelope(&mut self.terminal, self.opts)?;
-        self.terminal.clear()
+        self.terminal.clear()?;
+        drain_pending_events()
     }
 }
 
@@ -181,6 +183,19 @@ fn drain_lines(out: &mut Vec<String>, w: &mut impl Write) {
     for line in out.drain(..) {
         let _ = writeln!(w, "{line}");
     }
+}
+
+/// Discard any input events buffered while a suspended child held the terminal.
+/// A full-screen child (editor, pager) leaves keystrokes — and its own mouse/
+/// focus escape sequences — queued on stdin; without this drain they would fire
+/// in the TUI's event loop on the very first poll after re-entry, e.g. a stray
+/// `q` from the editor quitting the cockpit. Polls with a zero timeout so it
+/// only ever reads what is already pending and never blocks.
+fn drain_pending_events() -> io::Result<()> {
+    while event::poll(Duration::from_millis(0))? {
+        let _ = event::read()?;
+    }
+    Ok(())
 }
 
 /// The leave→run→re-enter control flow behind [`Tui::suspended`], with the
