@@ -1,5 +1,39 @@
 # Last Work
 
+## thomas-tui: third extraction — the whole Theme (simplest move)
+
+Moved `theme.rs` **verbatim** into thomas-tui — git tracked it as `R100` (a
+100% pure rename, ZERO content change). The full file went: the `Theme` struct,
+the `NO_COLOR` gate, `ThemeChoice`/`ColorChoice`, the `Severity`/`Health` enums,
+and ALL the inherent style methods (incl. `severity()`/`health()`).
+
+NOTE: an earlier attempt over-engineered this (split pure styling from a
+`Severity`/`Health` extension trait). Tom course-corrected: "keep it simple, do
+the simplest possible extraction that keeps the API unchanged." Reset and did the
+plain whole-file move instead. `Severity`/`Health` rode along into thomas-tui —
+they're generic enough, and `theme.severity(s)` stays an inherent method (no
+trait, no call-site churn).
+
+**Wiring (suite-ui API identical):**
+- thomas-tui exposes `mod theme` → re-exports Theme/ThemeChoice/ColorChoice/
+  Severity/Health. Added an optional `clap` dep + `clap` feature so the existing
+  `#[cfg_attr(feature="clap", derive(ValueEnum))]` lines compile.
+- suite-ui keeps a one-line shim `mod theme { pub use thomas_tui::{...}; }` so all
+  17 files importing `crate::theme::{...}` and `lib.rs`'s `pub use theme::{...}`
+  resolve UNCHANGED — no edits to any consuming file.
+- suite-ui's `clap` feature now forwards to `thomas-tui/clap` (its own clap dep
+  dropped — the only clap use was those theme derives, which moved).
+
+**Verified:** test count lossless — thomas-tui unit 15→24, suite-ui unit 77→68
+(the 9 theme tests moved); 92 conserved. Builds clean with AND without
+`--features clap` (forwarding works); clippy -D warnings clean in both feature
+states; fmt clean; gallery builds.
+
+**thomas-tui now owns:** Theme (+Severity/Health), Tui guard, text truncation,
+centering helpers. suite-ui is now mostly domain widgets layered on top.
+
+---
+
 ## thomas-tui: second extraction — text truncation + centering helpers
 
 Pulled two more zero-coupling pieces from suite-ui into `thomas-tui`, same

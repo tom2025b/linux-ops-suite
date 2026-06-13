@@ -5,8 +5,15 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "A small, general-purpose terminal-UI toolkit: a RAII terminal scope guard (panic-safe setup/teardown, suspend-for-child) over ratatui + crossterm."
+description = "A small, general-purpose terminal-UI toolkit: a NO_COLOR-aware theme, a RAII terminal scope guard (panic-safe setup/teardown, suspend-for-child), centering helpers, and Unicode-aware truncation, over ratatui + crossterm."
+
+[features]
+default = []
+# Derive `clap::ValueEnum` on ThemeChoice/ColorChoice so `--theme`/`--color`
+# parse straight into them. Off by default; consumers without clap stay lean.
+clap = ["dep:clap"]
 
 [dependencies]
 ratatui = { workspace = true }
 crossterm = { workspace = true }
+clap = { workspace = true, optional = true }

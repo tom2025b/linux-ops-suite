@@ -62,8 +62,15 @@ mod overlays;
 mod search_bar;
 mod status_bar;
 mod status_strip;
-mod theme;
 mod widgets;
+
+/// The theme now lives in [`thomas_tui`]; re-exported here under the same path
+/// so suite code keeps using `crate::theme::*` (and `suite_ui::Theme`)
+/// unchanged. `Theme`, `Severity`, `Health`, and the choice enums are all the
+/// general toolkit's — suite-ui just re-exposes them.
+mod theme {
+    pub use thomas_tui::{ColorChoice, Health, Severity, Theme, ThemeChoice};
+}
 
 pub use app::{Tui, TuiError, TuiOptions};
 pub use attention_flag::AttentionFlag;

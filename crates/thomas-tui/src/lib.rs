@@ -17,17 +17,29 @@
 //! terminal *lifecycle* (the mechanism every TUI repeats), never the event loop
 //! or any application state.
 //!
-//! Alongside the guard, two domain-free building blocks:
+//! Alongside the guard, the domain-free building blocks:
 //!
+//! - [`Theme`] — an accent hue behind one `NO_COLOR` gate ([`ThemeChoice`],
+//!   [`ColorChoice`]), with the semantic styles a renderer asks for by name
+//!   (`prompt`, `title`, `dim`, `selection`, …) plus the [`Severity`]/[`Health`]
+//!   status axes.
 //! - [`centered_rect`] / [`centered_fixed`] — center a `Rect` in another (by
 //!   percentage or at a fixed, parent-clamped size); the basis for any overlay.
 //! - [`truncate_path`] / [`truncate_desc`] — Unicode-aware string truncation
 //!   with a single `…`, keeping the path tail or the description head.
+//!
+//! ## The `clap` feature
+//!
+//! Off by default. Enabling it derives `clap::ValueEnum` on [`ThemeChoice`] and
+//! [`ColorChoice`] so a consumer can parse `--theme`/`--color` straight into
+//! them. Consumers that don't use clap stay lean.
 
 mod layout;
 mod text;
+mod theme;
 mod tui;
 
 pub use layout::{centered_fixed, centered_rect};
 pub use text::{truncate_desc, truncate_path};
+pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
 pub use tui::{Tui, TuiError, TuiOptions};
