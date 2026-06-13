@@ -1,5 +1,32 @@
 # Last Work
 
+## thomas-tui: second extraction — text truncation + centering helpers
+
+Pulled two more zero-coupling pieces from suite-ui into `thomas-tui`, same
+move-and-re-export pattern as the Tui guard:
+
+- **`text.rs`** (`truncate_path` / `truncate_desc`) — `git mv`'d whole into
+  `thomas-tui/src/text.rs` (rename preserved history; only doc phrasing + the 2
+  doctests changed `use suite_ui::` → `use thomas_tui::`).
+- **`centered_rect` / `centered_fixed`** — extracted from `suite-ui`'s
+  `widgets.rs` into a new `thomas-tui/src/layout.rs` (with their 3 tests). The
+  pane helpers (`pane`/`pane_titled`/`pane_blank`) use `Theme`, so they STAYED in
+  suite-ui's widgets.rs — this was a partial split, not a whole-file move.
+
+**Re-export wiring (suite-ui API unchanged):**
+- suite-ui `lib.rs` re-exports `truncate_*` from `thomas_tui`; `mod text;` gone.
+- suite-ui `widgets.rs` re-exports `centered_*` from `thomas_tui`, so the 3
+  overlays (confirm/help/palette) that import `crate::widgets::centered_*` and
+  `lib.rs`'s `pub use widgets::{centered_*, ...}` all keep resolving untouched.
+
+**Verified:** test count lossless — suite-ui unit 86→77, thomas-tui unit 6→15
+(the 6 text + 3 centering tests moved); doctests suite-ui 18→16, thomas-tui 0→2.
+77+15=92 conserved. clippy -D warnings clean on both; fmt clean; gallery builds.
+
+**thomas-tui now owns:** Tui guard, text truncation, centering helpers.
+
+---
+
 ## thomas-tui: new general-purpose TUI crate — first extraction (Tui guard)
 
 Started a new, project-agnostic terminal-UI library `crates/thomas-tui`, separate

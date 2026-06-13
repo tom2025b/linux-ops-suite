@@ -16,7 +16,18 @@
 //! Drive your own event loop via [`Tui::terminal`] — the guard owns the
 //! terminal *lifecycle* (the mechanism every TUI repeats), never the event loop
 //! or any application state.
+//!
+//! Alongside the guard, two domain-free building blocks:
+//!
+//! - [`centered_rect`] / [`centered_fixed`] — center a `Rect` in another (by
+//!   percentage or at a fixed, parent-clamped size); the basis for any overlay.
+//! - [`truncate_path`] / [`truncate_desc`] — Unicode-aware string truncation
+//!   with a single `…`, keeping the path tail or the description head.
 
+mod layout;
+mod text;
 mod tui;
 
+pub use layout::{centered_fixed, centered_rect};
+pub use text::{truncate_desc, truncate_path};
 pub use tui::{Tui, TuiError, TuiOptions};

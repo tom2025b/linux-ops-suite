@@ -62,7 +62,6 @@ mod overlays;
 mod search_bar;
 mod status_bar;
 mod status_strip;
-mod text;
 mod theme;
 mod widgets;
 
@@ -79,6 +78,6 @@ pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, To
 pub use search_bar::SearchBar;
 pub use status_bar::{JobState, Outcome, StatusBar};
 pub use status_strip::{StatusStrip, STATUS_SEP};
-pub use text::{truncate_desc, truncate_path};
 pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
+pub use thomas_tui::{truncate_desc, truncate_path};
 pub use widgets::{centered_fixed, centered_rect, pane, pane_blank, pane_titled};
