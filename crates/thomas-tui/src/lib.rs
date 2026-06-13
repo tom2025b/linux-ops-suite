@@ -30,6 +30,8 @@
 //! - [`SearchBar`] — a one-line live-filter input affordance (prompt glyph,
 //!   query or placeholder, optional match count). Renders only; never captures
 //!   input.
+//! - [`KeyHints`] — a one-line footer strip of `key → label` shortcut hints,
+//!   key accented, label dim, `•`-separated.
 //!
 //! ## The `clap` feature
 //!
@@ -37,12 +39,14 @@
 //! [`ColorChoice`] so a consumer can parse `--theme`/`--color` straight into
 //! them. Consumers that don't use clap stay lean.
 
+mod key_hints;
 mod layout;
 mod search_bar;
 mod text;
 mod theme;
 mod tui;
 
+pub use key_hints::KeyHints;
 pub use layout::{centered_fixed, centered_rect};
 pub use search_bar::SearchBar;
 pub use text::{truncate_desc, truncate_path};

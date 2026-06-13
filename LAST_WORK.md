@@ -1,5 +1,30 @@
 # Last Work
 
+## thomas-tui: fifth extraction — KeyHints widget
+
+Moved `key_hints.rs` into thomas-tui (git `R085` — near-pure rename). Doc-only
+delta: rewrote the module-doc opener to drop a now-broken `crate::HelpSheet`
+intra-doc link (HelpSheet stays in suite-ui) and pointed the doctest at
+`use thomas_tui::`. The `[Theme::prompt](crate::Theme)` link stays valid (Theme
+lives in thomas-tui). No logic changed.
+
+Like SearchBar, KeyHints only coupled to `Theme` (via `prompt()`/`dim()`), so
+`use crate::theme::Theme;` resolves verbatim in thomas-tui.
+
+**Wiring (suite-ui API identical):**
+- thomas-tui: `mod key_hints` + `pub use key_hints::KeyHints`.
+- suite-ui: dropped `mod key_hints`, now `pub use thomas_tui::KeyHints` — so
+  `suite_ui::KeyHints` and gallery's use are unchanged.
+
+**Verified:** test count lossless — suite-ui unit 64→59, thomas-tui unit 28→33
+(the 5 KeyHints tests moved); doctests suite-ui 15→14, thomas-tui 3→4. 92
+conserved. clippy -D warnings clean both crates; fmt clean; gallery builds.
+
+**thomas-tui now owns:** Theme (+Severity/Health), Tui guard, text truncation,
+centering helpers, SearchBar, KeyHints.
+
+---
+
 ## thomas-tui: fourth extraction — SearchBar widget
 
 Moved `search_bar.rs` into thomas-tui (git `R093` — near-pure rename). The 7%
