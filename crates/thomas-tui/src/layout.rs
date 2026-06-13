@@ -6,17 +6,25 @@ use ratatui::layout::{Constraint, Layout, Rect};
 
 /// A `Rect` centered as a percentage of `area` (e.g. 60% wide, 40% tall).
 /// The basis for percentage-sized overlays.
+///
+/// The two surrounding margins are split so all three bands sum to exactly 100%:
+/// the leading margin is `(100 - pct) / 2` and the trailing margin takes the
+/// remainder. With a plain `/ 2` on both sides an odd remainder (e.g. `pct = 55`
+/// → `22 + 55 + 22 = 99`) would drop a row/column and skew the centring; letting
+/// the trailing margin absorb the odd cell keeps the band exactly `pct` wide.
 pub fn centered_rect(pct_w: u16, pct_h: u16, area: Rect) -> Rect {
+    let v_lead = (100 - pct_h) / 2;
+    let h_lead = (100 - pct_w) / 2;
     let [_, mid_v, _] = Layout::vertical([
-        Constraint::Percentage((100 - pct_h) / 2),
+        Constraint::Percentage(v_lead),
         Constraint::Percentage(pct_h),
-        Constraint::Percentage((100 - pct_h) / 2),
+        Constraint::Percentage(100 - pct_h - v_lead),
     ])
     .areas(area);
     let [_, mid, _] = Layout::horizontal([
-        Constraint::Percentage((100 - pct_w) / 2),
+        Constraint::Percentage(h_lead),
         Constraint::Percentage(pct_w),
-        Constraint::Percentage((100 - pct_w) / 2),
+        Constraint::Percentage(100 - pct_w - h_lead),
     ])
     .areas(mid_v);
     mid
@@ -67,5 +75,19 @@ mod tests {
         let r = centered_rect(50, 50, parent);
         assert_eq!((r.width, r.height), (50, 50));
         assert_eq!((r.x, r.y), (25, 25));
+    }
+
+    #[test]
+    fn centered_rect_keeps_the_exact_band_on_odd_percentages() {
+        // Regression: with a plain `/ 2` on both margins, 55% gave 22 + 55 + 22 =
+        // 99, dropping a cell. The band must still be exactly `pct` of a 100-cell
+        // parent, with the surrounding margins summing to the remainder.
+        let parent = Rect::new(0, 0, 100, 100);
+        let r = centered_rect(55, 55, parent);
+        assert_eq!(r.width, 55, "width is exactly the requested percentage");
+        assert_eq!(r.height, 55, "height is exactly the requested percentage");
+        // The three bands tile the parent with nothing lost on either axis.
+        assert_eq!(r.x as u32 + r.width as u32 + (100 - r.right() as u32), 100);
+        assert!(r.right() <= parent.right() && r.bottom() <= parent.bottom());
     }
 }

@@ -1,5 +1,40 @@
 # Last Work
 
+## thomas-tui + suite-ui review fixes (worktree, NOT yet merged)
+
+Focused review of the new `thomas-tui` crate + updated `suite-ui`, then fixed
+all findings. Branch: `worktree-tui-review-fixes` (worktree under
+`.claude/worktrees/tui-review-fixes`). Not pushed / no PR yet.
+
+Two CONFIRMED rendering bugs fixed (reproduced before/after in the gallery):
+  - ConfirmModal clipped a title longer than its message — width now folds in
+    `title.chars().count() + 2` (confirm.rs). Verified: full long title fits.
+  - PaletteFrame chopped long descriptions/labels at the border with no marker —
+    now truncates both via the crate's own `truncate_desc` to the computed inner
+    width (palette.rs). Verified: descriptions end in `…`.
+Plus:
+  - PaletteFrame `selected: None` used to highlight row 0 (`unwrap_or(0)`); now
+    `self.selected == Some(i)` so None highlights nothing. Doc clarified.
+  - centered_rect lost a row/col on ODD percentages (`(100-pct)/2` twice = 99%);
+    trailing margin now absorbs the remainder → band is exactly `pct` (layout.rs).
+  - keys::key_hint() kept as a literal but added a drift-guard test asserting it
+    names QUIT/HELP/^P, so it can't silently disagree with the binding consts.
+  - Removed the redundant `suite-ui/src/app/mod.rs` pass-through (only lib.rs used
+    it); `Tui`/`TuiError`/`TuiOptions` now re-exported straight from thomas_tui.
+  - Kept the `theme` shim module (it's the single internal import seam for 5
+    suite-ui widgets) — tightened the doc to say why it stays.
+
+Tests ADDED to the 3 previously-untested overlay files (confirm/help/palette).
+Counts now: thomas-tui 78 unit (+13) + 13 doctest; suite-ui 27 unit + 5 doctest.
+Verified: `cargo clippy --all-targets --all-features -- -D warnings` clean;
+`cargo test --all-features` all green; `cargo build --workspace` clean (no
+consumer/sibling breakage). Public API unchanged (consumers need no rev-bump).
+
+NEXT: review the diff, then merge to umbrella main as a normal PR. No consumer
+rev-bump dance needed unless you want them on the fixed suite-ui rev.
+
+---
+
 ## thomas-tui extraction: MERGED to umbrella main (PR #11)
 
 The full `thomas-tui` extraction is MERGED to umbrella main.
