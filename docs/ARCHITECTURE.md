@@ -10,9 +10,10 @@ job, and never reaches into another tool's code.
 
 **This repo is the contract & index headquarters.** It holds the suite README, the
 shared architecture, the integration map, the contract rules, the JSON schemas, and
-example fixtures. It also hosts a small Cargo workspace with two members:
-`suite-ui`, the common TUI chrome (see
-[Shared UI chrome](#shared-ui-chrome-suite-ui) below), and `toolbox-bridge`, the
+example fixtures. It also hosts a small Cargo workspace with three members:
+`thomas-tui`, the general-purpose terminal-UI toolkit; `suite-ui`, the suite's
+common TUI chrome layered on top of it (see
+[Shared UI chrome](#shared-ui-chrome-suite-ui) below); and `toolbox-bridge`, the
 thin Workstate-mediated adapter between Bulwark and ScriptVault.
 
 It is **not**:
@@ -104,6 +105,30 @@ one cosmetic thing every front-end must agree on. It is built and tested in this
 workspace; consumers (Bulwark, RexOps, ScriptVault) wire it in per-repo as a **git
 dependency pinned to a commit of this repo** — no `path =` deps — so each builds from a
 fresh clone without a sibling checkout.
+
+### Two layers: `thomas-tui` and `suite-ui`
+
+The shared UI is split into two crates so the *general* terminal plumbing stays free
+of suite vocabulary:
+
+- **`thomas-tui`** ([`crates/thomas-tui`](../crates/thomas-tui)) — a
+  project-agnostic terminal-UI toolkit with **no suite or domain vocabulary**: the
+  `NO_COLOR`-aware `Theme`, the panic-safe `Tui` RAII terminal guard, centering and
+  Unicode-truncation helpers, shared keymap constants, and the domain-free widgets
+  (`SearchBar`, `KeyHints`, `EmptyState`, `Counted`, `FilterChips`, `StatusStrip`,
+  `Freshness`) and generic overlays (confirm modal, help sheet, command-palette
+  frame). It depends only on `ratatui` + `crossterm` (plus an optional `clap`
+  feature for the `--theme`/`--color` value enums).
+- **`suite-ui`** ([`crates/suite-ui`](../crates/suite-ui)) — the thin **suite
+  chrome** layered on `thomas-tui`. It re-exports the whole toolkit (so consumers
+  keep importing everything as `suite_ui::*`) and adds the few widgets welded to the
+  suite's own `Severity`/`Health`/`JobState`/`Outcome` vocabulary: `SeverityBadge`,
+  `AttentionFlag`, `HealthStrip`, the `StatusBar` job segment, and the `Toast`
+  flash. Its `clap` feature forwards to `thomas-tui/clap`.
+
+Consumers depend on `suite-ui` (pinned by git rev); `thomas-tui` is pulled in
+transitively. The same "pure presentation, no domain data flow" reasoning above
+applies to both layers — neither carries suite data or couples two tools' logic.
 
 ## How RexOps consumes exports
 
