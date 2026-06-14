@@ -117,7 +117,7 @@ rex run
 
 - One job per tool
 - File-based contracts over shared code — for logic and data. The lone exception is
-  `suite-ui` (shared TUI *chrome* only); see below.
+  the shared TUI *chrome* (`thomas-tui` + `suite-ui`); see below.
 - Read-only by default
 - Low-resource friendly (Linux Mint)
 - Rust-first where it makes sense
@@ -132,20 +132,30 @@ rex run
 - [Proto](https://github.com/tom2025b/proto) — Guided protocol / checklist runner
 - [RexOps](https://github.com/tom2025b/rexops) — Suite cockpit
 
-## Shared UI (`suite-ui`)
+## Shared UI (`thomas-tui` + `suite-ui`)
 
-The one piece of shared *code* in the suite lives in this repo:
-[`crates/suite-ui`](crates/suite-ui) — the common TUI chrome (cyan/amber theme with
-`NO_COLOR` support, rounded panes, health styles, and the help / confirm / toast /
-command-palette overlays). It is **pure presentation** — no domain logic, no data flow
-— so it doesn't reintroduce the coupling the file-contracts rule prevents. Bulwark,
-RexOps, and ScriptVault consume it as a **git dependency** pinned to a commit of this
-repo (no `path =` deps), so each builds from a fresh clone without a sibling checkout.
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#shared-ui-chrome-suite-ui) for the why.
+The one piece of shared *code* in the suite lives in this repo, split across two
+crates:
+
+- [`crates/thomas-tui`](crates/thomas-tui) — a general-purpose, project-agnostic
+  terminal-UI toolkit (the `NO_COLOR`-aware theme, a panic-safe terminal guard,
+  centering/truncation helpers, shared keymap constants, and the domain-free widgets
+  and overlays). No suite or domain vocabulary.
+- [`crates/suite-ui`](crates/suite-ui) — the suite's common TUI chrome layered on
+  `thomas-tui`: it re-exports the whole toolkit and adds the few widgets tied to the
+  suite's risk/health/job vocabulary (severity badge, attention flag, health strip,
+  status bar, toast).
+
+Both are **pure presentation** — no domain logic, no data flow — so they don't
+reintroduce the coupling the file-contracts rule prevents. Bulwark, RexOps, and
+ScriptVault consume `suite-ui` as a **git dependency** pinned to a commit of this repo
+(no `path =` deps), pulling in `thomas-tui` transitively, so each builds from a fresh
+clone without a sibling checkout. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#shared-ui-chrome-suite-ui) for the why.
 
 ```bash
-# build + test the crate, and see every component rendered in each theme:
-cargo test -p suite-ui
+# build + test the crates, and see every component rendered in each theme:
+cargo test -p thomas-tui -p suite-ui
 cargo run -p suite-ui --example gallery
 ```
 
