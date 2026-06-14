@@ -32,6 +32,7 @@ use crate::theme::Theme;
 /// [`Cancelled`]: ToastKind::Cancelled
 /// [`Error`]: ToastKind::Error
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ToastKind {
     /// A neutral, informational flash (dim, no glyph).
     Info,

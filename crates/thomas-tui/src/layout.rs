@@ -90,4 +90,31 @@ mod tests {
         assert_eq!(r.x as u32 + r.width as u32 + (100 - r.right() as u32), 100);
         assert!(r.right() <= parent.right() && r.bottom() <= parent.bottom());
     }
+
+    #[test]
+    fn centered_rect_on_a_zero_size_area_stays_empty_and_does_not_panic() {
+        // A degenerate parent (a region laid out to nothing) must not panic the
+        // percentage split; the result is an empty rect inside it.
+        let r = centered_rect(50, 50, Rect::new(0, 0, 0, 0));
+        assert_eq!((r.width, r.height), (0, 0));
+        // A zero-height but non-zero-width parent: width still splits, height is 0.
+        let r = centered_rect(50, 50, Rect::new(0, 0, 80, 0));
+        assert_eq!(r.height, 0);
+        assert!(r.right() <= 80, "stays within the parent width");
+    }
+
+    #[test]
+    fn centered_fixed_on_a_tiny_parent_clamps_to_at_least_one_cell() {
+        // Parent smaller than the 2-cell border reservation: width/height clamp up
+        // to the `.max(1)` floor rather than underflowing to a huge value.
+        let r = centered_fixed(10, 4, Rect::new(0, 0, 1, 1));
+        assert_eq!((r.width, r.height), (1, 1), "clamped to the 1-cell floor");
+        assert!(
+            r.right() <= 1 && r.bottom() <= 1,
+            "and the clamped rect stays inside the tiny parent"
+        );
+        // A zero-size parent is the extreme of the same path: still 1×1, no panic.
+        let r = centered_fixed(10, 4, Rect::new(0, 0, 0, 0));
+        assert_eq!((r.width, r.height), (1, 1));
+    }
 }

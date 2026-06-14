@@ -28,6 +28,7 @@ use crate::theme::Theme;
 /// transient flash and the persistent status segment can never drift apart, and a
 /// consumer's own history/footer rows can reuse the identical styling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Outcome {
     /// The job finished cleanly (exit 0): `✓` + the green health style.
     Success,
@@ -60,6 +61,7 @@ impl Outcome {
 /// [`Cancelled`]: JobState::Cancelled
 /// [`Idle`]: JobState::Idle
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum JobState<'a> {
     /// No job has run, or nothing worth surfacing.
     Idle,

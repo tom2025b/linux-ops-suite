@@ -1,5 +1,45 @@
 # Last Work
 
+## thomas-tui + suite-ui: #[non_exhaustive] enums + test hardening (PR pending merge)
+
+2026-06-14 ~00:30 UTC. Repo: linux-ops-suite (umbrella) only — no consumer/
+sibling repos touched. Branch: `worktree-non-exhaustive-enums` (worktree under
+`.claude/worktrees/non-exhaustive-enums`). Followed a 5-agent deep-dive review
+of thomas-tui + suite-ui; implemented the highest-value findings.
+
+Forward-compat (API): added `#[non_exhaustive]` to all 7 public enums —
+  thomas-tui: ThemeChoice, ColorChoice, Health, Severity (theme.rs)
+  suite-ui:   Outcome, JobState (status_bar.rs), ToastKind (overlays/toast.rs)
+The attribute FORCED two cross-crate matches in suite-ui to gain a fallback arm
+(`_ => "?"`): badge.rs (Severity→abbr) and health_strip.rs (Health→glyph) —
+without them suite-ui itself stops compiling. A future enum variant now shows a
+neutral `?` rather than breaking consumers or masquerading as an existing level.
+
+Test hardening (review items #1/#2/#4; #3/#5/#6 deferred per Tom):
+  - widgets.rs: pane border now asserted to carry the DIM modifier (not just the
+    corner glyph); padding asserted (border x=0, pad x=1, body x=2); pane_blank
+    border checked dim; +tiny-area (1×1…3×3) no-panic guard.
+  - palette.rs: MAX_ROWS truncation test (15 items → 0–11 render, 12+ dropped,
+    no "(no match)"); out-of-range `selected: Some(99)` highlights nothing / no
+    panic.
+  - layout.rs: zero-size + 1×1 parents into centered_rect/centered_fixed stay
+    in-bounds, no panic/underflow.
+  - (freshness bucket-boundary tests the review flagged were ALREADY present —
+    not duplicated.)
+
+Counts now: thomas-tui 85 unit (+7) + 13 doctest; suite-ui 27 unit + 5 doctest.
+Verified GREEN on default AND `--features clap`: `cargo build`, `cargo test`,
+`cargo clippy --all-targets -- -D warnings`. Diff: 8 files, +181/−12.
+
+API impact on consumers (rexops/bulwark/scriptvault): they pin a suite-ui rev
+and only construct/read these enums (no exhaustive matches they own), so this
+forces NO rev-bump — they move only if deliberately bumped per
+suite-ui-ci-sibling-checkout-ordering.
+
+NEXT: merging to umbrella main via PR now (per the "PR, never direct push" rule).
+
+---
+
 ## thomas-tui + suite-ui review fixes (worktree, NOT yet merged)
 
 Focused review of the new `thomas-tui` crate + updated `suite-ui`, then fixed

@@ -57,6 +57,9 @@ impl HealthStrip<'_> {
             Health::Degraded => "◐",
             Health::Unavailable => "○",
             Health::Unknown => "?",
+            // `Health` is #[non_exhaustive]; a future level falls back to the
+            // unknown glyph rather than failing to compile here.
+            _ => "?",
         }
     }
 
