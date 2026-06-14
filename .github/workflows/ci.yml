@@ -70,3 +70,21 @@ jobs:
       #    JSON Schema metaschema, catching malformed schema definitions.
       - name: Validate schema files against JSON Schema metaschema
         run: check-jsonschema --check-metaschema contracts/*.schema.json
+
+      # 3. Every example payload must conform to its schema. This is what keeps
+      #    the examples honest: if a producer drifts an example or a schema
+      #    tightens away from it, this step fails. Pairs are listed explicitly
+      #    (example -> schema) because one example name omits the `.v1` infix;
+      #    add a line here when a provisional schema gains an example.
+      - name: Validate examples against their schemas
+        run: |
+          set -euo pipefail
+          validate() {
+            echo "validating examples/$1 against contracts/$2"
+            check-jsonschema --schemafile "contracts/$2" "examples/$1"
+          }
+          validate bulwark.workstate-feed.v1.example.json      bulwark.workstate-feed.v1.schema.json
+          validate proto.session.example.json                  proto.session.schema.json
+          validate proto.workstate-feed.example.json           proto.workstate-feed.v1.schema.json
+          validate toolbox-bridge.workstate-feed.v1.example.json toolbox-bridge.workstate-feed.v1.schema.json
+          validate toolfoundry.workstate-feed.v1.example.json  toolfoundry.workstate-feed.v1.schema.json
