@@ -81,8 +81,7 @@ pub enum Health {
 /// operation, a review item). The suite's single risk vocabulary, ordered
 /// most-severe first so `Critical < High` reads the way the styling escalates.
 /// A consumer maps its own grading onto one of these and gets a consistent,
-/// `NO_COLOR`-safe style from [`Theme::severity`] (and a badge from
-/// [`SeverityBadge`](crate::SeverityBadge)).
+/// `NO_COLOR`-safe style from [`Theme::severity`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[non_exhaustive]
 pub enum Severity {
@@ -206,8 +205,8 @@ impl Theme {
     /// IMPORTANT: this style deliberately sets NO foreground colour. ratatui
     /// patches it over the whole selected row *including the rail glyph*, and
     /// `Buffer::set_style` only overwrites a cell's fg when the patch's fg is
-    /// `Some`. Leaving fg unset is what lets the accent [`selected_rail`] survive
-    /// the whole-row highlight.
+    /// `Some`. Leaving fg unset is what lets the accent [`Theme::selected_rail`]
+    /// survive the whole-row highlight.
     pub fn selection(self) -> Style {
         if self.color {
             Style::new().bold().bg(Color::Rgb(54, 60, 74))
@@ -218,7 +217,7 @@ impl Theme {
 
     /// The left accent rail (`▌`) drawn at the start of the SELECTED row. Accent
     /// hue + bold when colour is on so the selection has a crisp coloured edge;
-    /// bold-only under `NO_COLOR`. Relies on [`selection`] being fg-free.
+    /// bold-only under `NO_COLOR`. Relies on [`Theme::selection`] being fg-free.
     pub fn selected_rail(self) -> Style {
         self.accent(Style::new().bold(), self.accent)
     }
