@@ -272,7 +272,10 @@ mod tests {
         let out = flat(&term);
         // The first row and the last row that fits (index MAX_ROWS-1 = 11) show.
         assert!(out.contains("cmd00"), "first item shows");
-        assert!(out.contains("cmd11"), "the 12th item (last within MAX_ROWS) shows");
+        assert!(
+            out.contains("cmd11"),
+            "the 12th item (last within MAX_ROWS) shows"
+        );
         // The 13th item onward is truncated away.
         assert!(
             !out.contains("cmd12"),

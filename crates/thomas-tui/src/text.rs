@@ -15,7 +15,7 @@
 const ELLIPSIS: char = '…';
 
 /// Truncate `s` to at most `max` characters, keeping the **end** and marking the
-/// cut with a leading [`ELLIPSIS`]. For paths, where the filename (the tail) is
+/// cut with a leading ellipsis. For paths, where the filename (the tail) is
 /// the part worth keeping.
 ///
 /// Char-counted, so Unicode is safe. Input of `max` chars or fewer is returned
@@ -44,7 +44,7 @@ pub fn truncate_path(s: &str, max: usize) -> String {
 }
 
 /// Truncate `s` to at most `max` characters, keeping the **start** and marking
-/// the cut with a trailing [`ELLIPSIS`]. For descriptions and other
+/// the cut with a trailing ellipsis. For descriptions and other
 /// read-left-to-right text. Leading/trailing whitespace is trimmed first.
 ///
 /// Char-counted. Input of `max` chars or fewer (after trimming) is returned

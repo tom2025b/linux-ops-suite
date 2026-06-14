@@ -106,7 +106,8 @@ rex run
 - No arguments needed.
 - Automatically detects the current project folder (git toplevel, falling back to pwd) and passes it to tools that scan or read manifests.
 - First thing you see is the celebration banner ("Rex and Baby Grok built this. Enjoy.") with a cute detailed ASCII baby and fireworks.
-- Then runs the producers and aggregator in the correct order: ToolFoundry → Bulwark → Proto → ScriptVault → Workstate.
+- Then runs the producers and aggregators in contract order: ToolFoundry → Bulwark → Proto → Workstate → Toolbox-Bridge.
+- Producer feeds are written to `$XDG_DATA_HOME/workstate/feeds`, and the compiled Workstate snapshot is written to `$XDG_DATA_HOME/rexops/feeds/workstate.snapshot.json`.
 - Everything is optional and best-effort; missing tools are skipped (graceful degradation).
 - A small status summary is printed from the resulting Workstate v3 snapshot when present.
 

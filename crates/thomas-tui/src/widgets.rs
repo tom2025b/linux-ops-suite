@@ -133,7 +133,11 @@ mod tests {
         })
         .unwrap();
         let buf = term.backend().buffer().clone();
-        assert_eq!(buf.cell((0, 1)).unwrap().symbol(), "│", "left border at x=0");
+        assert_eq!(
+            buf.cell((0, 1)).unwrap().symbol(),
+            "│",
+            "left border at x=0"
+        );
         assert_eq!(
             buf.cell((1, 1)).unwrap().symbol(),
             " ",

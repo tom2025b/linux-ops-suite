@@ -12,7 +12,7 @@
 //!    (`feeds/toolbox-bridge.json`) for ScriptVault to consume.
 //!
 //! The pipeline mirrors Workstate's own ingest -> normalize -> write split:
-//! [`snapshot`] reads, [`convert`] is pure, [`feed`] writes atomically.
+//! [`snapshot`] reads, [`mod@convert`] is pure, [`feed`] writes atomically.
 
 pub mod convert;
 pub mod error;
