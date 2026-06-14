@@ -70,21 +70,26 @@ pub fn pane_blank(theme: Theme) -> Block<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::style::Modifier;
+    use ratatui::Terminal;
+
+    /// The top row of a freshly-drawn block, flattened to one string.
+    fn top_row(buf: &ratatui::buffer::Buffer) -> String {
+        (0..buf.area.width)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol().to_string())
+            .collect()
+    }
 
     #[test]
     fn pane_renders_into_an_area_with_a_titled_border() {
-        use ratatui::backend::TestBackend;
-        use ratatui::Terminal;
-
         // Render `pane` into a buffer and assert the title text actually shows in
         // the top border — proving `pane` (built on `pane_titled`) frames + titles.
         let mut term = Terminal::new(TestBackend::new(20, 4)).unwrap();
         term.draw(|f| f.render_widget(pane("adapters", Theme::with_color(true)), f.area()))
             .unwrap();
         let buf = term.backend().buffer().clone();
-        let top: String = (0..buf.area.width)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol().to_string())
-            .collect();
+        let top = top_row(&buf);
         assert!(
             top.contains("adapters"),
             "pane draws its title in the border"
@@ -93,24 +98,89 @@ mod tests {
     }
 
     #[test]
-    fn pane_blank_is_a_rounded_border_with_no_title() {
-        use ratatui::backend::TestBackend;
-        use ratatui::Terminal;
+    fn pane_border_is_drawn_in_the_dim_style_not_the_accent() {
+        // The whole point of routing every frame through `pane`: the border is the
+        // dim neutral, never a bright/accent hue creeping in by hand. Assert the
+        // corner glyph actually carries `theme.dim()`'s DIM modifier.
+        let theme = Theme::with_color(true);
+        let mut term = Terminal::new(TestBackend::new(20, 4)).unwrap();
+        term.draw(|f| f.render_widget(pane("x", theme), f.area()))
+            .unwrap();
+        let buf = term.backend().buffer().clone();
+        // Top-left rounded corner is at (0, 0).
+        let corner = buf.cell((0, 0)).unwrap();
+        assert_eq!(corner.symbol(), "╭", "rounded top-left corner");
+        assert!(
+            corner.style().add_modifier.contains(Modifier::DIM),
+            "border carries the dim style, got {:?}",
+            corner.style()
+        );
+    }
 
+    #[test]
+    fn pane_pads_content_one_column_inside_the_border() {
+        // `pane` sets `Padding::horizontal(1)`, so body text starts at x=2 (border
+        // at x=0, one padding cell at x=1), and x=1 stays blank. This guards the
+        // padding that keeps content off the border.
+        let theme = Theme::with_color(false);
+        let mut term = Terminal::new(TestBackend::new(20, 4)).unwrap();
+        term.draw(|f| {
+            let block = pane("t", theme);
+            let inner = block.inner(f.area());
+            f.render_widget(block, f.area());
+            // Draw a marker into the inner area; it must land at x=2, not x=1.
+            f.render_widget(ratatui::widgets::Paragraph::new("Z"), inner);
+        })
+        .unwrap();
+        let buf = term.backend().buffer().clone();
+        assert_eq!(buf.cell((0, 1)).unwrap().symbol(), "│", "left border at x=0");
+        assert_eq!(
+            buf.cell((1, 1)).unwrap().symbol(),
+            " ",
+            "one padding column at x=1"
+        );
+        assert_eq!(
+            buf.cell((2, 1)).unwrap().symbol(),
+            "Z",
+            "body content starts at x=2, inside the padding"
+        );
+    }
+
+    #[test]
+    fn pane_blank_is_a_rounded_border_with_no_title() {
         // pane_blank frames a region the same way as `pane` (rounded corner in
         // the top row) but writes no title text into the border.
         let mut term = Terminal::new(TestBackend::new(20, 4)).unwrap();
         term.draw(|f| f.render_widget(pane_blank(Theme::with_color(true)), f.area()))
             .unwrap();
         let buf = term.backend().buffer().clone();
-        let top: String = (0..buf.area.width)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol().to_string())
-            .collect();
+        let top = top_row(&buf);
         assert!(top.contains('╮'), "pane_blank uses a rounded border");
         // The top row is border only — the corners/edges, no letters.
         assert!(
             !top.chars().any(|c| c.is_alphabetic()),
             "pane_blank draws no title text: {top:?}"
         );
+        // And its border is the same dim style as a titled pane.
+        assert!(
+            buf.cell((0, 0))
+                .unwrap()
+                .style()
+                .add_modifier
+                .contains(Modifier::DIM),
+            "pane_blank border is dim too"
+        );
+    }
+
+    #[test]
+    fn pane_into_a_tiny_area_does_not_panic() {
+        // A pane laid out into a 1×1 (or smaller) region must render without
+        // panicking — ratatui clips the border to whatever fits.
+        let theme = Theme::with_color(true);
+        for (w, h) in [(1u16, 1u16), (2, 1), (1, 2), (3, 3)] {
+            let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+            term.draw(|f| f.render_widget(pane("t", theme), f.area()))
+                .unwrap();
+        }
     }
 }

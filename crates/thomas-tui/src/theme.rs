@@ -26,6 +26,7 @@ pub struct Theme {
 /// cyan|amber` parses straight into it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[non_exhaustive]
 pub enum ThemeChoice {
     /// The default cool-cyan accent.
     #[default]
@@ -53,6 +54,7 @@ impl ThemeChoice {
 /// auto|always|never` parses straight into it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[non_exhaustive]
 pub enum ColorChoice {
     /// Colour on unless `NO_COLOR` is set (the conventional default).
     #[default]
@@ -67,6 +69,7 @@ pub enum ColorChoice {
 /// service). Generalized from RexOps so a consumer can map its own status enum
 /// to one of these and get a consistent, `NO_COLOR`-safe style.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Health {
     Healthy,
     Degraded,
@@ -81,6 +84,7 @@ pub enum Health {
 /// `NO_COLOR`-safe style from [`Theme::severity`] (and a badge from
 /// [`SeverityBadge`](crate::SeverityBadge)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum Severity {
     /// The top level — red + bold. Demands action now.
     Critical,

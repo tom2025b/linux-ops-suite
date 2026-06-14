@@ -43,6 +43,9 @@ impl SeverityBadge {
             Severity::High => "HIGH",
             Severity::Medium => "MED",
             Severity::Low => "LOW",
+            // `Severity` is #[non_exhaustive]; a future level shows `?` rather
+            // than failing to compile or masquerading as an existing level.
+            _ => "?",
         }
     }
 

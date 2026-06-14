@@ -250,4 +250,63 @@ mod tests {
         let term = draw(80, 16, "zzz", &[], None);
         assert!(flat(&term).contains("(no match)"), "empty list says so");
     }
+
+    #[test]
+    fn items_past_max_rows_are_truncated_and_no_match_is_not_shown() {
+        // More items than MAX_ROWS: only the first MAX_ROWS render, the rest are
+        // dropped, and the "(no match)" placeholder must NOT appear (the list is
+        // non-empty, just truncated).
+        let labels: Vec<String> = (0..15).map(|i| format!("cmd{i:02}")).collect();
+        let items: Vec<PaletteItem> = labels
+            .iter()
+            .map(|l| PaletteItem {
+                label: l,
+                desc: "x",
+            })
+            .collect();
+        // Tall backend so MAX_ROWS (not the centered area's height) is what limits
+        // the list: the area is centered_rect(.., 55, ..), and after border +
+        // padding + the input/header rows it must still leave room for 12 items, so
+        // give it generous height.
+        let term = draw(80, 40, "", &items, None);
+        let out = flat(&term);
+        // The first row and the last row that fits (index MAX_ROWS-1 = 11) show.
+        assert!(out.contains("cmd00"), "first item shows");
+        assert!(out.contains("cmd11"), "the 12th item (last within MAX_ROWS) shows");
+        // The 13th item onward is truncated away.
+        assert!(
+            !out.contains("cmd12"),
+            "items past MAX_ROWS must be dropped:\n{out}"
+        );
+        assert!(!out.contains("cmd14"), "and so is the very last one");
+        assert!(
+            !out.contains("(no match)"),
+            "a truncated (but non-empty) list must not claim no match:\n{out}"
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_selection_highlights_nothing_and_does_not_panic() {
+        // `selected` is a caller-supplied index; a stale/oversized one (e.g. the
+        // list shrank after a keystroke) must simply highlight no row rather than
+        // panic or light the wrong one.
+        let items = [
+            PaletteItem {
+                label: "a",
+                desc: "first",
+            },
+            PaletteItem {
+                label: "b",
+                desc: "second",
+            },
+        ];
+        let term = draw(80, 16, "", &items, Some(99));
+        assert!(
+            !any_reversed(&term),
+            "an index past the end highlights no row"
+        );
+        // Both items still render normally.
+        let out = flat(&term);
+        assert!(out.contains('a') && out.contains('b'));
+    }
 }
