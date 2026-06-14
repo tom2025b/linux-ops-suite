@@ -21,7 +21,7 @@ contracts**, never by shared in-process state.
 
 | Repo (`~/projects/…`) | Crates | Role |
 |---|---|---|
-| `linux-ops-suite` | `suite-ui`, `toolbox-bridge` | Umbrella: the shared TUI chrome crate + the Rust bridge. Owns `docs/INTEGRATION_MAP.md` and the `contracts/` JSON schemas. |
+| `linux-ops-suite` | `thomas-tui`, `suite-ui`, `toolbox-bridge` | Umbrella: the general TUI toolkit (`thomas-tui`) + the suite chrome layered on it (`suite-ui`) + the Rust bridge. Owns `docs/INTEGRATION_MAP.md` and the `contracts/` JSON schemas. |
 | `rexops` | `rexops-core`, `rexops-adapters`, `rexops-app`, `rexops-cli`, `rexops-tui` | RexOps — the operations TUI/CLI. The launcher lives here. |
 | `workstate` | (single crate) | Workstate — the canonical snapshot layer. Ingests per-tool feeds, compiles one `Snapshot`. THE contract type RexOps and the bridge read. |
 | `bulwark` | `bulwark`, `bulwark-core` | Bulwark — security scanner; emits a `workstate-feed` + a scan export. |

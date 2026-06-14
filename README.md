@@ -88,7 +88,7 @@ rex run
 
 - Data flows **one way** through files (mostly JSON).
 - No tool imports code from another tool.
-- **RexOps** is the front door and only consumer — it reads summaries and lets you launch the other tools.
+- **RexOps** is the front door and top-level consumer — it reads the rolled-up Workstate snapshot and lets you launch the other tools. (ScriptVault is a secondary consumer: it reads the Toolbox-Bridge sidecar feed — see below.)
 - **ToolFoundry** emits `toolfoundry workstate-feed`; the shape is pinned by `contracts/toolfoundry.workstate-feed.v1.schema.json`.
 - **Workstate** compiles the other tools' feeds into one versioned `snapshot.json` (schema v3) that **RexOps** consumes as its source of truth. The shape is pinned by `contracts/workstate.snapshot.schema.json` and validated in both repos' CI.
 - **Toolbox-Bridge** turns Bulwark findings into ScriptVault sidecar metadata *via

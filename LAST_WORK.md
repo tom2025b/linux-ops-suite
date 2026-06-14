@@ -1,5 +1,41 @@
 # Last Work
 
+## Fix 3 Important review items: CI example-validation + 2 doc fixes
+
+2026-06-14. Repo: linux-ops-suite (umbrella) only. Branch: `fix-ci-and-docs`
+(worktree under `.claude/worktrees/fix-ci-and-docs`, based on origin/main @1668fcb
+— NOTE: the local primary checkout was 2 commits behind origin/main at the time;
+this branch was cut from the remote, not the stale local main). Implemented the
+3 "Important" findings from the full 2026-06-14 umbrella review:
+
+1. **CI now validates examples against schemas** (`.github/workflows/ci.yml`,
+   `json:` job, new 3rd step "Validate examples against their schemas"). Uses the
+   same `check-jsonschema` already installed; an explicit example→schema pair list
+   (5 pairs) because `proto.workstate-feed.example.json` omits the `.v1` infix its
+   schema carries. Verified locally with check-jsonschema 0.37.2: all 5 pairs pass,
+   AND confirmed teeth — a deliberately corrupted proto.session copy is correctly
+   REJECTED (schema_version is an integer const = 1). This closes the #1 gap: the
+   contract↔example relationship was previously unenforced anywhere.
+2. **docs/AGENT.md:24** crate-ownership table row updated `suite-ui, toolbox-bridge`
+   → `thomas-tui, suite-ui, toolbox-bridge` with role text reflecting the toolkit/
+   chrome split. (AGENT.md was the last shipping doc still omitting thomas-tui;
+   README + ARCHITECTURE + PROJECT-STATUS already had it via PR #15/#16.)
+3. **README.md:91** fixed the "RexOps is the only consumer" contradiction →
+   "front door and top-level consumer … (ScriptVault is a secondary consumer: it
+   reads the Toolbox-Bridge sidecar feed)". Matches ARCHITECTURE's "only suite-
+   level consumer" framing and the sidecar flow described 3 lines below.
+
+Diff: 3 files, +20/−2 (ci.yml +18, README -1/+1, AGENT.md -1/+1). No code touched;
+crates unchanged. NEXT: merge to umbrella main via PR. (Left unaddressed by design:
+the Minor/Nice-to-have items — non_exhaustive on the 2 error enums, the proto
+example rename, workstate.snapshot still lacks an example, ROADMAP lag, LAST_WORK
+location.)
+
+ALSO: the user's local ~/projects/linux-ops-suite main checkout is behind
+origin/main — they were told to `git pull --ff-only`.
+
+---
+
 ## PROJECT-STATUS.md accuracy cleanup (umbrella, docs-only)
 
 2026-06-14. Repo: linux-ops-suite (umbrella) only. Branch:
