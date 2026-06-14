@@ -1,5 +1,40 @@
 # Last Work
 
+## PROJECT-STATUS.md accuracy cleanup (umbrella, docs-only)
+
+2026-06-14. Repo: linux-ops-suite (umbrella) only. Branch:
+`worktree-project-status-cleanup`. Docs-only edit to PROJECT-STATUS.md — no code,
+no consumer/sibling repos touched. Fixed five drift items the 2026-06-14 review
+flagged, plus one diagram error found in passing:
+
+1. Broken footer link to non-existent `INSTALLER-STATUS.md` → now points to
+   `install.sh` + `docs/ARCHITECTURE.md`/`INTEGRATION_MAP.md` (all verified to
+   exist).
+2. Stale suite-ui pin `cf97f07` → actual rev `71a4fe5` (the rev all three
+   consumers really pin: bulwark/rexops/scriptvault Cargo.toml,
+   71a4fe5484abb75b494c010b89033dbc7e0faace).
+3. Removed all "pending push / unpushed commit / Commits pending push" language
+   and dropped "Major remaining work #1 (push the conversion)" — the git-dep
+   conversion is landed AND pushed.
+4. Added `thomas-tui` everywhere it was missing: the shared-code-exception bullet
+   (now both TUI crates), a new in-workspace-crates table (thomas-tui ~3.2k /
+   suite-ui ~1.6k / toolbox-bridge ~1.1k), and the "Done since last snapshot"
+   list. Moved Toolbox-Bridge out of the sibling-tools table into that crates
+   table → tools table is now the 6 real sibling tools ("All six tools").
+5. Schema count: kept "9 schemas" (correct — 9 files in contracts/) but made it
+   precise — listed all 9 by name and noted examples/ has only 5 sample payloads,
+   not schema-validated in CI (only well-formedness is). Added remaining-work item
+   to validate examples vs schemas.
+
+Also fixed the data-flow diagram: ScriptVault was wrongly shown as a Workstate
+feed producer; real feed producers into Workstate are ToolFoundry/Bulwark/Proto
+(per docs/INTEGRATION_MAP.md). ScriptVault export + Bulwark scan are read by
+RexOps directly; noted that.
+
+Diff: PROJECT-STATUS.md only, +49/−32. NEXT: merge to umbrella main via PR.
+
+---
+
 ## thomas-tui + suite-ui: #[non_exhaustive] enums + test hardening (PR pending merge)
 
 2026-06-14 ~00:30 UTC. Repo: linux-ops-suite (umbrella) only — no consumer/
