@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "source_tool": "bulwark",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "items": [
+    {
+      "id": "deploy-prod.sh",
+      "path": "/home/tom/bin/deploy-prod.sh",
+      "language": "shell",
+      "risk": "high",
+      "findings": [
+        {
+          "rule_id": "aws-key",
+          "description": "AWS access key ID detected",
+          "severity": "critical",
+          "category": "secret_leakage",
+          "location": "line 42"
+        }
+      ]
+    },
+    {
+      "id": "cleanup-logs.py",
+      "path": "/home/tom/bin/cleanup-logs.py",
+      "language": "python",
+      "risk": "low",
+      "findings": []
+    }
+  ]
+}

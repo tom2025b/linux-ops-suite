@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "source_tool": "scriptvault",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "scripts": [
+    {
+      "id": "deploy-prod",
+      "name": "deploy-prod.sh",
+      "path": "/home/tom/bin/deploy-prod.sh",
+      "description": "Deploy to production with safety checks",
+      "tags": ["deploy", "prod"]
+    },
+    {
+      "id": "backup-db",
+      "name": "backup-db.sh",
+      "path": "/home/tom/bin/backup-db.sh",
+      "description": "Nightly database backup",
+      "tags": ["backup"]
+    }
+  ],
+  "favorites": ["deploy-prod"],
+  "recents": ["deploy-prod", "backup-db"]
+}

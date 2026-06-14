@@ -51,15 +51,15 @@ own repo and will provide the interactive cockpit on the same contracts.
 - **Contracts:** 9 JSON Schemas in `contracts/` (`bulwark.scan`, `proto.session`,
   `rexops.snapshot`, `scriptvault.export`, `workstate.snapshot`, plus the four
   `*.workstate-feed.v1` feeds for bulwark/proto/toolfoundry/toolbox-bridge). CI
-  checks every schema and example is well-formed JSON; `examples/` carries 5
-  sample payloads (not yet one per schema, and not yet validated *against* the
-  schemas in CI).
+  checks every JSON file is well-formed, every schema is a valid JSON Schema
+  (metaschema check), and **every example validates against its schema**;
+  `examples/` now carries one payload per schema (9 of 9), all CI-validated.
 - **`suite-ui` / `thomas-tui`:** two in-workspace TUI crates (members of the root
   `Cargo.toml` alongside `toolbox-bridge`) — `thomas-tui` is the general toolkit
   (guard, theme, text/layout/keys, widgets) and `suite-ui` is the suite chrome on
   top (panes, overlays, key-hints/search/status bars). **All three** consumers —
   Bulwark, RexOps, and ScriptVault — pull `suite-ui` as a **git dependency** pinned
-  to umbrella rev `71a4fe5` (no `path =` deps; `thomas-tui` comes in transitively),
+  to umbrella rev `2f5fa82` (no `path =` deps; `thomas-tui` comes in transitively),
   so each builds from a fresh clone with no sibling umbrella checkout. Verified by a
   fresh-clone simulation (empty `CARGO_HOME`, no sibling folder, `cargo build
   --locked`).
@@ -117,10 +117,17 @@ git-dependency conversion is landed and pushed across all three consumers.
   toolkit); `suite-ui` now layers its chrome on top and re-exports it, so the
   public API consumers see is unchanged.
 - ✅ **`suite-ui` path→git-dependency conversion landed across ALL consumers** —
-  Bulwark, RexOps, and ScriptVault pin suite-ui to umbrella rev `71a4fe5` as a git
+  Bulwark, RexOps, and ScriptVault pin suite-ui to umbrella rev `2f5fa82` as a git
   dep (no `path =` deps remain). Each consumer's CI dropped its sibling-checkout
   workaround for a plain root checkout. Confirmed fresh-clone-safe by a no-sibling,
   empty-`CARGO_HOME`, `cargo build --locked` simulation for all three.
+- ✅ **`suite-ui` pin bumped `71a4fe5`→`2f5fa82`** across all three consumers
+  (one PR each), adopting the latest shared-crate fixes (rendering refresh,
+  `#[non_exhaustive]` enums, review fixes). RexOps gained wildcard match arms for
+  the now-`#[non_exhaustive]` `suite_ui::Outcome`; all three green on CI.
+- ✅ **Example payloads complete + CI-validated** — `examples/` now has one
+  payload per schema (9 of 9), and CI validates every example against its schema
+  (plus a metaschema check on the schemas themselves).
 
 ## Major remaining work
 
@@ -128,11 +135,9 @@ git-dependency conversion is landed and pushed across all three consumers.
    run, tag browser, palette/bulk, polish) on top of the merged core engine.
 2. **RexOps TUI** — promote from the bash `bin/rex` reference to the real
    interactive cockpit on the shared contracts + `suite-ui`.
-3. **Validate examples against schemas in CI** — today CI only checks JSON
-   well-formedness; add real schema validation and fill in the missing example
-   payloads (5 of 9 schemas covered).
-4. **Suite-wide consistency** — bump the `suite-ui` git-dep rev in consumers when
-   the shared crate changes; keep contract schemas in lockstep as tools evolve.
+3. **Suite-wide consistency** — re-bump the `suite-ui` git-dep rev in consumers
+   whenever the shared crate changes (one PR per consumer); keep contract schemas
+   and their example payloads in lockstep as tools evolve.
 
 ---
 

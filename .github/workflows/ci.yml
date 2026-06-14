@@ -83,8 +83,12 @@ jobs:
             echo "validating examples/$1 against contracts/$2"
             check-jsonschema --schemafile "contracts/$2" "examples/$1"
           }
+          validate bulwark.scan.example.json                   bulwark.scan.schema.json
           validate bulwark.workstate-feed.v1.example.json      bulwark.workstate-feed.v1.schema.json
           validate proto.session.example.json                  proto.session.schema.json
           validate proto.workstate-feed.example.json           proto.workstate-feed.v1.schema.json
+          validate rexops.snapshot.example.json                rexops.snapshot.schema.json
+          validate scriptvault.export.example.json             scriptvault.export.schema.json
           validate toolbox-bridge.workstate-feed.v1.example.json toolbox-bridge.workstate-feed.v1.schema.json
           validate toolfoundry.workstate-feed.v1.example.json  toolfoundry.workstate-feed.v1.schema.json
+          validate workstate.snapshot.example.json             workstate.snapshot.schema.json
