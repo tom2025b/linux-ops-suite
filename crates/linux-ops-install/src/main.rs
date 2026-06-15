@@ -1,3 +1,23 @@
+//! linux-ops-install — the Linux Ops Suite's prebuilt-release installer.
+//!
+//! For each suite tool it queries the GitHub Releases API
+//! (`api.github.com/repos/<owner>/<repo>/releases/latest`), picks the Linux
+//! asset matching the host architecture (`x86_64` or `aarch64`, preferring a
+//! `.tar.gz`), extracts the binary, and installs it into `~/.local/bin`. It also
+//! installs the `rex` launcher (embedded from `bin/rex`) and writes the
+//! `~/bin/r-<tool>` wrappers + `~/.rust_aliases.sh` aliases the suite convention
+//! expects. It never edits your shell rc — if a directory is missing from
+//! `PATH`, it prints the exact line to add.
+//!
+//! `--dry-run` previews every step without touching the filesystem; `--force`
+//! reapplies steps even when existing files/links are detected. The
+//! `linux-ops-suite` repo is the special case the `toolbox-bridge` binary is
+//! downloaded from. This is the prebuilt-asset path; `install.sh` is the
+//! build-from-source fallback.
+//!
+//! Environment overrides: `BIN_DIR` (default `~/.local/bin`), `WRAPPER_DIR`
+//! (default `~/bin`), `ALIASES_FILE` (default `~/.rust_aliases.sh`).
+
 use std::env;
 use std::ffi::OsStr;
 use std::fs;

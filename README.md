@@ -151,6 +151,15 @@ What `install.sh` does:
 - installs `rex`
 - writes `~/bin/r-<tool>` wrappers and aliases
 
+Environment overrides (all optional):
+
+```bash
+SUITE_SRC_DIR=...   # parent dir holding the sibling tool repos (default: this repo's parent dir)
+BIN_DIR=...         # where binaries are installed (default: ~/.local/bin)
+WRAPPER_DIR=...     # where r-<tool> wrappers are written (default: ~/bin)
+ALIASES_FILE=...    # the aliases file appended to (default: ~/.rust_aliases.sh)
+```
+
 ### After either install path
 
 If the installer reported that a directory is missing from `PATH`, add this to your shell rc:
@@ -193,7 +202,7 @@ rex run
 - Everything is optional and best-effort; missing tools are skipped (graceful degradation).
 - A small status summary is printed from the resulting Workstate v3 snapshot when present.
 
-`bin/rex` is the reference implementation (bash). The real RexOps TUI (in its own repo) will eventually provide the interactive cockpit and launcher on top of the same contracts.
+`bin/rex` is the bash reference orchestrator. The RexOps TUI (in its own repo) is the interactive cockpit and launcher, built on the same contracts.
 
 ## Design Principles
 

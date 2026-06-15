@@ -1,9 +1,10 @@
 name: CI
 
 # Run on every push to main and on PRs targeting main.
-# This repo holds the Rust workspace (the shared `suite-ui` crate and the
-# `toolbox-bridge` tool) and the JSON contract/schema files, so CI verifies
-# the workspace (build + clippy + tests) AND validates the JSON contracts.
+# This repo holds the Rust workspace (the shared UI crates `thomas-tui` +
+# `suite-ui`, the `toolbox-bridge` adapter, and the `linux-ops-install` /
+# `rex-check` CLIs) and the JSON contract/schema files, so CI verifies the
+# whole workspace (build + clippy + tests) AND validates the JSON contracts.
 on:
   push:
     branches: [main]
@@ -12,7 +13,7 @@ on:
 
 jobs:
   rust:
-    name: Rust workspace (suite-ui + toolbox-bridge)
+    name: Rust workspace (all crates)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

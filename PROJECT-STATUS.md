@@ -43,8 +43,8 @@ sidecar loop:  snapshot.json ──> Toolbox-Bridge ──> feeds/toolbox-bridge
                (risk/owner sidecar metadata for ScriptVault — via Workstate only)
 ```
 
-`bin/rex` is the reference orchestrator (bash); the real RexOps TUI lives in its
-own repo and will provide the interactive cockpit on the same contracts.
+`bin/rex` is the bash reference orchestrator; the RexOps TUI lives in its own
+repo and is the interactive cockpit on the same contracts.
 
 ## Current state — umbrella
 
