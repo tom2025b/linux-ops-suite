@@ -2,3 +2,8 @@
 /target
 .DS_Store
 Thumbs.db
+
+# Release artifacts produced by release tooling
+/dist
+# Compiled installer binary (build artifact)
+/linux-ops-install
