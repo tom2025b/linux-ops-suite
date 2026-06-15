@@ -190,31 +190,37 @@ the diff and get approval before writing any wrapper/alias/dotfile change (§6).
 
 ---
 
-## 4. Current state of the codebase
+## 4. Where the authoritative state lives
 
-Recently shipped on the `rexops` branch `fix/launcher-respect-disabled` (pushed
-to `tom2025b/rexops`):
+This is the umbrella repo's standing maintainer doc, not a changelog. Each repo's
+*current* state lives in that repo — read it there rather than trusting a snapshot
+frozen here (which rots between sessions):
 
-- **`enabled: false` is respected** in launch resolution — a disabled adapter
-  resolves to no command through every entry point (launcher, jobs, palette,
-  preview, launchpad tags), even if its binary is on PATH.
-- **Launcher availability is cached** (`App.launch_availability`), computed once
-  and refreshed only through the config-mutation path — the ~100ms render loop
-  reads the cache instead of shelling out to `which` per frame. Coherence is
-  **structurally enforced**: `config` private, refresh private, `modify_config`
-  the only writer.
-- **Config overrides PATH** in `resolve_command` (config-first, PATH-fallback),
-  with a mutation-verified test.
+- **Per-repo state:** the working branch, recent commits, and CI status of any
+  tool live in its own checkout (`git -C ~/projects/<repo> log`, its open PRs).
+  `rex-check` gives the fast suite-wide view (branch / dirty / ahead-behind / LOC
+  across every repo). Don't cite a branch name from memory; verify it.
+- **Cross-tool architecture:** `docs/INTEGRATION_MAP.md` + the `contracts/`
+  schemas in *this* repo are authoritative for who produces/consumes what and the
+  on-disk paths. `docs/ARCHITECTURE.md` (this repo) covers the umbrella design and
+  the shared-UI carve-out. (`rexops`'s own `ARCHITECTURE.md` has historically been
+  empty; the umbrella docs are the real cross-tool reference.)
 
-**Known open issue (next candidate work), `rexops-tui/jobs/`:** the visible
-job-output buffer is capped at `JOB_OUTPUT_CAP`, but the `mpsc` channel
-*upstream* of it is unbounded, and `drain_into` drains the whole channel per
-tick. A chatty/runaway job can balloon memory and stall the draw loop despite
-the visible cap. Intended fix: a **bounded `sync_channel` (backpressure)** plus a
-**per-tick drain budget**. Confirm backpressure-vs-drop with Tom first.
+**Durable invariants worth holding in your head** (these are design caveats, not
+point-in-time status — verify the specifics in the named module before relying on
+them):
 
-`ARCHITECTURE.md` in `rexops` is currently empty; `docs/INTEGRATION_MAP.md` in
-`linux-ops-suite` is the real architecture doc for cross-tool concerns.
+- **Launcher resolution is config-first, PATH-fallback**, and respects
+  `enabled: false` through every entry point; availability is cached and only
+  refreshed via the config-mutation path so the ~100ms render loop never shells
+  out to `which`. Keep `config` private and `modify_config` the sole writer
+  (see §2.6). Don't reintroduce per-frame PATH probing.
+- **`rexops-tui/jobs/` channel sizing:** the *visible* job-output buffer is
+  capped (`JOB_OUTPUT_CAP`), but historically the `mpsc` channel upstream of it
+  was unbounded and `drain_into` drained the whole channel per tick — a
+  chatty/runaway job could balloon memory and stall the draw loop. If you touch
+  this, confirm the current bound (a `sync_channel` + per-tick drain budget was
+  the intended fix) and check backpressure-vs-drop with Tom before changing it.
 
 ---
 

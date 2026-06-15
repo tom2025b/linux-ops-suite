@@ -74,8 +74,8 @@ jobs:
       # 3. Every example payload must conform to its schema. This is what keeps
       #    the examples honest: if a producer drifts an example or a schema
       #    tightens away from it, this step fails. Pairs are listed explicitly
-      #    (example -> schema) because one example name omits the `.v1` infix;
-      #    add a line here when a provisional schema gains an example.
+      #    (example -> schema); add a line here when a provisional schema gains
+      #    an example.
       - name: Validate examples against their schemas
         run: |
           set -euo pipefail
@@ -86,7 +86,7 @@ jobs:
           validate bulwark.scan.example.json                   bulwark.scan.schema.json
           validate bulwark.workstate-feed.v1.example.json      bulwark.workstate-feed.v1.schema.json
           validate proto.session.example.json                  proto.session.schema.json
-          validate proto.workstate-feed.example.json           proto.workstate-feed.v1.schema.json
+          validate proto.workstate-feed.v1.example.json        proto.workstate-feed.v1.schema.json
           validate rexops.snapshot.example.json                rexops.snapshot.schema.json
           validate scriptvault.export.example.json             scriptvault.export.schema.json
           validate toolbox-bridge.workstate-feed.v1.example.json toolbox-bridge.workstate-feed.v1.schema.json

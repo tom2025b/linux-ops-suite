@@ -10,7 +10,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 |------|------|--------|
 | **[Bulwark](https://github.com/tom2025b/bulwark)** | Read-only scanner + risk classifier | Active |
 | **[ScriptVault](https://github.com/tom2025b/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
-| **[Toolbox-Bridge](https://github.com/tom2025b/linux-ops-suite)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active |
+| **[Toolbox-Bridge](crates/toolbox-bridge)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate (an in-repo crate, not a standalone repo) | Active |
 | **[ToolFoundry](https://github.com/tom2025b/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
 | **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — emits the v3 snapshot | Active |
 | **[Proto](https://github.com/tom2025b/proto)** | Guided protocol / checklist runner — emits session records | Active |
