@@ -13,6 +13,12 @@ in [`../contracts/`](../contracts/) are the **source of truth**; tools conform t
 
 > Optional-but-recommended means a consumer must not crash if it is absent.
 
+> **Compiled-snapshot exception.** These rules describe *producer* feeds. The
+> Workstate snapshot is a compiled aggregate, not a single tool's export, so by
+> design it stamps **`built_at`** (when the snapshot was compiled) instead of
+> `generated_at` and omits `source_tool` — each ingested section carries its own
+> provenance. `schema_version` is still required.
+
 ## Versioning
 
 - **Additive changes** (new optional fields) keep the **same** `schema_version`.

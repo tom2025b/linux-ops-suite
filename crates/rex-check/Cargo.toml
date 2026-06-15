@@ -1,0 +1,18 @@
+[package]
+name = "rex-check"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "At-a-glance health of the Linux Ops Suite repos: per-repo git status (branch, dirty, ahead/behind) and source line counts, with a totals table."
+
+[[bin]]
+name = "rex-check"
+path = "src/main.rs"
+
+# Intentionally dependency-free: rex-check shells out to `git` (and optionally
+# `tokei`) exactly like the suite's install.sh, so std is all it needs. No
+# network, no extra crates — keeps it tiny and fast to build inside the
+# umbrella workspace.
+[dependencies]

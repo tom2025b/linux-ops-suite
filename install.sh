@@ -53,9 +53,11 @@ RUST_TOOLS=(
 )
 
 # Rust tools that live in THIS repo's cargo workspace (not a sibling repo):
-# "crate_name:binary_name". toolbox-bridge replaced the retired Python bridge.
+# "crate_name:binary_name". toolbox-bridge replaced the retired Python bridge;
+# rex-check is the suite-repo health dashboard (ported from ~/bin/rex-check).
 WORKSPACE_TOOLS=(
   "toolbox-bridge:toolbox-bridge"
+  "rex-check:rex-check"
 )
 
 # --- flags -------------------------------------------------------------------

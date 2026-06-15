@@ -10,7 +10,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 |------|------|--------|
 | **[Bulwark](https://github.com/tom2025b/bulwark)** | Read-only scanner + risk classifier | Active |
 | **[ScriptVault](https://github.com/tom2025b/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
-| **[Toolbox-Bridge](https://github.com/tom2025b/linux-ops-suite)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active |
+| **[Toolbox-Bridge](crates/toolbox-bridge)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate (an in-repo crate, not a standalone repo) | Active |
 | **[ToolFoundry](https://github.com/tom2025b/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
 | **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — emits the v3 snapshot | Active |
 | **[Proto](https://github.com/tom2025b/proto)** | Guided protocol / checklist runner — emits session records | Active |
@@ -82,43 +82,47 @@ linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz
 
 The `linux-ops-suite` release is the one special case: it is where `toolbox-bridge` is expected to come from.
 
-### Create the first releases
+### Publish releases with `scripts/release.sh`
 
-There is no release workflow in this repo yet; only CI is present in [.github/workflows/ci.yml](.github/workflows/ci.yml). The first release set is therefore a manual packaging step unless you add release automation.
-
-For each standalone tool repo (`bulwark`, `scriptvault`, `toolfoundry`, `workstate`, `proto`, `rexops`):
-
-1. Build the release binary in that repo.
-2. Package the executable into a Linux archive, preferably `.tar.gz`.
-3. Create a GitHub Release and upload the archive.
-
-Example for a tool whose repo and binary are both `bulwark`:
+Releases are produced by [`scripts/release.sh`](scripts/release.sh) — it builds
+every suite binary, packages each one as a `.tar.gz` named for the target triple
+(the exact shape `linux-ops-install` expects), and creates **or updates** the
+matching GitHub Release via the `gh` CLI. There is no CI release workflow; this
+script is the release path. (CI itself — [.github/workflows/ci.yml](.github/workflows/ci.yml) —
+only builds/tests the workspace and validates the contract schemas + examples.)
 
 ```bash
-cargo build --release
-mkdir -p dist
-tar -C target/release -czf dist/bulwark-x86_64-unknown-linux-gnu.tar.gz bulwark
-gh release create v0.1.0 \
-  dist/bulwark-x86_64-unknown-linux-gnu.tar.gz \
-  --repo tom2025b/bulwark \
-  --title "v0.1.0" \
-  --notes "First Linux release"
+# Build + publish v0.1.0 across the whole suite:
+./scripts/release.sh v0.1.0
+
+# Preview every command without changing anything:
+DRY_RUN=1 ./scripts/release.sh v0.1.0
 ```
 
-For `toolbox-bridge`, build from this repo:
+It releases the six sibling tools (`bulwark`, `scriptvault`, `toolfoundry`,
+`workstate`, `proto`, `rexops`) plus `toolbox-bridge`, which is published as the
+`linux-ops-suite` release (the special case `linux-ops-install` downloads it
+from). It is built to be robust:
+
+- existing releases are **updated** (assets re-uploaded), not treated as fatal;
+- if the release commit isn't on the remote yet, the branch is **pushed
+  automatically** and the release retried;
+- a failure in one repo does not abort the others; a success/failure summary is
+  printed at the end.
+
+Useful environment overrides:
 
 ```bash
-cargo build --release -p toolbox-bridge
-mkdir -p dist
-tar -C target/release -czf dist/linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz toolbox-bridge
-gh release create v0.1.0 \
-  dist/linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz \
-  --repo tom2025b/linux-ops-suite \
-  --title "v0.1.0" \
-  --notes "First toolbox-bridge release"
+GH_OWNER=tom2025b      # GitHub owner/org (default: tom2025b)
+SUITE_SRC_DIR=...      # parent dir holding the sibling repos
+DRY_RUN=1              # print commands without changing anything
+ALLOW_DIRTY=1          # skip the clean-worktree guard
+SKIP_EXISTING=1        # skip (don't update) releases that already exist
+NO_PUSH=1              # never auto-push a missing commit; fail that repo instead
 ```
 
-Repeat with an `aarch64` build if you want ARM Linux installs to work without falling back to source builds.
+Releases default to the host architecture's target triple; run the script on an
+`aarch64` host (or set up cross-compilation) to also publish ARM Linux assets.
 
 ### Use `install.sh` today
 
@@ -146,6 +150,15 @@ What `install.sh` does:
 - copies `target/release/<binary>` into `~/.local/bin`
 - installs `rex`
 - writes `~/bin/r-<tool>` wrappers and aliases
+
+Environment overrides (all optional):
+
+```bash
+SUITE_SRC_DIR=...   # parent dir holding the sibling tool repos (default: this repo's parent dir)
+BIN_DIR=...         # where binaries are installed (default: ~/.local/bin)
+WRAPPER_DIR=...     # where r-<tool> wrappers are written (default: ~/bin)
+ALIASES_FILE=...    # the aliases file appended to (default: ~/.rust_aliases.sh)
+```
 
 ### After either install path
 
@@ -189,7 +202,7 @@ rex run
 - Everything is optional and best-effort; missing tools are skipped (graceful degradation).
 - A small status summary is printed from the resulting Workstate v3 snapshot when present.
 
-`bin/rex` is the reference implementation (bash). The real RexOps TUI (in its own repo) will eventually provide the interactive cockpit and launcher on top of the same contracts.
+`bin/rex` is the bash reference orchestrator. The RexOps TUI (in its own repo) is the interactive cockpit and launcher, built on the same contracts.
 
 ## Design Principles
 
@@ -235,6 +248,25 @@ clone without a sibling checkout. See
 # build + test the crates, and see every component rendered in each theme:
 cargo test -p thomas-tui -p suite-ui
 cargo run -p suite-ui --example gallery
+```
+
+## In-workspace crates
+
+This repo is a small Cargo workspace with five members. None of them are sibling
+tools — they're the umbrella's own code (the shared UI chrome, the bridge, and
+the suite-level CLIs):
+
+| Crate | Role |
+|---|---|
+| [`thomas-tui`](crates/thomas-tui) | General-purpose terminal-UI toolkit (theme, terminal guard, widgets). |
+| [`suite-ui`](crates/suite-ui) | Suite TUI chrome layered on `thomas-tui` (severity/health/job widgets). |
+| [`toolbox-bridge`](crates/toolbox-bridge) | Bulwark → Workstate → ScriptVault sidecar adapter (pure Rust, dry-run-capable). |
+| [`linux-ops-install`](crates/linux-ops-install) | The prebuilt-release installer (see [Installation](#installation)). |
+| [`rex-check`](crates/rex-check) | At-a-glance health of the suite repos: per-repo git status (branch, dirty, ahead/behind) and source line counts, with a totals table. |
+
+```bash
+# fast repo-health summary across the whole suite:
+cargo run -p rex-check
 ```
 
 ---
