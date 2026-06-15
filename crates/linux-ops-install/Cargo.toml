@@ -1,0 +1,12 @@
+[package]
+name = "linux-ops-install"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Installer entrypoint for preparing Linux Ops Suite tools and local integration paths."
+
+[dependencies]
+clap = { workspace = true }
+serde_json = { workspace = true }

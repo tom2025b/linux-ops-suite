@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/suite-ui", "crates/thomas-tui", "crates/toolbox-bridge"]
+members = [
+    "crates/suite-ui",
+    "crates/thomas-tui",
+    "crates/toolbox-bridge",
+    "crates/linux-ops-install",
+]
 
 [workspace.package]
 version = "0.1.0"

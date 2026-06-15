@@ -6,72 +6,150 @@ This repository is the **contract and index headquarters** for the suite. Each t
 
 ## The Tools
 
-| Tool            | Role                                              | Status       |
-|-----------------|---------------------------------------------------|--------------|
-| **Bulwark**     | Read-only scanner + risk classifier               | Active       |
-| **ScriptVault** | Fast TUI script launcher + favorites & recents    | Active       |
-| **Toolbox-Bridge** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active    |
-| **ToolFoundry** | Tool lifecycle, ownership, and health             | Active       |
-| **Workstate**   | Read-only state compiler — emits the v3 snapshot  | Active       |
-| **Proto**       | Guided protocol / checklist runner — emits session records | Active       |
-| **RexOps**      | Operations cockpit + suite launcher (`rex run` for full refresh) | Active |
+| Tool | Role | Status |
+|------|------|--------|
+| **[Bulwark](https://github.com/tom2025b/bulwark)** | Read-only scanner + risk classifier | Active |
+| **[ScriptVault](https://github.com/tom2025b/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
+| **[Toolbox-Bridge](https://github.com/tom2025b/linux-ops-suite)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active |
+| **[ToolFoundry](https://github.com/tom2025b/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
+| **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — emits the v3 snapshot | Active |
+| **[Proto](https://github.com/tom2025b/proto)** | Guided protocol / checklist runner — emits session records | Active |
+| **[RexOps](https://github.com/tom2025b/rexops)** | Operations cockpit + suite launcher | Active |
 
 ## Installation
 
-The whole suite installs with **one command**. Because each tool lives in its own
-repo, [`install.sh`](install.sh) is an *orchestrator*: it clones (or updates) every
-tool repo, builds it, and puts the binaries on your `PATH` — then installs the
-`rex` launcher and the per-tool `r-<tool>` wrappers.
+There are two install paths:
+
+- [`crates/linux-ops-install`](crates/linux-ops-install) downloads **prebuilt GitHub Release assets** for the suite tools, installs them to `~/.local/bin`, installs `rex`, writes `~/bin/r-<tool>` wrappers, and appends aliases to `~/.rust_aliases.sh`.
+- [`install.sh`](install.sh) is the **build-from-source fallback**. It clones or updates each repo, runs `cargo build --release`, and installs the resulting binaries locally.
+
+### Use `linux-ops-install`
+
+From this repo:
 
 ```bash
-# Fresh machine: clone this repo, then run the installer.
 git clone https://github.com/tom2025b/linux-ops-suite.git
 cd linux-ops-suite
+
+# Preview exactly what would be downloaded and installed.
+cargo run -p linux-ops-install -- --dry-run
+
+# Install or reinstall from the latest GitHub Releases.
+cargo run -p linux-ops-install -- --force
+```
+
+What `linux-ops-install` does:
+
+- Detects the current Linux architecture: `x86_64` or `aarch64`.
+- Queries `https://api.github.com/repos/tom2025b/<repo>/releases/latest` for each tool.
+- Downloads the matching Linux asset, preferring `.tar.gz` when available.
+- Extracts the archive, installs the binary into `~/.local/bin`, installs `rex`, writes `~/bin/r-<tool>`, and updates `~/.rust_aliases.sh`.
+- Never edits your shell rc files. If `~/.local/bin` or `~/bin` is missing from `PATH`, it prints the exact line to add.
+
+Supported binaries:
+
+- `bulwark`
+- `scriptvault`
+- `toolfoundry`
+- `workstate`
+- `proto`
+- `rexops`
+- `toolbox-bridge`
+
+If a repo has no GitHub Release yet, `linux-ops-install` now says that explicitly and prints:
+
+- the repo's Releases page
+- the direct `releases/new` URL
+- the asset shape it expects
+- the fallback: use [`install.sh`](install.sh) right now
+
+### Release asset format expected by `linux-ops-install`
+
+For each tool repo, publish at least one Linux release asset that matches the binary name and target architecture:
+
+- Preferred archive: `.tar.gz`
+- Also accepted: `.tgz`, `.tar.xz`, `.zip`
+- Expected executable name inside the archive: exactly the tool binary name, for example `bulwark` or `proto`
+- Expected naming hints in the asset filename: Linux plus `x86_64` or `amd64`, or `aarch64` or `arm64`
+
+Examples of good asset names:
+
+```text
+bulwark-x86_64-unknown-linux-gnu.tar.gz
+proto-aarch64-unknown-linux-gnu.tar.gz
+linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz
+```
+
+The `linux-ops-suite` release is the one special case: it is where `toolbox-bridge` is expected to come from.
+
+### Create the first releases
+
+There is no release workflow in this repo yet; only CI is present in [.github/workflows/ci.yml](.github/workflows/ci.yml). The first release set is therefore a manual packaging step unless you add release automation.
+
+For each standalone tool repo (`bulwark`, `scriptvault`, `toolfoundry`, `workstate`, `proto`, `rexops`):
+
+1. Build the release binary in that repo.
+2. Package the executable into a Linux archive, preferably `.tar.gz`.
+3. Create a GitHub Release and upload the archive.
+
+Example for a tool whose repo and binary are both `bulwark`:
+
+```bash
+cargo build --release
+mkdir -p dist
+tar -C target/release -czf dist/bulwark-x86_64-unknown-linux-gnu.tar.gz bulwark
+gh release create v0.1.0 \
+  dist/bulwark-x86_64-unknown-linux-gnu.tar.gz \
+  --repo tom2025b/bulwark \
+  --title "v0.1.0" \
+  --notes "First Linux release"
+```
+
+For `toolbox-bridge`, build from this repo:
+
+```bash
+cargo build --release -p toolbox-bridge
+mkdir -p dist
+tar -C target/release -czf dist/linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz toolbox-bridge
+gh release create v0.1.0 \
+  dist/linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz \
+  --repo tom2025b/linux-ops-suite \
+  --title "v0.1.0" \
+  --notes "First toolbox-bridge release"
+```
+
+Repeat with an `aarch64` build if you want ARM Linux installs to work without falling back to source builds.
+
+### Use `install.sh` today
+
+Until every repo has a GitHub Release, use the source-build installer:
+
+```bash
 ./install.sh
 ```
 
-That's it. Re-run it any time to update — it's **idempotent** (skips what's already
-built unless you pass `--force`).
-
-### What it does
-
-For each tool it: **clone or `git pull`** the repo → **`cargo build --release`** →
-**copy `target/release/<binary>` into `~/.local/bin/`**. Specifically:
-
-- **Rust tools** (Bulwark, ScriptVault, ToolFoundry, Workstate, Proto, RexOps) are
-  built from source with `cargo build --release` and the resulting binary is copied
-  to `~/.local/bin/`.
-- **Toolbox-Bridge** is the one Rust tool that lives in *this* repo's cargo workspace
-  ([`crates/toolbox-bridge`](crates/toolbox-bridge)); it is built and installed the
-  same way, no clone needed.
-- The **`rex`** launcher is installed to `~/.local/bin/rex`.
-- A `r-<tool>` wrapper is written to `~/bin/` and an alias appended to
-  `~/.rust_aliases.sh` for every tool.
-
-The installer **never edits your shell config**. If `~/.local/bin` or `~/bin` isn't
-on your `PATH`, it prints the exact line to add.
-
-### Prerequisites
-
-- **`git`** and a **Rust toolchain** (`cargo`) — that's all. The whole suite is
-  Rust. Install Rust via [rustup](https://rustup.rs):
-  `curl https://sh.rustup.rs -sSf | sh`.
-
-### Options
+Useful options:
 
 ```bash
-./install.sh --dry-run        # show exactly what would happen; change nothing
-./install.sh --force          # rebuild/reinstall even if already present
-./install.sh --local          # use existing local clones; never clone/pull
-./install.sh --only a,b       # operate on just these tools (comma-separated)
-./install.sh --skip-aliases   # don't write r-<tool> wrappers or aliases
+./install.sh --dry-run
+./install.sh --force
+./install.sh --local
+./install.sh --only a,b
+./install.sh --skip-aliases
 ./install.sh --help
 ```
 
-### After installing
+What `install.sh` does:
 
-If the installer reported that a directory isn't on your `PATH`, add it to your
-shell rc (`~/.bashrc` or `~/.zshrc`) and source the aliases once:
+- clones or updates each tool repo
+- runs `cargo build --release`
+- copies `target/release/<binary>` into `~/.local/bin`
+- installs `rex`
+- writes `~/bin/r-<tool>` wrappers and aliases
+
+### After either install path
+
+If the installer reported that a directory is missing from `PATH`, add this to your shell rc:
 
 ```bash
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
