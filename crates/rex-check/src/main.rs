@@ -1,9 +1,13 @@
 //! rex-check — at-a-glance health of the Linux Ops Suite repos.
 //!
-//! For each suite repo it prints a one-line git status summary (branch,
-//! ahead/behind vs upstream, dirty/clean) and a source line count (via `tokei`
-//! if present, else a `git ls-files` tracked-file count fallback), then an
-//! aligned totals table and a one-line summary.
+//! For each suite repo it prints a one-line health summary — branch (and whether
+//! it's the trunk or a feature branch), clean/dirty working tree, unpushed
+//! commits, behind-upstream commits, and stashed changes — then an aligned
+//! totals table with source line counts and a roll-up summary line
+//! (e.g. "7 clean · 1 dirty · 2 on feature branches · 1 with unpushed").
+//!
+//! Source line counts come from `tokei` if present, else a `git ls-files`
+//! tracked-file count fallback.
 //!
 //! Fast and offline by design: one `git` invocation per fact, never a network
 //! call (ahead/behind reads cached upstream tracking info), and `tokei` is run
@@ -35,6 +39,9 @@ const REPOS: &[&str] = &[
     "linux-ops-suite",
 ];
 
+/// Branch names treated as the trunk; anything else counts as a feature branch.
+const TRUNK_BRANCHES: &[&str] = &["main", "master"];
+
 /// ANSI styling, resolved once. Empty strings when color is off so every call
 /// site can interpolate unconditionally.
 struct Style {
@@ -44,6 +51,7 @@ struct Style {
     grn: &'static str,
     ylw: &'static str,
     cyn: &'static str,
+    mag: &'static str,
     rst: &'static str,
 }
 
@@ -60,6 +68,7 @@ impl Style {
                 grn: "\u{1b}[32m",
                 ylw: "\u{1b}[33m",
                 cyn: "\u{1b}[36m",
+                mag: "\u{1b}[35m",
                 rst: "\u{1b}[0m",
             }
         } else {
@@ -70,6 +79,7 @@ impl Style {
                 grn: "",
                 ylw: "",
                 cyn: "",
+                mag: "",
                 rst: "",
             }
         }
@@ -82,13 +92,31 @@ struct RepoStatus {
     name: String,
     present: bool,
     branch: String,
+    /// True when `branch` is the trunk (main/master); false for feature branches.
+    on_trunk: bool,
+    /// Working-tree changes: staged + unstaged + untracked (`git status` lines).
     dirty: usize,
-    ahead: usize,
+    /// Commits ahead of upstream — i.e. unpushed. When there's no upstream this
+    /// falls back to the local commit count (see `gather`), so a brand-new
+    /// branch that's never been pushed still reports its work as unpushed.
+    unpushed: usize,
+    /// True when `unpushed` reflects local commits with no upstream configured,
+    /// rather than commits ahead of a tracked upstream.
+    no_upstream: bool,
+    /// Commits behind upstream (cached; no fetch).
     behind: usize,
+    /// Entries in `git stash list`.
+    stashes: usize,
     /// Tracked-file count (always available when the repo is present).
     files: usize,
     /// Code lines from tokei, when tokei is installed.
     loc: Option<usize>,
+}
+
+impl RepoStatus {
+    fn is_clean(&self) -> bool {
+        self.dirty == 0
+    }
 }
 
 fn main() -> ExitCode {
@@ -117,6 +145,7 @@ fn main() -> ExitCode {
     }
 
     print_totals(&statuses, have_tokei, &style);
+    print_summary(&statuses, &style);
     ExitCode::SUCCESS
 }
 
@@ -140,15 +169,19 @@ fn gather(root: &Path, name: &str, have_tokei: bool) -> RepoStatus {
             name: name.to_owned(),
             present: false,
             branch: "—".to_owned(),
+            on_trunk: false,
             dirty: 0,
-            ahead: 0,
+            unpushed: 0,
+            no_upstream: false,
             behind: 0,
+            stashes: 0,
             files: 0,
             loc: None,
         };
     }
 
     let branch = git(&dir, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|| "?".to_owned());
+    let on_trunk = TRUNK_BRANCHES.contains(&branch.as_str());
 
     // Dirty count = lines of `git status --porcelain` (staged + unstaged + untracked).
     let dirty = git(&dir, &["status", "--porcelain"])
@@ -156,15 +189,31 @@ fn gather(root: &Path, name: &str, have_tokei: bool) -> RepoStatus {
         .unwrap_or(0);
 
     // Ahead/behind vs upstream, cached (no fetch). `--left-right --count` prints
-    // "<behind>\t<ahead>"; absent/unset upstream yields nothing → (0, 0).
-    let (behind, ahead) = git(&dir, &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
-        .and_then(|out| {
+    // "<behind>\t<ahead>"; absent/unset upstream yields nothing → no upstream.
+    let tracked = git(&dir, &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]).and_then(
+        |out| {
             let mut it = out.split_whitespace();
-            let b = it.next()?.parse().ok()?;
-            let a = it.next()?.parse().ok()?;
+            let b: usize = it.next()?.parse().ok()?;
+            let a: usize = it.next()?.parse().ok()?;
             Some((b, a))
-        })
-        .unwrap_or((0, 0));
+        },
+    );
+
+    // Unpushed = commits ahead of upstream. With no upstream, fall back to the
+    // total local commit count so never-pushed branches still flag their work.
+    let (behind, unpushed, no_upstream) = match tracked {
+        Some((b, a)) => (b, a, false),
+        None => {
+            let local = git(&dir, &["rev-list", "--count", "HEAD"])
+                .and_then(|out| out.parse().ok())
+                .unwrap_or(0);
+            (0, local, true)
+        }
+    };
+
+    let stashes = git(&dir, &["stash", "list"])
+        .map(|out| out.lines().filter(|l| !l.is_empty()).count())
+        .unwrap_or(0);
 
     let files = git(&dir, &["ls-files"])
         .map(|out| out.lines().filter(|l| !l.is_empty()).count())
@@ -176,15 +225,19 @@ fn gather(root: &Path, name: &str, have_tokei: bool) -> RepoStatus {
         name: name.to_owned(),
         present: true,
         branch,
+        on_trunk,
         dirty,
-        ahead,
+        unpushed,
+        no_upstream,
         behind,
+        stashes,
         files,
         loc,
     }
 }
 
-/// Print the colored per-repo status line (name, branch, clean/dirty, ↑/↓).
+/// Print the colored per-repo status line: name, branch (trunk dim / feature
+/// magenta), clean✓/dirty●, unpushed ↑, behind ↓, and stash ⚑.
 fn print_repo_line(s: &RepoStatus, style: &Style, root: &Path) {
     if !s.present {
         println!(
@@ -199,27 +252,45 @@ fn print_repo_line(s: &RepoStatus, style: &Style, root: &Path) {
         return;
     }
 
-    let state = if s.dirty > 0 {
-        format!("{}● {} changed{}", style.ylw, s.dirty, style.rst)
+    // Branch: trunk is unremarkable (dim); a feature branch is highlighted so it
+    // jumps out when you scan the column.
+    let branch = if s.on_trunk {
+        format!("{}{:<20}{}", style.dim, s.branch, style.rst)
     } else {
-        format!("{}✓ clean{}", style.grn, style.rst)
+        format!("{}{:<20}{}", style.mag, s.branch, style.rst)
     };
 
-    let mut ahead_behind = String::new();
-    if s.ahead > 0 {
-        ahead_behind.push_str(&format!(" {}↑{}{}", style.cyn, s.ahead, style.rst));
+    let state = if s.is_clean() {
+        format!("{}✓ clean{}", style.grn, style.rst)
+    } else {
+        format!("{}● {} changed{}", style.ylw, s.dirty, style.rst)
+    };
+
+    // Tags appended only when non-zero, so a healthy repo's line stays quiet.
+    let mut tags = String::new();
+    if s.unpushed > 0 {
+        // "↑N" for commits ahead of upstream; "↑N*" when there's no upstream at
+        // all (the N local commits have never been pushed anywhere).
+        let star = if s.no_upstream { "*" } else { "" };
+        tags.push_str(&format!(
+            "  {}↑{}{}{}",
+            style.cyn, s.unpushed, star, style.rst
+        ));
     }
     if s.behind > 0 {
-        ahead_behind.push_str(&format!(" {}↓{}{}", style.red, s.behind, style.rst));
+        tags.push_str(&format!("  {}↓{}{}", style.red, s.behind, style.rst));
+    }
+    if s.stashes > 0 {
+        tags.push_str(&format!("  {}⚑{}{}", style.ylw, s.stashes, style.rst));
     }
 
     println!(
-        "  {}{:<16}{} {}{:<18}{} {}{}",
-        style.bold, s.name, style.rst, style.dim, s.branch, style.rst, state, ahead_behind
+        "  {}{:<16}{} {} {:<11}{}",
+        style.bold, s.name, style.rst, branch, state, tags
     );
 }
 
-/// Print the aligned totals table and the summary footer.
+/// Print the aligned totals table (repo, branch, line count) with a TOTAL row.
 fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
     println!();
 
@@ -252,8 +323,6 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
 
     let mut total = 0usize;
     let mut found = 0usize;
-    let mut missing = 0usize;
-    let mut dirty_repos = 0usize;
     for s in statuses {
         let count_disp = match count_of(s) {
             Some(n) => {
@@ -264,11 +333,6 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
         };
         if s.present {
             found += 1;
-            if s.dirty > 0 {
-                dirty_repos += 1;
-            }
-        } else {
-            missing += 1;
         }
         println!("{:<16}  {:<20}  {:>12}", s.name, s.branch, count_disp);
     }
@@ -282,20 +346,55 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
         total,
         style.rst
     );
+}
+
+/// Print the at-a-glance roll-up: clean/dirty counts, feature-branch and
+/// unpushed/behind/stash tallies, and any missing repos — only the parts that
+/// actually apply, joined with " · ".
+fn print_summary(statuses: &[RepoStatus], style: &Style) {
+    let present: Vec<&RepoStatus> = statuses.iter().filter(|s| s.present).collect();
+
+    let clean = present.iter().filter(|s| s.is_clean()).count();
+    let dirty = present.iter().filter(|s| !s.is_clean()).count();
+    let feature = present.iter().filter(|s| !s.on_trunk).count();
+    let unpushed = present.iter().filter(|s| s.unpushed > 0).count();
+    let behind = present.iter().filter(|s| s.behind > 0).count();
+    let stashed = present.iter().filter(|s| s.stashes > 0).count();
+    let missing = statuses.len() - present.len();
+
+    // Each fragment carries its own color: green clean, yellow dirty, magenta
+    // feature, cyan unpushed, red behind, yellow stashes, red missing.
+    let mut parts: Vec<String> = Vec::new();
+    parts.push(format!("{}{clean} clean{}", style.grn, style.rst));
+    if dirty > 0 {
+        parts.push(format!("{}{dirty} dirty{}", style.ylw, style.rst));
+    }
+    if feature > 0 {
+        let plural = if feature == 1 { "branch" } else { "branches" };
+        parts.push(format!(
+            "{}{feature} on feature {plural}{}",
+            style.mag, style.rst
+        ));
+    }
+    if unpushed > 0 {
+        parts.push(format!("{}{unpushed} with unpushed{}", style.cyn, style.rst));
+    }
+    if behind > 0 {
+        parts.push(format!("{}{behind} behind{}", style.red, style.rst));
+    }
+    if stashed > 0 {
+        parts.push(format!("{}{stashed} stashed{}", style.ylw, style.rst));
+    }
+    if missing > 0 {
+        parts.push(format!("{}{missing} missing{}", style.red, style.rst));
+    }
 
     println!();
     println!(
-        "{}repos:{} {} found, {} missing   {}dirty:{} {}   {}metric:{} {}",
-        style.dim,
+        "{}summary:{} {}",
+        style.bold,
         style.rst,
-        found,
-        missing,
-        style.dim,
-        style.rst,
-        dirty_repos,
-        style.dim,
-        style.rst,
-        metric
+        parts.join(&format!("{} · {}", style.dim, style.rst))
     );
 }
 
@@ -395,5 +494,53 @@ mod tests {
         for expected in ["bulwark", "rexops", "linux-ops-suite"] {
             assert!(REPOS.contains(&expected), "{expected} must be in the roster");
         }
+    }
+
+    #[test]
+    fn trunk_branches_are_recognized() {
+        assert!(TRUNK_BRANCHES.contains(&"main"));
+        assert!(TRUNK_BRANCHES.contains(&"master"));
+        assert!(!TRUNK_BRANCHES.contains(&"feat/x"));
+    }
+
+    /// Helper to build a present repo with otherwise-zero facts.
+    fn repo(name: &str, on_trunk: bool, dirty: usize, unpushed: usize, stashes: usize) -> RepoStatus {
+        RepoStatus {
+            name: name.to_owned(),
+            present: true,
+            branch: if on_trunk { "main".into() } else { "feat/x".into() },
+            on_trunk,
+            dirty,
+            unpushed,
+            no_upstream: false,
+            behind: 0,
+            stashes,
+            files: 0,
+            loc: None,
+        }
+    }
+
+    #[test]
+    fn is_clean_tracks_dirty_count() {
+        assert!(repo("a", true, 0, 0, 0).is_clean());
+        assert!(!repo("a", true, 3, 0, 0).is_clean());
+    }
+
+    #[test]
+    fn summary_tallies_match_per_repo_facts() {
+        // Mirror the counting logic in print_summary so a column-selection or
+        // predicate regression is caught without parsing printed output.
+        let statuses = vec![
+            repo("clean-trunk", true, 0, 0, 0),
+            repo("dirty-feature", false, 2, 0, 0),
+            repo("clean-feature-unpushed", false, 0, 1, 0),
+            repo("clean-trunk-stashed", true, 0, 0, 1),
+        ];
+        let present: Vec<&RepoStatus> = statuses.iter().filter(|s| s.present).collect();
+        assert_eq!(present.iter().filter(|s| s.is_clean()).count(), 3);
+        assert_eq!(present.iter().filter(|s| !s.is_clean()).count(), 1);
+        assert_eq!(present.iter().filter(|s| !s.on_trunk).count(), 2);
+        assert_eq!(present.iter().filter(|s| s.unpushed > 0).count(), 1);
+        assert_eq!(present.iter().filter(|s| s.stashes > 0).count(), 1);
     }
 }
