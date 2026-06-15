@@ -19,7 +19,8 @@ set -Eeuo pipefail
 
 GH_OWNER="${GH_OWNER:-tom2025b}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SUITE_SRC_DIR="${SUITE_SRC_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+SUITE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SUITE_SRC_DIR="${SUITE_SRC_DIR:-$(cd "${SUITE_ROOT}/.." && pwd)}"
 DRY_RUN="${DRY_RUN:-0}"
 ALLOW_DIRTY="${ALLOW_DIRTY:-0}"
 
@@ -60,7 +61,7 @@ TOOLS=(
   "workstate|${SUITE_SRC_DIR}/workstate|${SUITE_SRC_DIR}/workstate/Cargo.toml|workstate|workstate|workstate|workstate"
   "proto|${SUITE_SRC_DIR}/proto|${SUITE_SRC_DIR}/proto/Cargo.toml|proto|proto|proto|proto"
   "rexops|${SUITE_SRC_DIR}/rexops|${SUITE_SRC_DIR}/rexops/Cargo.toml|rexops-cli|rexops|rexops|rexops"
-  "linux-ops-suite|${SCRIPT_DIR}|${SCRIPT_DIR}/Cargo.toml|toolbox-bridge|toolbox-bridge|linux-ops-suite|toolbox-bridge"
+  "linux-ops-suite|${SUITE_ROOT}|${SUITE_ROOT}/Cargo.toml|toolbox-bridge|toolbox-bridge|linux-ops-suite|toolbox-bridge"
 )
 
 step() { printf '==> %s\n' "$*" >&2; }
