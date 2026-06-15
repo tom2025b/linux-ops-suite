@@ -1,0 +1,15 @@
+[package]
+name = "rex-check"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "At-a-glance git health and source-size dashboard for the Linux Ops Suite repos."
+
+[[bin]]
+name = "rex-check"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }

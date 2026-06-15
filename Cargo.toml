@@ -5,6 +5,7 @@ members = [
     "crates/thomas-tui",
     "crates/toolbox-bridge",
     "crates/linux-ops-install",
+    "crates/rex-check",
 ]
 
 [workspace.package]
