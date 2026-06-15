@@ -148,7 +148,8 @@ fn gather(root: &Path, name: &str, have_tokei: bool) -> RepoStatus {
         };
     }
 
-    let branch = git(&dir, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|| "?".to_owned());
+    let branch =
+        git(&dir, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|| "?".to_owned());
 
     // Dirty count = lines of `git status --porcelain` (staged + unstaged + untracked).
     let dirty = git(&dir, &["status", "--porcelain"])
@@ -157,14 +158,17 @@ fn gather(root: &Path, name: &str, have_tokei: bool) -> RepoStatus {
 
     // Ahead/behind vs upstream, cached (no fetch). `--left-right --count` prints
     // "<behind>\t<ahead>"; absent/unset upstream yields nothing → (0, 0).
-    let (behind, ahead) = git(&dir, &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
-        .and_then(|out| {
-            let mut it = out.split_whitespace();
-            let b = it.next()?.parse().ok()?;
-            let a = it.next()?.parse().ok()?;
-            Some((b, a))
-        })
-        .unwrap_or((0, 0));
+    let (behind, ahead) = git(
+        &dir,
+        &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
+    )
+    .and_then(|out| {
+        let mut it = out.split_whitespace();
+        let b = it.next()?.parse().ok()?;
+        let a = it.next()?.parse().ok()?;
+        Some((b, a))
+    })
+    .unwrap_or((0, 0));
 
     let files = git(&dir, &["ls-files"])
         .map(|out| out.lines().filter(|l| !l.is_empty()).count())
@@ -377,7 +381,8 @@ mod tests {
         // We can't run tokei in tests, but the parse logic is the fragile part:
         // given a representative "Total" row, the 4th field (Code) is selected
         // and thousands separators are stripped. This guards the column index.
-        let sample = " Total                    87        11764         7821         2551         1392";
+        let sample =
+            " Total                    87        11764         7821         2551         1392";
         let code: usize = sample
             .trim_start()
             .split_whitespace()
@@ -393,7 +398,10 @@ mod tests {
     fn roster_has_the_seven_suite_repos() {
         assert_eq!(REPOS.len(), 7);
         for expected in ["bulwark", "rexops", "linux-ops-suite"] {
-            assert!(REPOS.contains(&expected), "{expected} must be in the roster");
+            assert!(
+                REPOS.contains(&expected),
+                "{expected} must be in the roster"
+            );
         }
     }
 }
