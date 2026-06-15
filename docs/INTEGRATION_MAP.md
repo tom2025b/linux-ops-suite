@@ -86,7 +86,7 @@ Paths are RexOps's read locations; producers may also print to stdout. Defaults 
   v1 producer contracts with passing contract tests. Proto's `session` JSON is a
   real v1 producer contract ([example](../examples/proto.session.example.json));
   RexOps consumption is planned. Proto also emits a real v1 `workstate-feed`
-  ([example](../examples/proto.workstate-feed.example.json)) into
+  ([example](../examples/proto.workstate-feed.v1.example.json)) into
   `…/workstate/feeds/proto.json`, the same envelope as Bulwark/ToolFoundry, so
   Workstate ingests recent Proto runs the same way it ingests its other feeds.
 - **Planned:** RexOps consuming the feeds above, in the order set by
