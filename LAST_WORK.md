@@ -1,5 +1,40 @@
 # Last Work
 
+## rex-check: turn into a proper workspace health checker
+
+2026-06-15. Repo: linux-ops-suite. Branch: `worktree-rex-check-health`
+(worktree under `.claude/worktrees/rex-check-health`, rebased onto
+`feat/rex-check-crate` so it carries the new crate). Single file touched:
+`crates/rex-check/src/main.rs` (+ docstring/Cargo unchanged otherwise).
+
+What changed vs the original (which already did branch + dirty/clean +
+ahead/behind + LOC):
+1. **Trunk vs feature branch** — `TRUNK_BRANCHES = [main, master]`; feature
+   branches render magenta in the per-repo line and the branch column, trunk
+   stays dim. New `on_trunk` field on `RepoStatus`.
+2. **Unpushed commits** — `ahead` renamed to `unpushed`. When there's no
+   upstream configured, falls back to total local commit count and flags it
+   with `↑N*` (the `*` = "no upstream, never pushed"). New `no_upstream` field.
+3. **Stashed changes** — new `stashes` field via `git stash list`; shown as
+   `⚑N` (yellow) on the per-repo line.
+4. **Proper color states** — green `✓ clean` / yellow `● N changed`, plus
+   the magenta feature / cyan unpushed / red behind / yellow stash tags, all
+   appended only when non-zero so healthy repos stay quiet.
+5. **Roll-up summary line** — new `print_summary()`: "N clean · N dirty ·
+   N on feature branch(es) · N with unpushed · N behind · N stashed · N
+   missing", each fragment colored, only-applicable parts shown, correct
+   singular/plural. Replaces the old terse repos/dirty/metric footer.
+6. **Line-count table kept** at the bottom (TOTAL row unchanged), per request.
+
+Verified: `cargo build` + `cargo clippy` clean (no warnings), `cargo test`
+6/6 pass (added 3 tests: trunk recognition, is_clean, summary-tally logic),
+and a live `NO_COLOR=1` run against ~/projects renders correctly
+("6 clean · 1 dirty · 1 on feature branch · 2 stashed"). The `r-rex-check`
+alias already exists in ~/.rust_aliases.sh — no wrapper/alias work needed.
+NEXT: review the diff, then merge into `feat/rex-check-crate` (or PR it).
+
+---
+
 ## Fix 3 Important review items: CI example-validation + 2 doc fixes
 
 2026-06-14. Repo: linux-ops-suite (umbrella) only. Branch: `fix-ci-and-docs`
