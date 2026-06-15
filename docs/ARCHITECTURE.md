@@ -10,11 +10,13 @@ job, and never reaches into another tool's code.
 
 **This repo is the contract & index headquarters.** It holds the suite README, the
 shared architecture, the integration map, the contract rules, the JSON schemas, and
-example fixtures. It also hosts a small Cargo workspace with three members:
+example fixtures. It also hosts a small Cargo workspace with five members:
 `thomas-tui`, the general-purpose terminal-UI toolkit; `suite-ui`, the suite's
 common TUI chrome layered on top of it (see
-[Shared UI chrome](#shared-ui-chrome-suite-ui) below); and `toolbox-bridge`, the
-thin Workstate-mediated adapter between Bulwark and ScriptVault.
+[Shared UI chrome](#shared-ui-chrome-suite-ui) below); `toolbox-bridge`, the
+thin Workstate-mediated adapter between Bulwark and ScriptVault; `linux-ops-install`,
+the prebuilt-release installer; and `rex-check`, a fast suite-repo health summary
+(per-repo git status + source line counts).
 
 It is **not**:
 
@@ -32,7 +34,7 @@ It is **not**:
 | **ScriptVault** | Human-facing script search, preview, favorites/recents, and launch. |
 | **Toolbox-Bridge** | Converts Bulwark findings — read from the Workstate snapshot, never from Bulwark — into ScriptVault sidecar metadata, published as a versioned Workstate feed. Pure Rust, dry-run-capable, atomic writes. |
 | **ToolFoundry** | Tool lifecycle, ownership, health, drift, manifests. Source of truth for lifecycle. |
-| **Workstate** | Read-only project/repository health. Never mutates repos. (Architecture phase.) |
+| **Workstate** | Read-only state compiler: ingests the per-tool `workstate-feed` JSONs and compiles one versioned `snapshot.json` (schema v3). Never mutates repos. The snapshot is the source of truth RexOps and Toolbox-Bridge read. |
 | **RexOps** | The only suite-level consumer/orchestrator. Summarizes health/attention and launches. |
 
 ## One-way data flow

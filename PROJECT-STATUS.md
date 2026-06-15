@@ -55,7 +55,8 @@ own repo and will provide the interactive cockpit on the same contracts.
   (metaschema check), and **every example validates against its schema**;
   `examples/` now carries one payload per schema (9 of 9), all CI-validated.
 - **`suite-ui` / `thomas-tui`:** two in-workspace TUI crates (members of the root
-  `Cargo.toml` alongside `toolbox-bridge`) — `thomas-tui` is the general toolkit
+  `Cargo.toml` alongside `toolbox-bridge`, `linux-ops-install`, and `rex-check` —
+  five workspace members in all) — `thomas-tui` is the general toolkit
   (guard, theme, text/layout/keys, widgets) and `suite-ui` is the suite chrome on
   top (panes, overlays, key-hints/search/status bars). **All three** consumers —
   Bulwark, RexOps, and ScriptVault — pull `suite-ui` as a **git dependency** pinned
@@ -66,8 +67,8 @@ own repo and will provide the interactive cockpit on the same contracts.
 - **Installer:** `install.sh` (build-and-copy method) **merged to `main` (PR #4)**
   and exercised in a **real end-to-end run**; verified fresh-clone-safe. Now
   all-Rust: it builds the six sibling-repo tools plus the in-workspace
-  `toolbox-bridge` (the Python venv/pipx path was removed with the Python
-  bridge). The installer is the canonical build-and-copy path now; the last
+  `toolbox-bridge` and `rex-check` (the Python venv/pipx path was removed with the
+  Python bridge). The installer is the canonical build-and-copy path now; the last
   installer-specific verification was `bash -n`, `shellcheck`, `--dry-run`, and
   the sandboxed wrapper/alias check, and the old `cargo install --path` route
   is gone.
@@ -90,6 +91,8 @@ In-workspace crates (umbrella repo, not sibling tools):
 | **thomas-tui** | Rust | ~3.2k | General TUI toolkit: terminal guard, theme, text/layout/keys, widgets. suite-ui builds on it. |
 | **suite-ui** | Rust | ~1.6k | Suite TUI chrome (panes, overlays, status/search bars) on top of thomas-tui. Consumed by Bulwark/RexOps/ScriptVault via git dep. |
 | **Toolbox-Bridge** | Rust | ~1.1k | Workstate snapshot → ScriptVault sidecar feed; unit + integration tests. Replaced the Python bridge. |
+| **linux-ops-install** | Rust | ~1.1k | Prebuilt-release installer: downloads GitHub Release assets, installs to `~/.local/bin`, writes wrappers/aliases. |
+| **rex-check** | Rust | ~0.4k | At-a-glance suite-repo health: per-repo git status (branch/dirty/ahead-behind) + source line counts, with a totals table. Dependency-free. |
 
 All six tools are functional ("Active") and sit on a clean `main`; the suite-ui
 git-dependency conversion is landed and pushed across all three consumers.
