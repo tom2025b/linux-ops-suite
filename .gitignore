@@ -7,3 +7,4 @@ Thumbs.db
 /dist
 # Compiled installer binary (build artifact)
 /linux-ops-install
+.claude/
