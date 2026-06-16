@@ -477,7 +477,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "linux-ops-install"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "serde_json",
@@ -659,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "rex-check"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "rustix"
@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "suite-ui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crossterm",
  "ratatui",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "thomas-tui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "crossterm",
@@ -901,7 +901,7 @@ dependencies = [
 
 [[package]]
 name = "toolbox-bridge"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "clap",
