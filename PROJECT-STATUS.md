@@ -63,14 +63,21 @@ own repo and will provide the interactive cockpit on the same contracts.
   so each builds from a fresh clone with no sibling umbrella checkout. Verified by a
   fresh-clone simulation (empty `CARGO_HOME`, no sibling folder, `cargo build
   --locked`).
-- **Installer:** `install.sh` (build-and-copy method) **merged to `main` (PR #4)**
-  and exercised in a **real end-to-end run**; verified fresh-clone-safe. Now
-  all-Rust: it builds the six sibling-repo tools plus the in-workspace
-  `toolbox-bridge` (the Python venv/pipx path was removed with the Python
-  bridge). The installer is the canonical build-and-copy path now; the last
-  installer-specific verification was `bash -n`, `shellcheck`, `--dry-run`, and
-  the sandboxed wrapper/alias check, and the old `cargo install --path` route
-  is gone.
+- **Installer:** two paths. (1) `install.sh` (build-and-copy) **merged to `main`
+  (PR #4)** and exercised in a **real end-to-end run**; verified fresh-clone-safe.
+  (2) `linux-ops-install` — an in-workspace Rust binary that installs **prebuilt
+  release binaries**: it queries `releases/latest` for each tool under
+  `tom2025b/<repo>`, downloads the matching Linux asset, and **verifies it against
+  the published SHA256 checksum before installing** (sibling `<asset>.sha256` or a
+  `SHA256SUMS` manifest). Verification **fails closed by default** — a checksum
+  mismatch always fails, and a *missing* checksum also fails unless
+  `--allow-unverified` is passed (`--no-verify` skips verification entirely for
+  local/offline use). Releases are produced by a per-repo `.github/workflows/release.yml`
+  (tag `v*` → x86_64 + aarch64 `.tar.gz` + `.sha256`).
+- **Toolchain pin:** the workspace pins its compiler via `rust-toolchain.toml`
+  (channel `1.96.0`) and declares `rust-version = "1.85"` (MSRV), so CI and local
+  builds use the same toolchain and a new `stable` lint can't turn `main` red on
+  its own. A top-level `LICENSE` (MIT) backs the `license = "MIT"` in every manifest.
 
 ## Current state — the tools
 
@@ -90,6 +97,8 @@ In-workspace crates (umbrella repo, not sibling tools):
 | **thomas-tui** | Rust | ~3.2k | General TUI toolkit: terminal guard, theme, text/layout/keys, widgets. suite-ui builds on it. |
 | **suite-ui** | Rust | ~1.6k | Suite TUI chrome (panes, overlays, status/search bars) on top of thomas-tui. Consumed by Bulwark/RexOps/ScriptVault via git dep. |
 | **Toolbox-Bridge** | Rust | ~1.1k | Workstate snapshot → ScriptVault sidecar feed; unit + integration tests. Replaced the Python bridge. |
+| **linux-ops-install** | Rust | ~1.5k | Release-binary installer: fetch latest GitHub release per tool, SHA256-verify (fail-closed), install to `~/.local/bin` + wrappers/aliases. |
+| **rex-check** | Rust | ~0.4k | At-a-glance suite health: per-repo git status + LOC totals. Dependency-free (shells out to `git`/`tokei`). |
 
 All six tools are functional ("Active") and sit on a clean `main`; the suite-ui
 git-dependency conversion is landed and pushed across all three consumers.

@@ -384,7 +384,6 @@ mod tests {
         let sample =
             " Total                    87        11764         7821         2551         1392";
         let code: usize = sample
-            .trim_start()
             .split_whitespace()
             .nth(3)
             .unwrap()

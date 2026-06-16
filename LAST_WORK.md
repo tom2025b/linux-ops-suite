@@ -1,5 +1,57 @@
 # Last Work
 
+## Top-5 review fixes: green main, release/installer hardening, LICENSE+MSRV
+
+2026-06-16. Branch `worktree-suite-fix-top5` (worktree under
+`.claude/worktrees/suite-fix-top5`, cut from origin/main @de32e00). Knocked out
+the 5 prioritized items from the 2026-06-16 review, in order. The uncommitted
+installer rewrite + `release.yml` that existed only in the primary checkout's
+working tree were carried into this branch via `git stash -u` (so they finally
+get committed, not lost).
+
+**#1 — `main` was RED, now green.** `rex-check` had a `clippy::trim_split_whitespace`
+error (`crates/rex-check/src/main.rs:387`, redundant `.trim_start()` before
+`split_whitespace()` — removed) and `cargo fmt --check` failed at 9 sites in the
+installer (ran `cargo fmt`). Now `fmt --check`, `clippy -D warnings`, and
+`cargo test --workspace` all exit 0 (175 tests pass).
+
+**#2 — Release+installer pipeline landed.** Committed the umbrella's
+`linux-ops-install` rewrite (SHA256-verifying release installer) + `.github/workflows/release.yml`.
+Cross-repo: `workstate` and `proto` release.yml were missing the explicit
+`-p <crate>` build flag (and proto had a double-space typo) — both fixed to
+`-p workstate` / `-p proto` (single root-bin repos, so the built binary is
+identical; the flag just future-proofs against a second bin). All 6 repos'
+release.yml verified consistent: tag `v*` → x86_64+aarch64 `.tar.gz` + `.sha256`,
+archive/binary names match the installer registry.
+
+**#3 — toolfoundry.** Its release.yml already existed and was already correct
+(`-p toolfoundry`); the earlier "missing" finding was stale. Just committed.
+
+**#4 — Checksum policy now fails closed.** `verify_download` previously installed
+unverified on a *missing* checksum (warn + proceed). Since every suite release
+publishes a `.sha256`, a missing one means a broken/tampered release — flipped the
+default to hard-fail. Renamed `--require-checksums` → inverted `--allow-unverified`
+(opt-in downgrade to warn); `--no-verify` unchanged. A checksum *mismatch* already
+failed and still does. Added 3 tests: `missing_checksum_fails_closed_by_default`,
+`missing_checksum_allowed_with_flag`, `no_verify_skips_missing_checksum`. README +
+error text + doc comments updated.
+
+**#5 — LICENSE + MSRV + docs.** Added top-level `LICENSE` (MIT, backs the
+`license = "MIT"` in every manifest), `rust-toolchain.toml` (channel `1.96.0`, the
+fix for #1's surprise: CI no longer rides floating `stable`), and
+`rust-version = "1.85"` (MSRV) in `[workspace.package]`. Refreshed PROJECT-STATUS.md
+(new installer path, release pipeline, toolchain pin, + `linux-ops-install` &
+`rex-check` in the crate table).
+
+Umbrella diff: rex-check, linux-ops-install (rewrite + flag rename + 3 tests),
+Cargo.toml, README.md, PROJECT-STATUS.md, + new LICENSE / rust-toolchain.toml /
+.github/workflows/release.yml. Sibling repos (workstate, proto, + all 6 release.yml)
+committed in place on their own `main` — NOT pushed yet (awaiting go-ahead).
+NEXT: PR the umbrella branch; push sibling release.yml commits; tag ONE repo `v0.1.0`
+to exercise the pipeline + installer end-to-end (never run yet — no releases exist).
+
+---
+
 ## Fix 3 Important review items: CI example-validation + 2 doc fixes
 
 2026-06-14. Repo: linux-ops-suite (umbrella) only. Branch: `fix-ci-and-docs`

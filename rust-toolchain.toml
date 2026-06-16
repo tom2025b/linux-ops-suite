@@ -1,0 +1,7 @@
+# Pin the toolchain channel so CI and local builds use the same compiler.
+# Without this, CI rides whatever "stable" GitHub currently ships, so a new
+# clippy lint can turn a previously-green `main` red with no code change.
+# Bump this deliberately when you want to adopt a newer toolchain.
+[toolchain]
+channel = "1.96.0"
+components = ["clippy", "rustfmt"]
