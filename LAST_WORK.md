@@ -1,5 +1,68 @@
 # Last Work
 
+## Cleanup: retire all bump-v0.1.1 branches across the 7 suite repos
+
+2026-06-16. Removed the leftover `bump-v0.1.1` branch from every repo. The task was
+framed as "merge bump into main, push, delete", but inspection showed the bump's
+*content was already on `origin/main` in all 7 repos* (verified by matching
+`git patch-id`): proto/rexops/scriptvault landed it via squash-PRs #5/#26/#18 plus
+their release.yml, bulwark/workstate had it fully contained in main, and
+linux-ops-suite/toolfoundry had it superseded by `origin/main` PRs #24/#4 with newer
+work on top. So no merge/push was needed (a merge would have been a no-op at best, or
+regressed main — e.g. re-adding the `.gitignore` line 029eff0 deleted, or reverting
+toolfoundry's hardening cleanup 6278868). Actions taken: FF'd local main to origin/main
+where behind (proto/rexops/scriptvault), removed the stale
+`.claude/worktrees/suite-fix-top5` worktree (clean) that pinned linux-ops-suite's bump
+branch, then deleted all 7 bump branches with `git branch -D`. Final `rex-check`:
+all 7 repos on `main`, clean, 0 dirty, in sync with origin. (Other stale worktrees
+remain under `.claude/worktrees/` — left untouched, out of scope.)
+
+## linux-ops-install code-review fixes (CORRECTNESS / CLARITY / NITS, all items)
+
+2026-06-16. Branch `worktree-installer-review-fixes` (worktree under
+`.claude/worktrees/installer-review-fixes`, cut from origin/main). Applied
+**every** item from the in-session critical review of
+`crates/linux-ops-install` — all 5 CORRECTNESS, all 6 CLARITY/STYLE, all 3
+NITS. Not pushed; awaiting Tom's call on PR.
+
+CORRECTNESS:
+1. TempDir now created with O_EXCL semantics + mode 0700 (`DirBuilder::mode().create()`),
+   fails if path exists — no symlink/pre-create reuse in shared /tmp.
+2. `read_expected_sha256`: a bare (filename-less) digest is trusted ONLY when it
+   is the sole digest line; multi-entry manifests with a bare line now error
+   instead of guessing.
+3. `checksum_for` manifest match tightened to exact `sha256sums`/`sha256sums.txt`
+   (dropped loose `ends_with`), so a different asset's `*.sha256sums` can't be
+   mispaired.
+4. `download_asset` gained `--max-redirs 10` + `--max-filesize 512MiB` caps.
+5. `fetch_http` reads HTTP status from curl `-w '%{http_code}'` to a temp body
+   file instead of a `__HTTP_STATUS__` body sentinel (no body-collision risk).
+
+CLARITY/STYLE:
+6. Split the 1493-line `main.rs` god-file into focused modules: `error.rs`,
+   `platform.rs`, `release.rs`, `verify.rs`, `fs_ops.rs`, `net.rs`, `ui.rs`;
+   `main.rs` is now a 101-line orchestrator. Tests moved into their modules.
+7. `ReleaseAsset` derives `Clone`; `select_asset` uses `.cloned()`.
+8. `print_mode` now echoes the verify posture (no_verify / allow_unverified /
+   default fail-closed) in the banner.
+9. `NoLatestRelease` Display names its unused fields (`binary:_`,`new_release_url:_`)
+   instead of hiding them behind `..`.
+10. Single `is_signature_or_checksum()` helper + `SIGNATURE_OR_CHECKSUM_EXTENSIONS`
+    const, shared (no denylist drift).
+11. `find_binary` is now BFS shallowest-match with sorted (deterministic) ties.
+
+NITS:
+- `tar`/`unzip` get friendly `MissingPrerequisite` remediation at point-of-use
+  (new error variant; `check_command` for curl/sha256sum routed through it too).
+- `summarize_http_body` truncates on a UTF-8 char boundary (was a real
+  mid-char slice panic).
+- TempDir `unwrap_or(0)` nanos documented as intentional.
+
+Added 7 tests (multi-entry bare-digest rejection, sole-bare-digest accept,
+loose-manifest ignore, UTF-8 truncation, shallowest find_binary). Verified:
+`cargo fmt --check`, `clippy --workspace --all-targets -D warnings`, and
+`cargo test --workspace` all green; installer crate 25/25 tests pass.
+
 ## Top-5 review fixes: green main, release/installer hardening, LICENSE+MSRV
 
 2026-06-16. Branch `worktree-suite-fix-top5` (worktree under

@@ -1,0 +1,523 @@
+//! Filesystem and install operations: per-tool install orchestration,
+//! download/extract, binary discovery, wrapper + alias generation, the rex
+//! launcher, path resolution, the prerequisite checks, and the RAII temp dir.
+
+use std::env;
+use std::ffi::OsStr;
+use std::fs;
+use std::io;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::error::InstallError;
+use crate::net::run_command;
+use crate::platform::Platform;
+use crate::release::{
+    collect_assets, fetch_latest_release, select_asset, ReleaseAsset, Tool, TOOLS,
+};
+use crate::ui::{dry_run, ok, skip, step};
+use crate::verify::verify_download;
+use crate::Cli;
+use crate::GITHUB_OWNER;
+use crate::REX_LAUNCHER;
+
+#[derive(Debug)]
+pub(crate) struct InstallPaths {
+    pub(crate) bin_dir: PathBuf,
+    pub(crate) wrapper_dir: PathBuf,
+    pub(crate) aliases_file: PathBuf,
+}
+
+impl InstallPaths {
+    pub(crate) fn from_env() -> Result<Self, InstallError> {
+        let home = home_dir()?;
+        Ok(Self {
+            bin_dir: path_from_env("BIN_DIR", &home.join(".local/bin")),
+            wrapper_dir: path_from_env("WRAPPER_DIR", &home.join("bin")),
+            aliases_file: path_from_env("ALIASES_FILE", &home.join(".rust_aliases.sh")),
+        })
+    }
+}
+
+pub(crate) fn install_tool(
+    cli: &Cli,
+    paths: &InstallPaths,
+    platform: &Platform,
+    tool: &Tool,
+) -> Result<(), InstallError> {
+    let destination = paths.bin_dir.join(tool.binary);
+    if !cli.force && is_executable(&destination) {
+        skip(format!(
+            "{} already installed at {}; use --force to reinstall",
+            tool.binary,
+            destination.display()
+        ));
+        return Ok(());
+    }
+
+    step(format!(
+        "Installing {} from {}/{} latest release",
+        tool.binary, GITHUB_OWNER, tool.repo
+    ));
+
+    if cli.dry_run {
+        dry_run(format!(
+            "query https://api.github.com/repos/{}/{}/releases/latest",
+            GITHUB_OWNER, tool.repo
+        ));
+        dry_run(format!(
+            "select asset matching {} and binary {}",
+            platform.asset_hint(),
+            tool.binary
+        ));
+        dry_run(format!("download and install to {}", destination.display()));
+        if cli.no_verify {
+            dry_run("skip SHA256 verification (--no-verify)");
+        } else {
+            dry_run("verify download against published .sha256 checksum before install");
+        }
+        return Ok(());
+    }
+
+    let release = fetch_latest_release(tool)?;
+    let assets = collect_assets(&release);
+    let asset = select_asset(tool, platform, &assets)?;
+    let temp_dir = TempDir::new(tool.binary)?;
+    let downloaded = temp_dir.path().join(&asset.name);
+
+    download_asset(&asset, &downloaded)?;
+    verify_download(cli, &assets, &asset, &downloaded, temp_dir.path())?;
+    let binary = prepare_binary(&downloaded, temp_dir.path(), tool.binary)?;
+    install_binary(&binary, &destination)?;
+    ok(format!("{} -> {}", tool.binary, destination.display()));
+
+    Ok(())
+}
+
+pub(crate) fn install_rex_launcher(cli: &Cli, paths: &InstallPaths) -> Result<(), InstallError> {
+    let destination = paths.bin_dir.join("rex");
+    step("Installing rex launcher");
+
+    if cli.dry_run {
+        dry_run(format!(
+            "write embedded launcher to {}",
+            destination.display()
+        ));
+        return Ok(());
+    }
+
+    create_dir_all(&paths.bin_dir, "create install directory")?;
+    fs::write(&destination, REX_LAUNCHER).map_err(|source| InstallError::Io {
+        context: format!("write {}", destination.display()),
+        source,
+    })?;
+    set_executable(&destination)?;
+    ok(format!("rex -> {}", destination.display()));
+    Ok(())
+}
+
+pub(crate) fn install_wrappers_and_aliases(
+    cli: &Cli,
+    paths: &InstallPaths,
+) -> Result<(), InstallError> {
+    step("Installing r-<tool> wrappers and aliases");
+
+    if cli.dry_run {
+        dry_run(format!("create {}", paths.wrapper_dir.display()));
+        dry_run(format!("create/update {}", paths.aliases_file.display()));
+        for tool in TOOLS {
+            dry_run(format!(
+                "write {}/r-{} and alias r-{}",
+                paths.wrapper_dir.display(),
+                tool.binary,
+                tool.binary
+            ));
+        }
+        return Ok(());
+    }
+
+    create_dir_all(&paths.wrapper_dir, "create wrapper directory")?;
+    ensure_aliases_file(&paths.aliases_file)?;
+
+    let mut aliases =
+        fs::read_to_string(&paths.aliases_file).map_err(|source| InstallError::Io {
+            context: format!("read {}", paths.aliases_file.display()),
+            source,
+        })?;
+
+    for tool in TOOLS {
+        let wrapper = paths.wrapper_dir.join(format!("r-{}", tool.binary));
+        let script = format!(
+            "#!/usr/bin/env bash\n# Auto-generated by linux-ops-install - wrapper for {}.\nexec {} \"$@\"\n",
+            tool.binary, tool.binary
+        );
+        fs::write(&wrapper, script).map_err(|source| InstallError::Io {
+            context: format!("write {}", wrapper.display()),
+            source,
+        })?;
+        set_executable(&wrapper)?;
+
+        let alias_prefix = format!("alias r-{}=", tool.binary);
+        if !aliases.lines().any(|line| line.starts_with(&alias_prefix)) {
+            if !aliases.ends_with('\n') {
+                aliases.push('\n');
+            }
+            aliases.push_str(&format!("alias r-{}='{}'\n", tool.binary, tool.binary));
+        }
+
+        ok(format!("r-{} wrapper", tool.binary));
+    }
+
+    fs::write(&paths.aliases_file, aliases).map_err(|source| InstallError::Io {
+        context: format!("write {}", paths.aliases_file.display()),
+        source,
+    })?;
+    ok(format!("aliases -> {}", paths.aliases_file.display()));
+
+    Ok(())
+}
+
+pub(crate) fn check_prereqs(cli: &Cli) -> Result<(), InstallError> {
+    step("Checking prerequisites");
+    check_command("curl", cli)?;
+    if !cli.no_verify {
+        check_command("sha256sum", cli)?;
+    }
+    if cli.dry_run {
+        dry_run("tar/unzip are checked only if the selected release asset needs extraction");
+    }
+    Ok(())
+}
+
+fn check_command(program: &str, cli: &Cli) -> Result<(), InstallError> {
+    if cli.dry_run {
+        dry_run(format!("check command {program}"));
+        return Ok(());
+    }
+
+    // Distinguish "tool absent" (friendly MissingPrerequisite remediation) from
+    // "tool present but `--version` failed" (the generic CommandFailed path).
+    Command::new(program)
+        .arg("--version")
+        .output()
+        .map_err(|source| InstallError::MissingPrerequisite {
+            program: program.to_string(),
+            source,
+        })?;
+    ok(format!("{program} found"));
+    Ok(())
+}
+
+/// Largest release asset we will download, in bytes (512 MiB). Suite binaries
+/// are a few MiB; this is a generous defense-in-depth cap so a redirect to an
+/// unexpectedly huge resource can't fill the disk before verification.
+const MAX_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
+
+pub(crate) fn download_asset(asset: &ReleaseAsset, destination: &Path) -> Result<(), InstallError> {
+    step(format!("Downloading {}", asset.name));
+    run_command(
+        Command::new("curl")
+            .arg("-fL")
+            .arg("--progress-bar")
+            .arg("--max-redirs")
+            .arg("10")
+            .arg("--max-filesize")
+            .arg(MAX_DOWNLOAD_BYTES.to_string())
+            .arg("-H")
+            .arg("User-Agent: linux-ops-install")
+            .arg("-o")
+            .arg(destination)
+            .arg(&asset.download_url),
+    )?;
+    Ok(())
+}
+
+fn prepare_binary(
+    downloaded: &Path,
+    temp_dir: &Path,
+    binary_name: &str,
+) -> Result<PathBuf, InstallError> {
+    let file_name = downloaded
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if file_name.ends_with(".tar.xz") {
+        ensure_extractor_available("tar")?;
+        let extract_dir = temp_dir.join("extract");
+        create_dir_all(&extract_dir, "create extraction directory")?;
+        run_command(
+            Command::new("tar")
+                .arg("-xJf")
+                .arg(downloaded)
+                .arg("-C")
+                .arg(&extract_dir),
+        )?;
+        find_binary(&extract_dir, binary_name)
+    } else if file_name.ends_with(".tar.gz") || file_name.ends_with(".tgz") {
+        ensure_extractor_available("tar")?;
+        let extract_dir = temp_dir.join("extract");
+        create_dir_all(&extract_dir, "create extraction directory")?;
+        run_command(
+            Command::new("tar")
+                .arg("-xzf")
+                .arg(downloaded)
+                .arg("-C")
+                .arg(&extract_dir),
+        )?;
+        find_binary(&extract_dir, binary_name)
+    } else if file_name.ends_with(".zip") {
+        ensure_extractor_available("unzip")?;
+        let extract_dir = temp_dir.join("extract");
+        create_dir_all(&extract_dir, "create extraction directory")?;
+        run_command(
+            Command::new("unzip")
+                .arg("-q")
+                .arg(downloaded)
+                .arg("-d")
+                .arg(&extract_dir),
+        )?;
+        find_binary(&extract_dir, binary_name)
+    } else {
+        Ok(downloaded.to_path_buf())
+    }
+}
+
+/// Confirm the extraction tool needed for the selected archive is installed,
+/// giving the same friendly "missing prerequisite" remediation that `curl` and
+/// `sha256sum` get up front — `check_prereqs` only probes these lazily because
+/// not every release needs extraction, so we verify here at the point of use
+/// rather than letting `tar`/`unzip` fail with a raw CommandFailed.
+fn ensure_extractor_available(program: &str) -> Result<(), InstallError> {
+    Command::new(program)
+        .arg("--version")
+        .output()
+        .map_err(|source| InstallError::MissingPrerequisite {
+            program: program.to_string(),
+            source,
+        })
+        .map(|_| ())
+}
+
+fn install_binary(source: &Path, destination: &Path) -> Result<(), InstallError> {
+    create_dir_all(
+        destination.parent().unwrap_or_else(|| Path::new(".")),
+        "create install directory",
+    )?;
+    let source_display = source.display().to_string();
+    fs::copy(source, destination).map_err(|source| InstallError::Io {
+        context: format!("copy {} to {}", source_display, destination.display()),
+        source,
+    })?;
+    set_executable(destination)
+}
+
+/// Find `binary_name` inside an extracted archive. Walks breadth-first and
+/// returns the SHALLOWEST match; ties are broken lexicographically. `read_dir`
+/// yields entries in unspecified order, so without this an archive containing
+/// the name in two places would pick a non-deterministic winner — we prefer the
+/// top-level binary and resolve ties stably so the result is reproducible.
+fn find_binary(root: &Path, binary_name: &str) -> Result<PathBuf, InstallError> {
+    // BFS by depth: `queue` holds the directories for the current depth, sorted
+    // for stable traversal. We collect every match at a given depth before
+    // descending, so a shallower match always wins.
+    let mut queue = vec![root.to_path_buf()];
+    while !queue.is_empty() {
+        let mut matches = Vec::new();
+        let mut next = Vec::new();
+
+        for dir in &queue {
+            let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+                .map_err(|source| InstallError::Io {
+                    context: format!("read {}", dir.display()),
+                    source,
+                })?
+                .map(|entry| {
+                    entry
+                        .map(|entry| entry.path())
+                        .map_err(|source| InstallError::Io {
+                            context: format!("read entry in {}", dir.display()),
+                            source,
+                        })
+                })
+                .collect::<Result<_, _>>()?;
+            // Sort so equal-depth ties resolve deterministically.
+            entries.sort();
+
+            for path in entries {
+                let metadata = fs::metadata(&path).map_err(|source| InstallError::Io {
+                    context: format!("stat {}", path.display()),
+                    source,
+                })?;
+                if metadata.is_dir() {
+                    next.push(path);
+                } else if path.file_name() == Some(OsStr::new(binary_name)) {
+                    matches.push(path);
+                }
+            }
+        }
+
+        if let Some(first) = matches.into_iter().min() {
+            return Ok(first);
+        }
+        queue = next;
+    }
+
+    Err(InstallError::Io {
+        context: format!("find binary {binary_name} under {}", root.display()),
+        source: io::Error::new(io::ErrorKind::NotFound, "binary not found in release asset"),
+    })
+}
+
+fn ensure_aliases_file(path: &Path) -> Result<(), InstallError> {
+    if let Some(parent) = path.parent() {
+        create_dir_all(parent, "create aliases directory")?;
+    }
+    if !path.exists() {
+        fs::write(path, "# Rust tool aliases - sourced from your shell rc.\n").map_err(
+            |source| InstallError::Io {
+                context: format!("write {}", path.display()),
+                source,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+fn set_executable(path: &Path) -> Result<(), InstallError> {
+    let metadata = fs::metadata(path).map_err(|source| InstallError::Io {
+        context: format!("stat {}", path.display()),
+        source,
+    })?;
+    let mut permissions = metadata.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).map_err(|source| InstallError::Io {
+        context: format!("chmod +x {}", path.display()),
+        source,
+    })
+}
+
+fn is_executable(path: &Path) -> bool {
+    fs::metadata(path)
+        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+pub(crate) fn path_contains(path: &Path) -> bool {
+    let Ok(path_var) = env::var("PATH") else {
+        return false;
+    };
+    env::split_paths(&path_var).any(|entry| entry == path)
+}
+
+fn path_from_env(name: &str, default: &Path) -> PathBuf {
+    env::var_os(name)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default.to_path_buf())
+}
+
+fn home_dir() -> Result<PathBuf, InstallError> {
+    env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
+        .ok_or(InstallError::MissingHome)
+}
+
+fn create_dir_all(path: &Path, context: &str) -> Result<(), InstallError> {
+    fs::create_dir_all(path).map_err(|source| InstallError::Io {
+        context: format!("{context}: {}", path.display()),
+        source,
+    })
+}
+
+pub(crate) struct TempDir {
+    path: PathBuf,
+}
+
+impl TempDir {
+    pub(crate) fn new(prefix: &str) -> Result<Self, InstallError> {
+        // A clock before the epoch is implausible; fall back to 0 nanos. The pid
+        // already makes the path per-process unique, and the exclusive create
+        // below would catch any genuine collision, so this is safe.
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let path = env::temp_dir().join(format!(
+            "linux-ops-install-{prefix}-{}-{nanos}",
+            std::process::id()
+        ));
+        // Create exclusively (O_EXCL semantics) with mode 0700: errors if the
+        // path already exists, so we never reuse or follow a pre-created dir or
+        // symlink someone else planted in a shared /tmp. The downloaded binary
+        // lands here before it is checksum-verified, so the directory must be
+        // private and freshly ours.
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&path)
+            .map_err(|source| InstallError::Io {
+                context: format!("create temporary directory {}", path.display()),
+                source,
+            })?;
+        Ok(Self { path })
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_binary_prefers_shallowest_match() {
+        let dir = TempDir::new("find-binary").expect("temp dir");
+        let root = dir.path();
+        // Deep copy first so traversal order can't accidentally favor it.
+        let nested = root.join("nested/deeper");
+        fs::create_dir_all(&nested).expect("mkdir nested");
+        fs::write(nested.join("rexops"), "deep").expect("write deep");
+        fs::write(root.join("rexops"), "shallow").expect("write shallow");
+
+        let found = find_binary(root, "rexops").expect("found");
+        assert_eq!(found, root.join("rexops"));
+        assert_eq!(fs::read_to_string(&found).unwrap(), "shallow");
+    }
+
+    #[test]
+    fn wrapper_alias_append_preserves_existing_line_without_trailing_newline() {
+        let temp_dir = TempDir::new("alias-test").expect("temp dir");
+        let paths = InstallPaths {
+            bin_dir: temp_dir.path().join("local-bin"),
+            wrapper_dir: temp_dir.path().join("bin"),
+            aliases_file: temp_dir.path().join("aliases.sh"),
+        };
+        fs::write(&paths.aliases_file, "alias existing='existing'").expect("seed aliases");
+
+        install_wrappers_and_aliases(
+            &Cli {
+                dry_run: false,
+                force: false,
+                no_verify: false,
+                allow_unverified: false,
+            },
+            &paths,
+        )
+        .expect("install wrappers");
+
+        let aliases = fs::read_to_string(&paths.aliases_file).expect("read aliases");
+
+        assert!(aliases.contains("alias existing='existing'\nalias r-bulwark='bulwark'\n"));
+    }
+}
