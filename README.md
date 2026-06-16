@@ -43,8 +43,14 @@ What `linux-ops-install` does:
 - Detects the current Linux architecture: `x86_64` or `aarch64`.
 - Queries `https://api.github.com/repos/tom2025b/<repo>/releases/latest` for each tool.
 - Downloads the matching Linux asset, preferring `.tar.gz` when available.
+- **Verifies the download against its published SHA256 checksum before extracting or installing it.** It looks for a sibling `<asset>.sha256` file (or a `SHA256SUMS` manifest) in the release and refuses to install on mismatch — or when no checksum is published at all (every suite release publishes one, so a missing checksum means a broken or tampered release). Requires `sha256sum` (coreutils).
 - Extracts the archive, installs the binary into `~/.local/bin`, installs `rex`, writes `~/bin/r-<tool>`, and updates `~/.rust_aliases.sh`.
 - Never edits your shell rc files. If `~/.local/bin` or `~/bin` is missing from `PATH`, it prints the exact line to add.
+
+Integrity flags:
+
+- `--allow-unverified` — downgrade a *missing* checksum from a hard failure to a loud warning and install anyway. (A checksum *mismatch* still fails regardless.)
+- `--no-verify` — skip verification entirely (unsafe; local/offline testing only).
 
 Supported binaries:
 
