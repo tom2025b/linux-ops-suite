@@ -12,7 +12,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[ScriptVault](https://github.com/tom2025b/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
 | **[Toolbox-Bridge](https://github.com/tom2025b/linux-ops-suite)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active |
 | **[ToolFoundry](https://github.com/tom2025b/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
-| **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — emits the v3 snapshot | Active |
+| **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — emits the v4 snapshot | Active |
 | **[Proto](https://github.com/tom2025b/proto)** | Guided protocol / checklist runner — emits session records | Active |
 | **[RexOps](https://github.com/tom2025b/rexops)** | Operations cockpit + suite launcher | Active |
 
@@ -174,7 +174,7 @@ rex run
 - No tool imports code from another tool.
 - **RexOps** is the front door and top-level consumer — it reads the rolled-up Workstate snapshot and lets you launch the other tools. (ScriptVault is a secondary consumer: it reads the Toolbox-Bridge sidecar feed — see below.)
 - **ToolFoundry** emits `toolfoundry workstate-feed`; the shape is pinned by `contracts/toolfoundry.workstate-feed.v1.schema.json`.
-- **Workstate** compiles the other tools' feeds into one versioned `snapshot.json` (schema v3) that **RexOps** consumes as its source of truth. The shape is pinned by `contracts/workstate.snapshot.schema.json` and validated in both repos' CI.
+- **Workstate** compiles the other tools' feeds into one versioned `snapshot.json` (schema v4) that **RexOps** consumes as its source of truth. The shape is pinned by `contracts/workstate.snapshot.schema.json` and validated in both repos' CI.
 - **Toolbox-Bridge** turns Bulwark findings into ScriptVault sidecar metadata *via
   Workstate only*: it reads the compiled snapshot (never Bulwark directly) and writes
   a versioned sidecar feed into Workstate's feeds directory for ScriptVault to
@@ -193,7 +193,7 @@ rex run
 - Then runs the producers and aggregators in contract order: ToolFoundry → Bulwark → Proto → Workstate → Toolbox-Bridge.
 - Producer feeds are written to `$XDG_DATA_HOME/workstate/feeds`, and the compiled Workstate snapshot is written to `$XDG_DATA_HOME/rexops/feeds/workstate.snapshot.json`.
 - Everything is optional and best-effort; missing tools are skipped (graceful degradation).
-- A small status summary is printed from the resulting Workstate v3 snapshot when present.
+- A small status summary is printed from the resulting Workstate v4 snapshot when present.
 
 `bin/rex` is the reference implementation (bash). The real RexOps TUI (in its own repo) will eventually provide the interactive cockpit and launcher on top of the same contracts.
 
