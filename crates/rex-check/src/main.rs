@@ -15,12 +15,22 @@
 //! like the suite's `install.sh`) rather than linking a git library, which keeps
 //! it dependency-free and trivially fast to build inside the umbrella workspace.
 //!
+//! Beyond the read-only dashboard it also performs two housekeeping passes:
+//!   1. For any repo with uncommitted changes it prints that repo's full
+//!      `git status` so the dirty count is never a mystery.
+//!   2. It audits every repo for a `.claude/` folder (Claude Code's local
+//!      worktree/agent state) and, after a clear warning + an explicit y/N
+//!      prompt, ignores + untracks + deletes them. Deletion NEVER happens
+//!      without a typed "yes" at an interactive terminal — a piped/non-TTY run
+//!      only reports, it never removes anything.
+//!
 //! Environment:
 //!   REX_ROOT   override the directory the suite repos live under
 //!              (default: `$HOME/projects`).
 //!   NO_COLOR   disable ANSI color (also auto-disabled when stdout isn't a TTY).
 
 use std::env;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -80,6 +90,9 @@ impl Style {
 /// lines and the totals table render from the same data.
 struct RepoStatus {
     name: String,
+    /// Absolute path to the repo, kept so the post-passes (git status, .claude
+    /// cleanup) act on the same directory the facts were gathered from.
+    dir: PathBuf,
     present: bool,
     branch: String,
     dirty: usize,
@@ -89,6 +102,13 @@ struct RepoStatus {
     files: usize,
     /// Code lines from tokei, when tokei is installed.
     loc: Option<usize>,
+    /// Whether a `.claude/` directory exists at the repo root. Audited every run.
+    has_claude: bool,
+    /// Number of `.claude/` paths git is tracking (0 = ignored/untracked). Drives
+    /// whether the `git rm --cached` step has anything to do.
+    claude_tracked: usize,
+    /// Whether `.claude/` is already covered by the repo's `.gitignore`.
+    claude_ignored: bool,
 }
 
 fn main() -> ExitCode {
@@ -117,6 +137,20 @@ fn main() -> ExitCode {
     }
 
     print_totals(&statuses, have_tokei, &style);
+
+    // Pass 1: show the full `git status` for every repo that has uncommitted
+    // changes, so a non-zero dirty count above is never left unexplained.
+    show_dirty_statuses(&statuses, &style);
+
+    // Pass 2: audit + (after an explicit y/N) clean any `.claude/` folders.
+    audit_and_clean_claude(&statuses, &style);
+
+    // Pass 3 (final): always recap which repos are still dirty AFTER the
+    // cleanup above — so the status is the last thing on screen regardless of
+    // the .claude answer — then, at a terminal, offer a one-message
+    // commit-all over those repos. Runs on both yes and no to .claude.
+    offer_commit_dirty(&statuses, &style);
+
     ExitCode::SUCCESS
 }
 
@@ -138,6 +172,7 @@ fn gather(root: &Path, name: &str, have_tokei: bool) -> RepoStatus {
     if !dir.join(".git").is_dir() {
         return RepoStatus {
             name: name.to_owned(),
+            dir,
             present: false,
             branch: "—".to_owned(),
             dirty: 0,
@@ -145,6 +180,9 @@ fn gather(root: &Path, name: &str, have_tokei: bool) -> RepoStatus {
             behind: 0,
             files: 0,
             loc: None,
+            has_claude: false,
+            claude_tracked: 0,
+            claude_ignored: false,
         };
     }
 
@@ -176,8 +214,21 @@ fn gather(root: &Path, name: &str, have_tokei: bool) -> RepoStatus {
 
     let loc = if have_tokei { tokei_loc(&dir) } else { None };
 
+    // .claude/ audit facts, gathered up front so the cleanup pass and the
+    // warning render from the same snapshot.
+    let has_claude = dir.join(".claude").is_dir();
+    let claude_tracked = if has_claude {
+        git(&dir, &["ls-files", "--", ".claude"])
+            .map(|out| out.lines().filter(|l| !l.is_empty()).count())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let claude_ignored = has_claude && gitignore_has_claude(&dir);
+
     RepoStatus {
         name: name.to_owned(),
+        dir,
         present: true,
         branch,
         dirty,
@@ -185,7 +236,27 @@ fn gather(root: &Path, name: &str, have_tokei: bool) -> RepoStatus {
         behind,
         files,
         loc,
+        has_claude,
+        claude_tracked,
+        claude_ignored,
     }
+}
+
+/// The exact line rex-check manages in a `.gitignore` to ignore Claude's local
+/// state. A trailing slash makes it directory-only, matching the folder we clean.
+const CLAUDE_IGNORE_LINE: &str = ".claude/";
+
+/// Whether `<dir>/.gitignore` already ignores `.claude/`. Accepts the common
+/// equivalent spellings so we never append a duplicate that only differs by a
+/// slash or a leading `/`: `.claude/`, `.claude`, `/.claude/`, `/.claude`.
+fn gitignore_has_claude(dir: &Path) -> bool {
+    let Ok(contents) = std::fs::read_to_string(dir.join(".gitignore")) else {
+        return false;
+    };
+    contents.lines().any(|line| {
+        let t = line.trim();
+        matches!(t, ".claude/" | ".claude" | "/.claude/" | "/.claude")
+    })
 }
 
 /// Print the colored per-repo status line (name, branch, clean/dirty, ↑/↓).
@@ -257,7 +328,7 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
     let mut total = 0usize;
     let mut found = 0usize;
     let mut missing = 0usize;
-    let mut dirty_repos = 0usize;
+    let mut dirty_names: Vec<&str> = Vec::new();
     for s in statuses {
         let count_disp = match count_of(s) {
             Some(n) => {
@@ -269,7 +340,7 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
         if s.present {
             found += 1;
             if s.dirty > 0 {
-                dirty_repos += 1;
+                dirty_names.push(&s.name);
             }
         } else {
             missing += 1;
@@ -287,6 +358,14 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
         style.rst
     );
 
+    // Name the dirty repos inline so the summary is actionable at a glance;
+    // bare "0" when the whole suite is clean.
+    let dirty_disp = if dirty_names.is_empty() {
+        "0".to_owned()
+    } else {
+        format!("{} ({})", dirty_names.len(), dirty_names.join(", "))
+    };
+
     println!();
     println!(
         "{}repos:{} {} found, {} missing   {}dirty:{} {}   {}metric:{} {}",
@@ -296,11 +375,478 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
         missing,
         style.dim,
         style.rst,
-        dirty_repos,
+        dirty_disp,
         style.dim,
         style.rst,
         metric
     );
+}
+
+/// Pass 1 — for each present, dirty repo, print a clear header and that repo's
+/// full `git status` output. Read-only; runs unconditionally on every invocation.
+fn show_dirty_statuses(statuses: &[RepoStatus], style: &Style) {
+    let dirty: Vec<&RepoStatus> = statuses
+        .iter()
+        .filter(|s| s.present && s.dirty > 0)
+        .collect();
+    if dirty.is_empty() {
+        return;
+    }
+
+    let names = dirty
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    println!();
+    println!(
+        "{}{}git status — {} repo(s) with uncommitted changes:{} {}{}{}",
+        style.bold,
+        style.ylw,
+        dirty.len(),
+        style.rst,
+        style.bold,
+        names,
+        style.rst
+    );
+    for s in &dirty {
+        println!();
+        println!(
+            "{}{}▸ {}{} {}({}){}",
+            style.bold,
+            style.cyn,
+            s.name,
+            style.rst,
+            style.dim,
+            s.dir.display(),
+            style.rst
+        );
+        // Full, human-readable status (not porcelain) so the user sees exactly
+        // what git would show them. `git_output` returns stdout even when the
+        // success body is empty, but a dirty repo always has content here.
+        match git_output(&s.dir, &["status"]) {
+            Some(text) => {
+                for line in text.lines() {
+                    println!("    {line}");
+                }
+            }
+            None => println!("    {}(could not read git status){}", style.red, style.rst),
+        }
+    }
+}
+
+/// Pass 2 — audit every repo for a `.claude/` folder. If any exist, print a
+/// warning that lists each with its size, then prompt ONCE for a typed yes
+/// before ignoring + untracking + deleting them. Deletion never happens without
+/// an interactive "yes": a non-TTY (piped) run reports and skips.
+fn audit_and_clean_claude(statuses: &[RepoStatus], style: &Style) {
+    let found: Vec<&RepoStatus> = statuses.iter().filter(|s| s.has_claude).collect();
+    if found.is_empty() {
+        return;
+    }
+
+    println!();
+    println!(
+        "{}{}⚠ .claude/ folders detected in {} repo(s){}",
+        style.bold,
+        style.ylw,
+        found.len(),
+        style.rst
+    );
+    println!(
+        "{}  These hold Claude Code's local worktree/agent state and are not part{}",
+        style.dim, style.rst
+    );
+    println!(
+        "{}  of the suite. rex-check can ignore, untrack, and delete them.{}",
+        style.dim, style.rst
+    );
+    println!();
+    for s in &found {
+        let size = dir_size_human(&s.dir.join(".claude"));
+        let tracked = if s.claude_tracked > 0 {
+            format!("{}tracked: {} path(s){}", style.red, s.claude_tracked, style.rst)
+        } else {
+            format!("{}untracked{}", style.dim, style.rst)
+        };
+        let ignored = if s.claude_ignored {
+            format!("{}gitignored{}", style.dim, style.rst)
+        } else {
+            format!("{}not in .gitignore{}", style.ylw, style.rst)
+        };
+        println!(
+            "  {}{:<16}{} {:>8}   {}   {}",
+            style.bold, s.name, style.rst, size, tracked, ignored
+        );
+    }
+
+    // Confirmation gate. A piped / non-interactive run must never delete.
+    if !stdin_is_tty() {
+        println!();
+        println!(
+            "{}  non-interactive (stdin is not a terminal) — left untouched.{}",
+            style.dim, style.rst
+        );
+        println!(
+            "{}  run rex-check in a terminal to clean these up.{}",
+            style.dim, style.rst
+        );
+        return;
+    }
+
+    println!();
+    let prompt = format!(
+        "{}Delete these {} .claude/ folder(s)? This cannot be undone. [y/N] {}",
+        style.bold,
+        found.len(),
+        style.rst
+    );
+    match prompt_yes_no(&prompt) {
+        Some(true) => {}
+        Some(false) => {
+            println!("{}  left untouched.{}", style.dim, style.rst);
+            return;
+        }
+        None => {
+            println!(
+                "{}  could not read a response — left untouched.{}",
+                style.dim, style.rst
+            );
+            return;
+        }
+    }
+
+    // Confirmed: clean each repo. Best-effort and independent — one repo's
+    // failure is reported and never aborts the rest.
+    println!();
+    println!("{}{}Cleaned up:{}", style.bold, style.grn, style.rst);
+    let mut freed = 0u64;
+    for s in &found {
+        clean_one_claude(s, style, &mut freed);
+    }
+    println!();
+    println!(
+        "{}total freed:{} {}",
+        style.dim,
+        style.rst,
+        human_size(freed)
+    );
+}
+
+/// Ignore + untrack + delete one repo's `.claude/`, reporting each sub-step.
+/// Adds to `freed` the size reclaimed by the delete. Every step is independent
+/// and best-effort so a single failure never aborts the sweep.
+fn clean_one_claude(s: &RepoStatus, style: &Style, freed: &mut u64) {
+    println!("  {}{}{}", style.bold, s.name, style.rst);
+
+    // 1. Ensure `.claude/` is in .gitignore (append if missing; create if none).
+    if s.claude_ignored {
+        println!("    .gitignore   already ignores .claude/");
+    } else {
+        match append_gitignore_claude(&s.dir) {
+            Ok(()) => println!("    .gitignore   {}added .claude/{}", style.grn, style.rst),
+            Err(e) => println!("    .gitignore   {}failed: {e}{}", style.red, style.rst),
+        }
+    }
+
+    // 2. Untrack from git's index if anything was tracked (else a clean no-op).
+    if s.claude_tracked > 0 {
+        match git_output(&s.dir, &["rm", "-r", "--cached", "--quiet", ".claude"]) {
+            Some(_) => println!(
+                "    git index    {}removed {} tracked path(s) from index{}",
+                style.grn, s.claude_tracked, style.rst
+            ),
+            None => println!("    git index    {}git rm --cached failed{}", style.red, style.rst),
+        }
+    } else {
+        println!("    git index    not tracked — nothing to untrack");
+    }
+
+    // 3. Delete the folder. Measure size first so we can report what was freed.
+    let path = s.dir.join(".claude");
+    let size = dir_size_bytes(&path);
+    match std::fs::remove_dir_all(&path) {
+        Ok(()) => {
+            *freed += size;
+            println!(
+                "    folder       {}deleted ({} freed){}",
+                style.grn,
+                human_size(size),
+                style.rst
+            );
+        }
+        Err(e) => println!("    folder       {}delete failed: {e}{}", style.red, style.rst),
+    }
+}
+
+/// Pass 3 — the final recap. ALWAYS re-lists the repos that are dirty *now*
+/// (re-queried live, because the .claude cleanup may have changed each repo's
+/// working tree — e.g. untracking a file or adding `.gitignore`), so the status
+/// is the last thing on screen no matter how the .claude prompt was answered.
+/// Then, at an interactive terminal, walks the dirty repos ONE AT A TIME: each
+/// gets its own status shown and its own commit message, so a single suite-wide
+/// message is never forced across unrelated repos.
+fn offer_commit_dirty(statuses: &[RepoStatus], style: &Style) {
+    // Re-query dirtiness live rather than trust the pre-cleanup snapshot.
+    let dirty: Vec<&RepoStatus> = statuses
+        .iter()
+        .filter(|s| s.present && repo_is_dirty(&s.dir))
+        .collect();
+
+    println!();
+    if dirty.is_empty() {
+        println!(
+            "{}{}✓ all repos clean — nothing to commit.{}",
+            style.bold, style.grn, style.rst
+        );
+        return;
+    }
+
+    let names = dirty
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    println!(
+        "{}{}▶ {} repo(s) still have uncommitted changes:{} {}{}{}",
+        style.bold,
+        style.ylw,
+        dirty.len(),
+        style.rst,
+        style.bold,
+        names,
+        style.rst
+    );
+    for s in &dirty {
+        println!(
+            "  {}{:<16}{} {}{}{}",
+            style.bold,
+            s.name,
+            style.rst,
+            style.dim,
+            s.dir.display(),
+            style.rst
+        );
+    }
+
+    // No human to answer when piped: show the recap (done above) + a hint, then
+    // stop. Never commit without an interactive yes.
+    if !stdin_is_tty() {
+        println!();
+        println!(
+            "{}  run rex-check in a terminal to commit these.{}",
+            style.dim, style.rst
+        );
+        return;
+    }
+
+    println!();
+    match prompt_yes_no(&format!(
+        "{}Commit these dirty repos now, one at a time? [y/N] {}",
+        style.bold, style.rst
+    )) {
+        Some(true) => {}
+        _ => {
+            println!("{}  left as-is.{}", style.dim, style.rst);
+            return;
+        }
+    }
+
+    // Walk each dirty repo independently: show it, show its status, ask for a
+    // message JUST for it, commit only it, then move on. A blank message skips
+    // that one repo (leaving it dirty) rather than aborting the whole loop —
+    // best-effort, so one repo never blocks the rest.
+    let mut committed = 0usize;
+    let mut skipped = 0usize;
+    for (i, s) in dirty.iter().enumerate() {
+        println!();
+        println!(
+            "{}{}── [{}/{}] {}{} {}({}){}",
+            style.bold,
+            style.cyn,
+            i + 1,
+            dirty.len(),
+            s.name,
+            style.rst,
+            style.dim,
+            s.dir.display(),
+            style.rst
+        );
+        // Show this repo's status right before asking, so the message is written
+        // against what's actually staged/changed here.
+        match git_output(&s.dir, &["status", "--short", "--branch"]) {
+            Some(text) => {
+                for line in text.lines() {
+                    println!("    {line}");
+                }
+            }
+            None => println!("    {}(could not read git status){}", style.red, style.rst),
+        }
+
+        let message = match prompt_line(&format!(
+            "{}Commit message for {} (blank to skip): {}",
+            style.bold, s.name, style.rst
+        )) {
+            Some(m) if !m.trim().is_empty() => m.trim().to_owned(),
+            _ => {
+                println!("{}  skipped — {} left as-is.{}", style.dim, s.name, style.rst);
+                skipped += 1;
+                continue;
+            }
+        };
+
+        if commit_one(s, &message, style) {
+            committed += 1;
+        } else {
+            skipped += 1;
+        }
+    }
+
+    println!();
+    println!(
+        "{}done:{} {} committed, {} left as-is (of {} dirty)",
+        style.dim,
+        style.rst,
+        committed,
+        skipped,
+        dirty.len()
+    );
+}
+
+/// `git add -A && git commit -m <message>` for one repo, reporting the result.
+/// Returns true on a successful commit. Best-effort: a failed `add` or `commit`
+/// is reported and returns false without aborting the caller's sweep.
+fn commit_one(s: &RepoStatus, message: &str, style: &Style) -> bool {
+    if git_output(&s.dir, &["add", "-A"]).is_none() {
+        println!("  {}git add failed{}", style.red, style.rst);
+        return false;
+    }
+    match git_output(&s.dir, &["commit", "-m", message]) {
+        Some(_) => {
+            // Short hash for a tidy confirmation; absence is non-fatal.
+            let hash = git(&s.dir, &["rev-parse", "--short", "HEAD"]).unwrap_or_default();
+            println!(
+                "  {}committed{} {}{}{}",
+                style.grn, style.rst, style.dim, hash, style.rst
+            );
+            true
+        }
+        None => {
+            println!(
+                "  {}commit failed (nothing to commit?){}",
+                style.red, style.rst
+            );
+            false
+        }
+    }
+}
+
+/// Whether a repo currently has any staged, unstaged, or untracked change —
+/// queried live via `git status --porcelain` (a non-empty body = dirty).
+fn repo_is_dirty(dir: &Path) -> bool {
+    git_output(dir, &["status", "--porcelain"])
+        .map(|out| out.lines().any(|l| !l.is_empty()))
+        .unwrap_or(false)
+}
+
+/// Print `prompt`, read one line from stdin, and interpret a yes/no answer:
+/// `Some(true)` for y/yes, `Some(false)` for anything else, `None` if the read
+/// itself failed. The default (bare Enter) is No. Shared by every confirm gate.
+fn prompt_yes_no(prompt: &str) -> Option<bool> {
+    let line = prompt_line(prompt)?;
+    Some(matches!(line.trim().to_lowercase().as_str(), "y" | "yes"))
+}
+
+/// Print `prompt` (flushing so it shows before blocking) and return one line of
+/// stdin with the trailing newline stripped, or `None` on read failure.
+fn prompt_line(prompt: &str) -> Option<String> {
+    print!("{prompt}");
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() {
+        return None;
+    }
+    // Strip the trailing newline(s) the user's Enter left.
+    Some(line.trim_end_matches(['\n', '\r']).to_owned())
+}
+
+/// Append the managed `.claude/` line to `<dir>/.gitignore`, creating the file
+/// if absent and adding a leading newline only when the existing file doesn't
+/// already end with one (so we never glue it onto a previous entry).
+fn append_gitignore_claude(dir: &Path) -> std::io::Result<()> {
+    let path = dir.join(".gitignore");
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut out = existing.clone();
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str(CLAUDE_IGNORE_LINE);
+    out.push('\n');
+    std::fs::write(&path, out)
+}
+
+/// Total size of a directory tree in bytes, following no symlinks (uses
+/// `symlink_metadata` so a symlink counts as its own tiny entry, never the
+/// target). Best-effort: unreadable entries are skipped, returning what we could
+/// sum. Used both to report freed space and to warn the user of the magnitude.
+fn dir_size_bytes(path: &Path) -> u64 {
+    let mut total = 0u64;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(p) = stack.pop() {
+        let Ok(meta) = std::fs::symlink_metadata(&p) else {
+            continue;
+        };
+        if meta.file_type().is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&p) {
+                for entry in entries.flatten() {
+                    stack.push(entry.path());
+                }
+            }
+        } else {
+            total += meta.len();
+        }
+    }
+    total
+}
+
+/// `dir_size_bytes` rendered for humans (e.g. "4.0G").
+fn dir_size_human(path: &Path) -> String {
+    human_size(dir_size_bytes(path))
+}
+
+/// Format a byte count as a short human string (B/K/M/G/T), one decimal for
+/// non-byte units. Powers of 1024, matching `du -h`.
+fn human_size(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "K", "M", "G", "T"];
+    let mut size = bytes as f64;
+    let mut unit = 0;
+    while size >= 1024.0 && unit < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes}{}", UNITS[0])
+    } else {
+        format!("{size:.1}{}", UNITS[unit])
+    }
+}
+
+/// Run `git -C <dir> <args...>` and return its stdout on success regardless of
+/// whether it is empty (unlike [`git`], which treats an empty body as "no
+/// data"). Used by the action passes where a successful empty result (e.g.
+/// `git rm --cached`) is itself the signal of success.
+fn git_output(dir: &Path, args: &[&str]) -> Option<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .ok()?;
+    if out.status.success() {
+        Some(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        None
+    }
 }
 
 /// Run `git -C <dir> <args...>` and return trimmed stdout on success, else None.
@@ -358,11 +904,23 @@ fn command_exists(name: &str) -> bool {
 /// Whether fd 1 (stdout) is a TTY, via `isatty(3)`. One tiny libc call; avoids a
 /// dependency just to gate color.
 fn stdout_is_tty() -> bool {
+    is_tty(1)
+}
+
+/// Whether fd 0 (stdin) is a TTY. The destructive `.claude/` cleanup is gated on
+/// this: a piped / redirected run has no human to confirm, so it must never
+/// delete — it only reports.
+fn stdin_is_tty() -> bool {
+    is_tty(0)
+}
+
+/// Whether the given file descriptor is a TTY, via `isatty(3)`.
+fn is_tty(fd: i32) -> bool {
     // SAFETY: isatty merely queries a file descriptor and has no preconditions.
     extern "C" {
         fn isatty(fd: i32) -> i32;
     }
-    unsafe { isatty(1) == 1 }
+    unsafe { isatty(fd) == 1 }
 }
 
 #[cfg(test)]
@@ -402,5 +960,80 @@ mod tests {
                 "{expected} must be in the roster"
             );
         }
+    }
+
+    #[test]
+    fn human_size_scales_units_and_keeps_bytes_whole() {
+        // Bytes render without a decimal; larger units get one decimal place,
+        // using powers of 1024 (du -h style).
+        assert_eq!(human_size(0), "0B");
+        assert_eq!(human_size(512), "512B");
+        assert_eq!(human_size(1024), "1.0K");
+        assert_eq!(human_size(1536), "1.5K");
+        assert_eq!(human_size(1024 * 1024), "1.0M");
+        assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0G");
+    }
+
+    #[test]
+    fn gitignore_has_claude_accepts_equivalent_spellings() {
+        let dir = unique_tmp_dir("gi-has");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // No .gitignore at all → false.
+        assert!(!gitignore_has_claude(&dir));
+
+        // Each accepted spelling matches; an unrelated entry does not.
+        for (body, expected) in [
+            (".claude/\n", true),
+            (".claude\n", true),
+            ("/.claude/\n", true),
+            ("/.claude\n", true),
+            ("target/\nnode_modules/\n", false),
+            ("# .claude/ in a comment\n", false),
+        ] {
+            std::fs::write(dir.join(".gitignore"), body).unwrap();
+            assert_eq!(
+                gitignore_has_claude(&dir),
+                expected,
+                "spelling {body:?} should match={expected}"
+            );
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn append_gitignore_claude_creates_and_appends_without_duplicating() {
+        let dir = unique_tmp_dir("gi-append");
+        std::fs::create_dir_all(&dir).unwrap();
+        let gi = dir.join(".gitignore");
+
+        // No file yet → it is created with exactly the managed line.
+        append_gitignore_claude(&dir).unwrap();
+        assert_eq!(std::fs::read_to_string(&gi).unwrap(), ".claude/\n");
+        assert!(gitignore_has_claude(&dir));
+
+        // An existing file WITHOUT a trailing newline gets one inserted, so the
+        // new entry never glues onto the previous line.
+        std::fs::write(&gi, "target/").unwrap();
+        append_gitignore_claude(&dir).unwrap();
+        assert_eq!(std::fs::read_to_string(&gi).unwrap(), "target/\n.claude/\n");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn dir_size_bytes_sums_a_tree() {
+        let dir = unique_tmp_dir("size");
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("a"), [0u8; 100]).unwrap();
+        std::fs::write(dir.join("sub").join("b"), [0u8; 23]).unwrap();
+        assert_eq!(dir_size_bytes(&dir), 123, "100 + 23 across the tree");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A unique temp dir under the OS temp root, namespaced by pid + a label so
+    /// parallel tests never collide.
+    fn unique_tmp_dir(label: &str) -> PathBuf {
+        env::temp_dir().join(format!("rex-check-test-{label}-{}", std::process::id()))
     }
 }
