@@ -84,6 +84,16 @@ fn run(cli: Cli) -> Result<(), BridgeError> {
 
     let sidecar_count = conversion.sidecars.len();
     let skip_count = conversion.skipped.len();
+    // Surface a blank upstream stamp: the feed will carry the "unknown" sentinel
+    // (SidecarFeed::new normalizes it), but the operator should know the scan-age
+    // signal is missing rather than have it silently degrade.
+    if view.inventory.generated_at.trim().is_empty() {
+        eprintln!(
+            "toolbox-bridge: warning: snapshot findings carried no generated_at; \
+             feed source_generated_at set to '{}'",
+            feed::UNKNOWN_SOURCE_TIME
+        );
+    }
     let bridge_feed = feed::SidecarFeed::new(
         conversion.sidecars,
         &view.inventory.generated_at,

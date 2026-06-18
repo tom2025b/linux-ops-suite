@@ -21,6 +21,10 @@ use crate::error::BridgeError;
 pub const FEED_SCHEMA_VERSION: u32 = 1;
 /// `source_tool` stamped into every feed this bridge emits.
 pub const SOURCE_TOOL: &str = "toolbox-bridge";
+/// Sentinel for `source_generated_at` when the upstream snapshot carried no
+/// usable generation stamp. Honest non-timestamp value (not a fake date) so a
+/// consumer cannot mistake "age unknown" for a real, recent scan time.
+pub const UNKNOWN_SOURCE_TIME: &str = "unknown";
 
 /// The sidecar feed envelope (one file, regenerated whole on every run).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,7 +35,9 @@ pub struct SidecarFeed {
     pub generated_at: String,
     /// Bulwark's own generation stamp, carried through from the snapshot's
     /// findings section so ScriptVault can judge how old the underlying scan
-    /// is — not just how recently the bridge ran.
+    /// is — not just how recently the bridge ran. Never empty: a blank upstream
+    /// stamp is normalized to [`UNKNOWN_SOURCE_TIME`] so a consumer reading this
+    /// field always gets an honest value rather than `""`.
     pub source_generated_at: String,
     /// Number of records in `sidecars` (denormalized for cheap consumers).
     pub item_count: usize,
@@ -44,11 +50,18 @@ impl SidecarFeed {
         source_generated_at: &str,
         generated_at: DateTime<Utc>,
     ) -> Self {
+        // Normalize a blank/whitespace upstream stamp to the sentinel rather
+        // than emitting "": the field exists so ScriptVault can judge scan age,
+        // and an empty string satisfies `required` while being useless.
+        let source_generated_at = match source_generated_at.trim() {
+            "" => UNKNOWN_SOURCE_TIME.to_string(),
+            stamp => stamp.to_string(),
+        };
         SidecarFeed {
             schema_version: FEED_SCHEMA_VERSION,
             source_tool: SOURCE_TOOL.to_string(),
             generated_at: generated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
-            source_generated_at: source_generated_at.to_string(),
+            source_generated_at,
             item_count: sidecars.len(),
             sidecars,
         }
@@ -145,6 +158,20 @@ mod tests {
         assert_eq!(feed.source_generated_at, "2026-06-10");
         // RFC3339 with explicit UTC marker.
         assert!(feed.generated_at.ends_with('Z'), "{}", feed.generated_at);
+    }
+
+    #[test]
+    fn blank_source_stamp_normalizes_to_the_unknown_sentinel() {
+        // An empty or whitespace upstream generated_at must not surface as "" —
+        // it becomes the honest "unknown" sentinel so a consumer can't read a
+        // blank as a real recent scan time.
+        for blank in ["", "   ", "\t"] {
+            let feed = SidecarFeed::new(vec![record("/x/a.sh")], blank, Utc::now());
+            assert_eq!(feed.source_generated_at, UNKNOWN_SOURCE_TIME);
+        }
+        // A real stamp is preserved (and trimmed).
+        let feed = SidecarFeed::new(vec![record("/x/a.sh")], "  2026-06-10  ", Utc::now());
+        assert_eq!(feed.source_generated_at, "2026-06-10");
     }
 
     #[test]
