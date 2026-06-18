@@ -12,7 +12,14 @@ use ratatui::layout::{Constraint, Layout, Rect};
 /// remainder. With a plain `/ 2` on both sides an odd remainder (e.g. `pct = 55`
 /// → `22 + 55 + 22 = 99`) would drop a row/column and skew the centring; letting
 /// the trailing margin absorb the odd cell keeps the band exactly `pct` wide.
+///
+/// Percentages are clamped to `0..=100`. A value above 100 would otherwise make
+/// `100 - pct` underflow — a panic in debug, a wrap to a huge margin in release
+/// — which is reachable from any caller passing a config-derived percentage. We
+/// saturate instead so an out-of-range input degrades to a full-area band.
 pub fn centered_rect(pct_w: u16, pct_h: u16, area: Rect) -> Rect {
+    let pct_w = pct_w.min(100);
+    let pct_h = pct_h.min(100);
     let v_lead = (100 - pct_h) / 2;
     let h_lead = (100 - pct_w) / 2;
     let [_, mid_v, _] = Layout::vertical([
@@ -101,6 +108,18 @@ mod tests {
         let r = centered_rect(50, 50, Rect::new(0, 0, 80, 0));
         assert_eq!(r.height, 0);
         assert!(r.right() <= 80, "stays within the parent width");
+    }
+
+    #[test]
+    fn centered_rect_clamps_out_of_range_percentages_instead_of_panicking() {
+        // A percentage above 100 must not underflow `100 - pct`. It saturates to
+        // 100 (a full-area band) rather than panicking in debug / wrapping in
+        // release. Run in both build profiles via the normal test harness.
+        let area = Rect::new(0, 0, 80, 24);
+        let r = centered_rect(150, 200, area);
+        assert!(r.width <= area.width && r.height <= area.height);
+        // 100% on both axes fills the parent.
+        assert_eq!((r.width, r.height), (area.width, area.height));
     }
 
     #[test]

@@ -263,6 +263,13 @@ impl Theme {
             (false, Health::Degraded) => Style::new(),
             (false, Health::Unavailable) => Style::new().bold(),
             (false, Health::Unknown) => Style::new().dim(),
+            // `Health` is #[non_exhaustive]: a future level renders with a plain
+            // (neutral, hue-free) style rather than failing to compile, and
+            // never borrows another level's colour. Unreachable today (this crate
+            // sees all current variants) but required the moment a variant is
+            // added; the allow keeps it from tripping -D warnings until then.
+            #[allow(unreachable_patterns)]
+            (_, _) => Style::new(),
         }
     }
 
@@ -282,6 +289,13 @@ impl Theme {
             (false, Severity::High) => Style::new().bold(),
             (false, Severity::Medium) => Style::new(),
             (false, Severity::Low) => Style::new().dim(),
+            // `Severity` is #[non_exhaustive]: a future level renders plain
+            // (neutral, hue-free) rather than failing to compile, and never
+            // borrows another level's colour. Unreachable today (this crate sees
+            // all current variants) but required once a variant is added; the
+            // allow keeps it from tripping -D warnings until then.
+            #[allow(unreachable_patterns)]
+            (_, _) => Style::new(),
         }
     }
 
