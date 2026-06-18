@@ -102,10 +102,8 @@ impl Diff {
 /// listeners by their stable key (proto/addr/port); same-key listeners with a
 /// different owner label become an `OwnerChanged`, not an add+remove pair.
 pub fn diff(baseline: &[Listener], current: &[Listener]) -> Diff {
-    let base_by_key: BTreeMap<String, &Listener> =
-        baseline.iter().map(|l| (l.key(), l)).collect();
-    let cur_by_key: BTreeMap<String, &Listener> =
-        current.iter().map(|l| (l.key(), l)).collect();
+    let base_by_key: BTreeMap<String, &Listener> = baseline.iter().map(|l| (l.key(), l)).collect();
+    let cur_by_key: BTreeMap<String, &Listener> = current.iter().map(|l| (l.key(), l)).collect();
 
     let mut changes = Vec::new();
 

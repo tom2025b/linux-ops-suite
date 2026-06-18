@@ -150,7 +150,10 @@ impl SnapshotFreshness {
 /// yields an empty section list (no sections == nothing current).
 pub fn read_freshness(dir: &DataDir) -> SnapshotFreshness {
     let Some(snap): Option<WorkstateSnapshot> = read_json(&dir.workstate_snapshot()) else {
-        return SnapshotFreshness { built_at: None, sections: Vec::new() };
+        return SnapshotFreshness {
+            built_at: None,
+            sections: Vec::new(),
+        };
     };
     let mut sections = Vec::new();
     if let Some(s) = &snap.scripts {
@@ -162,7 +165,10 @@ pub fn read_freshness(dir: &DataDir) -> SnapshotFreshness {
     if let Some(s) = &snap.findings {
         sections.push(("findings", s.freshness()));
     }
-    SnapshotFreshness { built_at: snap.built_at, sections }
+    SnapshotFreshness {
+        built_at: snap.built_at,
+        sections,
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,13 +260,21 @@ pub fn read_rexops(dir: &DataDir) -> Option<RexopsView> {
         .attention
         .into_iter()
         .map(|a| Attention {
-            what: if a.id.is_empty() { a.tool.clone() } else { a.id },
+            what: if a.id.is_empty() {
+                a.tool.clone()
+            } else {
+                a.id
+            },
             why: a.reason,
             source: a.tool,
             severity: Severity::parse(&a.severity).unwrap_or(Severity::Low),
         })
         .collect();
-    Some(RexopsView { generated_at: snap.generated_at, sources, attention })
+    Some(RexopsView {
+        generated_at: snap.generated_at,
+        sources,
+        attention,
+    })
 }
 
 /// Bulwark Workstate feed: a flat inventory of items with a severity/risk each.
@@ -295,7 +309,10 @@ pub struct BulwarkView {
 
 pub fn read_bulwark(dir: &DataDir) -> BulwarkView {
     let Some(feed): Option<BulwarkFeed> = read_json(&dir.bulwark_feed()) else {
-        return BulwarkView { attention: Vec::new(), present: false };
+        return BulwarkView {
+            attention: Vec::new(),
+            present: false,
+        };
     };
     let attention = feed
         .items
@@ -317,7 +334,10 @@ pub fn read_bulwark(dir: &DataDir) -> BulwarkView {
             })
         })
         .collect();
-    BulwarkView { attention, present: true }
+    BulwarkView {
+        attention,
+        present: true,
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,9 +391,13 @@ impl ProtoSession {
             if self.steps.iter().any(|s| s.status == "failed") {
                 return JobOutcome::Failed;
             }
-            let unfinished = self.finished_at.is_none()
-                || self.steps.iter().any(|s| s.status == "pending");
-            return if unfinished { JobOutcome::Running } else { JobOutcome::Passed };
+            let unfinished =
+                self.finished_at.is_none() || self.steps.iter().any(|s| s.status == "pending");
+            return if unfinished {
+                JobOutcome::Running
+            } else {
+                JobOutcome::Passed
+            };
         }
         // Feed-shape fallback.
         match self.status.as_deref() {
@@ -404,7 +428,10 @@ pub fn read_jobs(dir: &DataDir) -> Vec<Job> {
             .protocol_title
             .clone()
             .unwrap_or_else(|| "protocol run".to_string());
-        jobs.push(Job { title, outcome: s.outcome() });
+        jobs.push(Job {
+            title,
+            outcome: s.outcome(),
+        });
     }
     jobs
 }
@@ -432,7 +459,10 @@ const SUITE_BINARIES: &[&str] = &["bulwark", "proto", "rexops", "scriptvault", "
 pub fn read_binaries() -> Vec<BinaryCheck> {
     SUITE_BINARIES
         .iter()
-        .map(|&name| BinaryCheck { name, present: which(name) })
+        .map(|&name| BinaryCheck {
+            name,
+            present: which(name),
+        })
         .collect()
 }
 
@@ -481,7 +511,9 @@ mod tests {
             TempData { dir }
         }
         fn data(&self) -> DataDir {
-            DataDir { root: self.dir.clone() }
+            DataDir {
+                root: self.dir.clone(),
+            }
         }
         fn write(&self, rel: &str, body: &str) {
             let p = self.dir.join(rel);
@@ -571,7 +603,11 @@ mod tests {
         // sources carried through with presence.
         assert!(v.sources.iter().any(|(n, p)| n == "workstate" && *p));
         assert!(v.sources.iter().any(|(n, p)| n == "scriptvault" && !*p));
-        let crit = v.attention.iter().find(|a| a.severity == Severity::Critical).unwrap();
+        let crit = v
+            .attention
+            .iter()
+            .find(|a| a.severity == Severity::Critical)
+            .unwrap();
         assert_eq!(crit.what, "deploy-prod.sh");
         assert_eq!(crit.source, "bulwark");
     }

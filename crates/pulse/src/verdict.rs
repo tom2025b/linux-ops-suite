@@ -135,14 +135,19 @@ impl Readings {
                 });
             }
         }
-        items.sort_by(|a, b| b.severity.cmp(&a.severity));
+        items.sort_by_key(|a| std::cmp::Reverse(a.severity));
         items
     }
 
     /// The full source-confidence list (shown in the Feeds view and, collapsed,
     /// on the busy default screens).
     pub fn source_marks(&self) -> Vec<SourceMark> {
-        build_source_marks(&self.freshness, self.rexops.as_ref(), &self.bulwark, &self.binaries)
+        build_source_marks(
+            &self.freshness,
+            self.rexops.as_ref(),
+            &self.bulwark,
+            &self.binaries,
+        )
     }
 }
 
@@ -213,16 +218,25 @@ impl Verdict {
         }
 
         // Sort the most severe first so the two cause rows show what matters most.
-        attention.sort_by(|a, b| b.severity.cmp(&a.severity));
-        let critical = attention.iter().filter(|a| a.severity == Severity::Critical).count();
-        let high = attention.iter().filter(|a| a.severity == Severity::High).count();
+        attention.sort_by_key(|a| std::cmp::Reverse(a.severity));
+        let critical = attention
+            .iter()
+            .filter(|a| a.severity == Severity::Critical)
+            .count();
+        let high = attention
+            .iter()
+            .filter(|a| a.severity == Severity::High)
+            .count();
 
         // ---- Source confidence -------------------------------------------
         let sources = build_source_marks(&freshness, rexops.as_ref(), &bulwark, &binaries);
-        let unavailable = sources.iter().filter(|s| s.freshness == Source::Missing).count();
+        let unavailable = sources
+            .iter()
+            .filter(|s| s.freshness == Source::Missing)
+            .count();
         let snapshot_present = !freshness.sections.is_empty();
-        let any_stale = freshness.any_stale()
-            || sources.iter().any(|s| s.freshness == Source::Stale);
+        let any_stale =
+            freshness.any_stale() || sources.iter().any(|s| s.freshness == Source::Stale);
 
         // ---- State decision (precedence: attention > incomplete > healthy)-
         let state = if !attention.is_empty() {
@@ -270,7 +284,11 @@ impl Verdict {
             causes,
             // Healthy hides the source line entirely (the renderer also guards
             // this), so only carry marks when they have something to say.
-            sources: if state == State::Healthy { Vec::new() } else { sources },
+            sources: if state == State::Healthy {
+                Vec::new()
+            } else {
+                sources
+            },
         }
     }
 
@@ -291,7 +309,10 @@ impl Verdict {
     /// Demo data for a named state, so all three layouts can be shown via
     /// `--state` without any feeds on disk. `None` for an unknown name.
     pub fn demo(name: &str) -> Option<Self> {
-        let mark = |n: &str, f: Source| SourceMark { name: n.to_string(), freshness: f };
+        let mark = |n: &str, f: Source| SourceMark {
+            name: n.to_string(),
+            freshness: f,
+        };
         let cause = |w: &str, y: &str, s: &str| Cause {
             what: w.to_string(),
             why: y.to_string(),
@@ -354,7 +375,10 @@ fn build_source_marks(
         .iter()
         .map(|&name| {
             let freshness = source_freshness(name, freshness, rexops, bulwark, binaries);
-            SourceMark { name: name.to_string(), freshness }
+            SourceMark {
+                name: name.to_string(),
+                freshness,
+            }
         })
         .collect()
 }
@@ -372,7 +396,11 @@ fn source_freshness(
         // RexOps uses "scriptvault" where the Pulse roster says "vault".
         let key = if name == "vault" { "scriptvault" } else { name };
         if let Some((_, present)) = rx.sources.iter().find(|(n, _)| n == key) {
-            return if *present { Source::Current } else { Source::Missing };
+            return if *present {
+                Source::Current
+            } else {
+                Source::Missing
+            };
         }
     }
     // 2. Workstate's own snapshot: "workstate" maps to the snapshot itself
@@ -385,7 +413,11 @@ fn source_freshness(
     }
     // 3. Bulwark's feed presence.
     if name == "bulwark" {
-        return if bulwark.present { Source::Current } else { Source::Missing };
+        return if bulwark.present {
+            Source::Current
+        } else {
+            Source::Missing
+        };
     }
     // 4. Fall back to whether the producer's binary is installed at all.
     match binaries.iter().find(|b| b.name == name) {
@@ -500,12 +532,18 @@ mod tests {
         None
     }
     fn empty_bulwark() -> BulwarkView {
-        BulwarkView { attention: Vec::new(), present: false }
+        BulwarkView {
+            attention: Vec::new(),
+            present: false,
+        }
     }
     fn all_binaries_present() -> Vec<BinaryCheck> {
         ["workstate", "bulwark", "proto", "toolfoundry", "vault"]
             .iter()
-            .map(|&name| BinaryCheck { name, present: true })
+            .map(|&name| BinaryCheck {
+                name,
+                present: true,
+            })
             .collect()
     }
     /// A fully-current snapshot covering the three sections.
@@ -523,14 +561,20 @@ mod tests {
     #[test]
     fn no_data_at_all_is_incomplete() {
         let v = Verdict::compose(
-            SnapshotFreshness { built_at: None, sections: Vec::new() },
+            SnapshotFreshness {
+                built_at: None,
+                sections: Vec::new(),
+            },
             no_rexops(),
             empty_bulwark(),
             Vec::new(),
             // no binaries installed either
             ["workstate", "bulwark", "proto", "toolfoundry", "vault"]
                 .iter()
-                .map(|&name| BinaryCheck { name, present: false })
+                .map(|&name| BinaryCheck {
+                    name,
+                    present: false,
+                })
                 .collect(),
             Some(0),
         );
@@ -556,7 +600,10 @@ mod tests {
         let v = Verdict::compose(
             fresh_snapshot(),
             Some(rx),
-            BulwarkView { attention: Vec::new(), present: true },
+            BulwarkView {
+                attention: Vec::new(),
+                present: true,
+            },
             Vec::new(),
             all_binaries_present(),
             Some(parse_rfc3339_secs("2026-06-14T12:02:00Z").unwrap()),
@@ -603,17 +650,29 @@ mod tests {
         let v = Verdict::compose(
             fresh_snapshot(),
             no_rexops(),
-            BulwarkView { attention: Vec::new(), present: true },
+            BulwarkView {
+                attention: Vec::new(),
+                present: true,
+            },
             vec![
-                Job { title: "Release Readiness".to_string(), outcome: JobOutcome::Failed },
-                Job { title: "Rust Review".to_string(), outcome: JobOutcome::Passed },
+                Job {
+                    title: "Release Readiness".to_string(),
+                    outcome: JobOutcome::Failed,
+                },
+                Job {
+                    title: "Rust Review".to_string(),
+                    outcome: JobOutcome::Passed,
+                },
             ],
             all_binaries_present(),
             Some(parse_rfc3339_secs("2026-06-14T12:00:00Z").unwrap()),
         );
         assert_eq!(v.state, State::NeedsAttention);
         assert_eq!(v.high, 1);
-        assert!(v.causes.iter().any(|c| c.what == "Release Readiness" && c.source == "proto"));
+        assert!(v
+            .causes
+            .iter()
+            .any(|c| c.what == "Release Readiness" && c.source == "proto"));
     }
 
     #[test]
@@ -634,7 +693,10 @@ mod tests {
         let v = Verdict::compose(
             snap,
             Some(rx),
-            BulwarkView { attention: Vec::new(), present: true },
+            BulwarkView {
+                attention: Vec::new(),
+                present: true,
+            },
             Vec::new(),
             all_binaries_present(),
             Some(parse_rfc3339_secs("2026-06-14T13:00:00Z").unwrap()),
@@ -652,7 +714,10 @@ mod tests {
         let v = Verdict::compose(
             snap,
             no_rexops(),
-            BulwarkView { attention: Vec::new(), present: true },
+            BulwarkView {
+                attention: Vec::new(),
+                present: true,
+            },
             Vec::new(),
             all_binaries_present(),
             Some(parse_rfc3339_secs("2026-06-15T12:00:00Z").unwrap()),
@@ -666,10 +731,31 @@ mod tests {
     fn relative_age_formats_each_bucket() {
         let base = parse_rfc3339_secs("2026-06-14T12:00:00Z").unwrap();
         let at = |s: &str| parse_rfc3339_secs(s).unwrap();
-        assert_eq!(relative_age(Some("2026-06-14T12:00:00Z"), Some(base + 10)), "just now");
-        assert_eq!(relative_age(Some("2026-06-14T12:00:00Z"), Some(at("2026-06-14T12:05:00Z"))), "5m ago");
-        assert_eq!(relative_age(Some("2026-06-14T12:00:00Z"), Some(at("2026-06-14T15:00:00Z"))), "3h ago");
-        assert_eq!(relative_age(Some("2026-06-14T12:00:00Z"), Some(at("2026-06-16T12:00:00Z"))), "2d ago");
+        assert_eq!(
+            relative_age(Some("2026-06-14T12:00:00Z"), Some(base + 10)),
+            "just now"
+        );
+        assert_eq!(
+            relative_age(
+                Some("2026-06-14T12:00:00Z"),
+                Some(at("2026-06-14T12:05:00Z"))
+            ),
+            "5m ago"
+        );
+        assert_eq!(
+            relative_age(
+                Some("2026-06-14T12:00:00Z"),
+                Some(at("2026-06-14T15:00:00Z"))
+            ),
+            "3h ago"
+        );
+        assert_eq!(
+            relative_age(
+                Some("2026-06-14T12:00:00Z"),
+                Some(at("2026-06-16T12:00:00Z"))
+            ),
+            "2d ago"
+        );
         assert_eq!(relative_age(None, Some(base)), "—");
         assert_eq!(relative_age(Some("not-a-date"), Some(base)), "—");
     }

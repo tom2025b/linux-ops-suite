@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn sort_puts_public_then_port_first() {
-        let mut v = vec![
+        let mut v = [
             l(Exposure::Loopback, 631, Proto::Tcp),
             l(Exposure::AllInterfaces, 443, Proto::Tcp),
             l(Exposure::AllInterfaces, 22, Proto::Tcp),

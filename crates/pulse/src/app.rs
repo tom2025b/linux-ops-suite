@@ -45,7 +45,13 @@ pub struct App {
 impl App {
     pub fn new(readings: Readings) -> Self {
         let verdict = Verdict::from_readings(&readings);
-        App { readings, verdict, view: View::Default, query: String::new(), quit: false }
+        App {
+            readings,
+            verdict,
+            view: View::Default,
+            query: String::new(),
+            quit: false,
+        }
     }
 
     /// Run the interactive loop until the user quits. Owns raw mode for its
@@ -75,7 +81,13 @@ impl App {
     /// Render a single named view to a frame, without the event loop. Used by
     /// `--dump-view` to preview/snapshot a view deterministically (no PTY timing
     /// games), and handy in tests. Unknown names return `None`.
-    pub fn dump(&mut self, view: &str, query: &str, style: &Style, size: TermSize) -> Option<String> {
+    pub fn dump(
+        &mut self,
+        view: &str,
+        query: &str,
+        style: &Style,
+        size: TermSize,
+    ) -> Option<String> {
         self.view = match view {
             "default" => View::Default,
             "attention" => View::Attention,
@@ -112,7 +124,11 @@ impl App {
             // default screen Enter opens Details.
             Key::Esc => self.view = View::Default,
             Key::Enter => {
-                self.view = if self.view == View::Default { View::Details } else { View::Default };
+                self.view = if self.view == View::Default {
+                    View::Details
+                } else {
+                    View::Default
+                };
             }
             // Each letter toggles its view (press again to return) — a non-Esc
             // close path for every screen.
@@ -129,7 +145,11 @@ impl App {
 
     /// Toggle `target`: open it, or return to Default if already there.
     fn toggle(&self, target: View) -> View {
-        if self.view == target { View::Default } else { target }
+        if self.view == target {
+            View::Default
+        } else {
+            target
+        }
     }
 
     /// Render the current view to a full frame for `size`.
@@ -170,7 +190,13 @@ impl App {
                 ));
             }
         }
-        panel(style, size, "ATTENTION", &body, "a / Esc  back      q  quit")
+        panel(
+            style,
+            size,
+            "ATTENTION",
+            &body,
+            "a / Esc  back      q  quit",
+        )
     }
 
     fn view_feeds(&self, style: &Style, size: TermSize) -> String {
@@ -198,7 +224,12 @@ impl App {
             "  no snapshot found".to_string()
         };
         body.push(String::new());
-        body.push(format!("{dim}{age}{rst}", dim = style.dim, age = age, rst = style.rst));
+        body.push(format!(
+            "{dim}{age}{rst}",
+            dim = style.dim,
+            age = age,
+            rst = style.rst
+        ));
         panel(style, size, "FEEDS", &body, "f / Esc  back      q  quit")
     }
 
@@ -209,11 +240,20 @@ impl App {
             format!("  data age  {}", v.age),
         ];
         if v.critical + v.high > 0 {
-            body.push(format!("  findings  {} critical, {} high", v.critical, v.high));
+            body.push(format!(
+                "  findings  {} critical, {} high",
+                v.critical, v.high
+            ));
         }
         body.push(String::new());
         body.push("  press a for the full attention list, f for feeds.".to_string());
-        panel(style, size, "DETAILS", &body, "Enter / Esc  back      q  quit")
+        panel(
+            style,
+            size,
+            "DETAILS",
+            &body,
+            "Enter / Esc  back      q  quit",
+        )
     }
 
     fn view_help(&self, style: &Style, size: TermSize) -> String {
@@ -237,7 +277,10 @@ impl App {
             String::new(),
         ];
         if q.is_empty() {
-            body.push(format!("  {}type to filter; Enter or Esc to close.{}", style.dim, style.rst));
+            body.push(format!(
+                "  {}type to filter; Enter or Esc to close.{}",
+                style.dim, style.rst
+            ));
         } else {
             let hits = self.search_hits(q);
             if hits.is_empty() {
@@ -248,7 +291,13 @@ impl App {
                 }
             }
         }
-        panel(style, size, "SEARCH", &body, "Enter / Esc  close      type to filter")
+        panel(
+            style,
+            size,
+            "SEARCH",
+            &body,
+            "Enter / Esc  close      type to filter",
+        )
     }
 
     /// Case-insensitive substring search across the visible status surface:
@@ -278,7 +327,12 @@ fn panel(style: &Style, size: TermSize, title: &str, body: &[String], footer: &s
     let w = size.width.max(20) as usize;
     let mut lines: Vec<String> = vec![String::new(); h];
 
-    lines[0] = format!(" {dim}pulse · {title}{rst}", dim = style.dim, title = title, rst = style.rst);
+    lines[0] = format!(
+        " {dim}pulse · {title}{rst}",
+        dim = style.dim,
+        title = title,
+        rst = style.rst
+    );
 
     // Body starts two rows down, clipped to leave room for the footer.
     let top = 2;
@@ -290,8 +344,18 @@ fn panel(style: &Style, size: TermSize, title: &str, body: &[String], footer: &s
         lines[row] = line.clone();
     }
 
-    lines[h - 2] = format!(" {dim}{}{rst}", "─".repeat(w.saturating_sub(2)), dim = style.dim, rst = style.rst);
-    lines[h - 1] = format!(" {dim}{footer}{rst}", dim = style.dim, footer = footer, rst = style.rst);
+    lines[h - 2] = format!(
+        " {dim}{}{rst}",
+        "─".repeat(w.saturating_sub(2)),
+        dim = style.dim,
+        rst = style.rst
+    );
+    lines[h - 1] = format!(
+        " {dim}{footer}{rst}",
+        dim = style.dim,
+        footer = footer,
+        rst = style.rst
+    );
     lines.join("\n")
 }
 
@@ -332,11 +396,17 @@ mod tests {
                     severity: Severity::Critical,
                 }],
             }),
-            bulwark: BulwarkView { attention: Vec::new(), present: true },
+            bulwark: BulwarkView {
+                attention: Vec::new(),
+                present: true,
+            },
             jobs: Vec::new(),
             binaries: ["workstate", "bulwark", "proto", "toolfoundry", "vault"]
                 .iter()
-                .map(|&name| BinaryCheck { name, present: true })
+                .map(|&name| BinaryCheck {
+                    name,
+                    present: true,
+                })
                 .collect(),
             now: Some(0),
         }
@@ -431,7 +501,13 @@ mod tests {
     #[test]
     fn views_render_without_panicking_at_small_and_normal_sizes() {
         let style = Style::plain_for_test();
-        for v in [View::Attention, View::Feeds, View::Details, View::Help, View::Search] {
+        for v in [
+            View::Attention,
+            View::Feeds,
+            View::Details,
+            View::Help,
+            View::Search,
+        ] {
             let mut a = app();
             a.view = v;
             for (w, h) in [(80u16, 24u16), (20, 6), (200, 60)] {

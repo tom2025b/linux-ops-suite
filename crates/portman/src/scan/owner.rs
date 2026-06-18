@@ -142,7 +142,10 @@ fn package_for(exe: &str) -> Option<String> {
 /// `dpkg -S <path>` -> `pkg: /path`. We take the package name before the colon.
 fn dpkg_owner(exe: &str) -> Option<String> {
     let out = run("dpkg", &["-S", exe])?;
-    out.split(':').next().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    out.split(':')
+        .next()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// `rpm -qf --queryformat %{NAME} <path>`.

@@ -134,7 +134,9 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
             None => {
-                eprintln!("pulse: unknown view '{view}' (default|attention|feeds|details|help|search)");
+                eprintln!(
+                    "pulse: unknown view '{view}' (default|attention|feeds|details|help|search)"
+                );
                 ExitCode::from(2)
             }
         };
@@ -277,7 +279,11 @@ pub(crate) fn render(v: &Verdict, style: &Style, size: TermSize) -> String {
     // always renders, even when cause rows are tall — that was the bug a live
     // run with long reasons exposed.
     let busy = v.state != State::Healthy && h >= 8;
-    let block_floor = if busy { h.saturating_sub(5) } else { h.saturating_sub(2) };
+    let block_floor = if busy {
+        h.saturating_sub(5)
+    } else {
+        h.saturating_sub(2)
+    };
 
     // Lay the center block down from the anchor, stopping before the floor so it
     // never overruns the furniture (a tiny terminal just shows fewer rows).
@@ -291,7 +297,12 @@ pub(crate) fn render(v: &Verdict, style: &Style, size: TermSize) -> String {
 
     if busy {
         lines[h - 4] = source_line(v, style).render(w);
-        lines[h - 3] = format!(" {}{}{}", style.dim, "─".repeat(w.saturating_sub(2)), style.rst);
+        lines[h - 3] = format!(
+            " {}{}{}",
+            style.dim,
+            "─".repeat(w.saturating_sub(2)),
+            style.rst
+        );
         lines[h - 2] = hint_strip(style);
     }
 
@@ -307,20 +318,33 @@ pub(crate) fn render(v: &Verdict, style: &Style, size: TermSize) -> String {
 /// nothing can clip; the verdict still leads.
 fn render_compact(v: &Verdict, style: &Style) -> String {
     let mut out = String::new();
-    out.push_str(&format!("{}{}{}\n", style.verdict(v.state), verdict_text(v.state), style.rst));
+    out.push_str(&format!(
+        "{}{}{}\n",
+        style.verdict(v.state),
+        verdict_text(v.state),
+        style.rst
+    ));
     match v.state {
         State::Healthy => {}
         State::NeedsAttention => {
             out.push_str(&format!("{}\n", count_summary(v)));
             if v.confidence_reduced {
-                out.push_str(&format!("{}confidence reduced by stale feeds{}\n", style.ylw, style.rst));
+                out.push_str(&format!(
+                    "{}confidence reduced by stale feeds{}\n",
+                    style.ylw, style.rst
+                ));
             }
         }
         State::Incomplete => {
             out.push_str(&format!("{} sources unavailable\n", v.unavailable));
         }
     }
-    out.push_str(&format!("{}{}{}\n", style.dim, timestamp_plain(v), style.rst));
+    out.push_str(&format!(
+        "{}{}{}\n",
+        style.dim,
+        timestamp_plain(v),
+        style.rst
+    ));
     out
 }
 
@@ -339,25 +363,41 @@ impl Line {
     /// empty string under NO_COLOR). Width is the visible char count of `text`.
     fn center(text: String, color: &'static str) -> Self {
         let width = text.chars().count();
-        Line { body: wrap(color, &text), width, centered: true }
+        Line {
+            body: wrap(color, &text),
+            width,
+            centered: true,
+        }
     }
 
     /// A left-anchored (non-centered) line of plain `text` styled with `color`.
     /// `width` is the visible char count; padding inside `text` is the caller's.
     fn raw(text: String, color: &'static str) -> Self {
         let width = text.chars().count();
-        Line { body: wrap(color, &text), width, centered: false }
+        Line {
+            body: wrap(color, &text),
+            width,
+            centered: false,
+        }
     }
 
     /// A line that is already rendered (e.g. mixes several colors). The caller
     /// supplies the visible width because it can't be derived from the escaped
     /// body.
     fn prerendered(body: String, width: usize, centered: bool) -> Self {
-        Line { body, width, centered }
+        Line {
+            body,
+            width,
+            centered,
+        }
     }
 
     fn blank() -> Self {
-        Line { body: String::new(), width: 0, centered: true }
+        Line {
+            body: String::new(),
+            width: 0,
+            centered: true,
+        }
     }
 
     /// Render into a field `w` wide. Centered lines get left padding from the
@@ -656,7 +696,10 @@ impl TermSize {
     pub(crate) fn resolve() -> Self {
         if let Some((w, h)) = ioctl_winsize() {
             if w > 0 && h > 0 {
-                return TermSize { width: w, height: h };
+                return TermSize {
+                    width: w,
+                    height: h,
+                };
             }
         }
         let w = env_u16("COLUMNS").unwrap_or(FALLBACK_WIDTH);
@@ -727,7 +770,10 @@ mod tests {
     }
 
     fn size(w: u16, h: u16) -> TermSize {
-        TermSize { width: w, height: h }
+        TermSize {
+            width: w,
+            height: h,
+        }
     }
 
     #[test]
