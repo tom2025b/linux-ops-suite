@@ -197,13 +197,14 @@
               "additionalProperties": true,
               "properties": {
                 "generated_at": { "type": "string" },
+                "dropped_records": { "type": "integer", "minimum": 0, "default": 0, "description": "v4: findings dropped during normalization (no usable subject). Mirrors provenance.dropped_records." },
                 "findings": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "required": ["id", "location"],
                     "additionalProperties": false,
-                    "$comment": "v4: additionalProperties:false — Finding is an EXPLICIT allowlist with no passthrough 'rest' bag (removed in v4). Unmodeled Bulwark wire fields can hold matched secrets/PII, so they are dropped at normalization and rejected here rather than baked into the persisted snapshot.",
+                    "$comment": "v4: additionalProperties:false — Finding is an EXPLICIT allowlist with no passthrough 'rest' bag (removed in v4). Unmodeled Bulwark wire fields can hold matched secrets/PII, so they are dropped at normalization and rejected here rather than baked into the persisted snapshot. The audited non-sensitive fields consumers need (path/risk/owner) are promoted to first-class allowlisted fields below.",
                     "properties": {
                       "id": { "type": "string" },
                       "name": { "type": ["string", "null"] },
@@ -212,7 +213,10 @@
                       "severity": { "type": "string", "description": "Normalized bucket info|low|medium|high|critical|unrated|unknown. String, not enum, so an unforeseen value degrades not fails." },
                       "raw_severity": { "type": ["string", "null"] },
                       "category": { "type": ["string", "null"] },
-                      "location": { "type": "string", "description": "Always present ('unknown' when the source gave none)." }
+                      "location": { "type": "string", "description": "Always present ('unknown' when the source gave none)." },
+                      "path": { "type": ["string", "null"], "description": "v4: filesystem path of the scanned script (Bulwark `path`), if present. Omitted when absent. Downstream consumers (toolbox-bridge) key sidecars by this." },
+                      "risk": { "type": ["string", "null"], "description": "v4: Bulwark's free-form risk label, if present. Omitted when absent." },
+                      "owner": { "type": ["string", "null"], "description": "v4: owning user/team (Bulwark `owner`), if present. Omitted when absent." }
                     }
                   }
                 }

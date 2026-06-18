@@ -11,7 +11,11 @@ description = "Bridges Bulwark findings from the Workstate snapshot into a Scrip
 # The official Workstate library: the bridge deserializes snapshot.json through
 # Workstate's own `Snapshot`/`Finding` types so the contract cannot drift.
 # Pinned by rev like every other cross-repo suite dependency.
-workstate = { git = "https://github.com/tom2025b/workstate", rev = "72ea286f8cf6f6276d9106ac2e31961d5f921269" }
+#
+# Pinned to Workstate v4 (path/risk/owner promoted to first-class `Finding`
+# fields; the passthrough `rest` bag removed). This is the merge commit on
+# workstate `main`.
+workstate = { git = "https://github.com/tom2025b/workstate", rev = "b0c9bb929a13387888b84132613f1da46184613c" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
