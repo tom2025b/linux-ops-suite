@@ -672,28 +672,27 @@ fn commit_hazard(dir: &Path) -> Option<String> {
             return Some(format!("a {} is in progress", marker.replace('-', " ")));
         }
     }
-    // Detached HEAD: `--abbrev-ref HEAD` reports the literal "HEAD".
-    match git(dir, &["rev-parse", "--abbrev-ref", "HEAD"]).as_deref() {
-        Some("HEAD") | None => return Some("HEAD is detached (commit would be orphaned)".into()),
-        Some("main") | Some("master") => {
-            return Some(format!(
-                "you are on the protected branch '{}' (commits should go via a PR branch)",
-                git(dir, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default()
-            ))
-        }
-        _ => {}
+    // Detached HEAD: `--abbrev-ref HEAD` reports the literal "HEAD". Read the
+    // branch once and reuse it (no second git call / no re-query race).
+    let branch = git(dir, &["rev-parse", "--abbrev-ref", "HEAD"]);
+    match branch.as_deref() {
+        Some("HEAD") | None => Some("HEAD is detached (commit would be orphaned)".into()),
+        Some(b @ ("main" | "master")) => Some(format!(
+            "you are on the protected branch '{b}' (commits should go via a PR branch)"
+        )),
+        _ => None,
     }
-    None
 }
 
 /// `git add -A && git commit -m <message>` for one repo, reporting the result.
 /// Returns true on a successful commit. Best-effort: a failed `add` or `commit`
 /// is reported and returns false without aborting the caller's sweep.
 ///
-/// Before staging, two safety gates run: (1) if the commit is hazardous
-/// (protected branch / detached HEAD / rebase|merge in progress) the user must
-/// explicitly confirm; (2) the user is reminded that `git add -A` stages ALL
-/// changes including untracked files. Both gates require an interactive "yes".
+/// One safety gate runs before staging: if the commit is HAZARDOUS (protected
+/// branch / detached HEAD / rebase|merge in progress) the user must explicitly
+/// confirm. The routine case needs no extra prompt — the per-repo commit message
+/// the caller already collected IS the confirmation. A one-line notice still
+/// flags that `git add -A` stages untracked files, but does not block.
 fn commit_one(s: &RepoStatus, message: &str, style: &Style) -> bool {
     if let Some(hazard) = commit_hazard(&s.dir) {
         println!("    {}⚠ {}{}", style.red, hazard, style.rst);
@@ -712,22 +711,12 @@ fn commit_one(s: &RepoStatus, message: &str, style: &Style) -> bool {
         }
     }
 
-    // `git add -A` stages untracked files too — make that explicit and confirm,
-    // so a stray secret/temp file is never committed unseen.
+    // `git add -A` stages untracked files too — flag it (no prompt; the message
+    // the user already typed is the go-ahead) so a stray file is never a surprise.
     println!(
-        "    {}note: staging ALL changes, including untracked files{}",
+        "    {}note: staging all changes, including untracked files{}",
         style.dim, style.rst
     );
-    match prompt_yes_no(&format!(
-        "    {}→ stage all and commit?{} {}(y/N):{} ",
-        style.bold, style.rst, style.dim, style.rst
-    )) {
-        Some(true) => {}
-        _ => {
-            println!("    {}↳ skipped{}", style.dim, style.rst);
-            return false;
-        }
-    }
 
     if git_output(&s.dir, &["add", "-A"]).is_none() {
         println!("    {}↳ git add failed{}", style.red, style.rst);
