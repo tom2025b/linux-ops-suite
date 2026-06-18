@@ -84,17 +84,27 @@ impl Toast<'_> {
                 Span::styled("[err] ", theme.status_error()),
                 Span::styled(text, theme.status_error()),
             ]),
+            // The three job-outcome kinds map 1:1 onto Outcome, listed explicitly
+            // (no inner `_`) so adding a future ToastKind here can't silently
+            // alias one of them — it would force a new arm instead. Same
+            // (glyph, style) source the StatusBar uses, so a flash and the
+            // persistent segment can never disagree on how an outcome looks.
             ToastKind::Success | ToastKind::Failure | ToastKind::Cancelled => {
-                // Same (glyph, style) source the StatusBar uses, so a flash and the
-                // persistent segment can never disagree on how an outcome looks.
                 let outcome = match self.kind {
                     ToastKind::Success => Outcome::Success,
                     ToastKind::Failure => Outcome::Failure,
-                    _ => Outcome::Cancelled,
+                    ToastKind::Cancelled => Outcome::Cancelled,
+                    // Unreachable: the outer arm only matches the three above.
+                    _ => unreachable!("outer arm guards Success/Failure/Cancelled"),
                 };
                 let (glyph, style) = outcome.glyph_style(theme);
                 Line::from(vec![Span::styled(glyph, style), Span::styled(text, style)])
             }
+            // `ToastKind` is #[non_exhaustive]: a future kind renders as plain dim
+            // text (like Info) rather than failing to compile. Unreachable today
+            // (own-crate match) but required once a variant is added.
+            #[allow(unreachable_patterns)]
+            _ => Line::from(Span::styled(text, theme.dim())),
         }
     }
 

@@ -47,6 +47,13 @@ impl Outcome {
             Outcome::Success => ("✓ ", theme.health(crate::Health::Healthy)),
             Outcome::Failure => ("✗ ", theme.status_error()),
             Outcome::Cancelled => ("■ ", theme.working()),
+            // `Outcome` is #[non_exhaustive]: a future variant gets a neutral
+            // marker rather than failing to compile. This is the single mapping
+            // both StatusBar and Toast route through, so the fallback keeps them
+            // in agreement. Unreachable today (own-crate match) but required once
+            // a variant is added; the allow keeps -D warnings happy until then.
+            #[allow(unreachable_patterns)]
+            _ => ("? ", theme.dim()),
         }
     }
 }
@@ -124,6 +131,11 @@ impl StatusBar<'_> {
                     Span::styled(format!("{name} — cancelled"), style),
                 ])
             }
+            // `JobState` is #[non_exhaustive]: a future state renders as a neutral
+            // dim marker rather than failing to compile. Unreachable today
+            // (own-crate match) but required once a variant is added.
+            #[allow(unreachable_patterns)]
+            _ => Line::from(Span::styled("…", theme.dim())),
         }
     }
 

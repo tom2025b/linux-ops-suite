@@ -9,6 +9,7 @@
     "schema_version",
     "source_tool",
     "generated_at",
+    "source_generated_at",
     "item_count",
     "sidecars"
   ],

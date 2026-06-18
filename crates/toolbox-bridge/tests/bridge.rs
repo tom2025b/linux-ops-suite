@@ -22,7 +22,7 @@ const FIXTURE: &str = concat!(
     "/tests/fixtures/bulwark.workstate-feed.v1.json"
 );
 
-/// Compile a real v3 snapshot whose findings section comes from `bulwark_path`.
+/// Compile a real v4 snapshot whose findings section comes from `bulwark_path`.
 /// ScriptVault/ToolFoundry feeds point nowhere — their sections degrade to
 /// Missing, which must never bother the bridge.
 fn compile_snapshot(bulwark_path: &str, out: &Path) {
@@ -141,8 +141,8 @@ fn unknown_schema_version_is_refused_before_shape_parsing() {
     match err {
         BridgeError::UnsupportedSchema { found, supported } => {
             assert_eq!(found, Some(99));
-            // Bind to Workstate's own constant so this can't drift on a schema
-            // bump (it lagged at 3 when the contract moved to v4).
+            // Bind to Workstate's own constant so this can't drift when the
+            // contract version bumps (currently v4).
             assert_eq!(supported, workstate::model::snapshot::SCHEMA_VERSION);
         }
         other => panic!("expected UnsupportedSchema, got: {other}"),
