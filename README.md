@@ -15,6 +15,9 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — emits the v4 snapshot | Active |
 | **[Proto](https://github.com/tom2025b/proto)** | Guided protocol / checklist runner — emits session records | Active |
 | **[RexOps](https://github.com/tom2025b/rexops)** | Operations cockpit + suite launcher | Active |
+| **[rex-doctor](crates/rex-doctor)** | Suite diagnostics — checks env/PATH, binaries & versions | Active |
+| **[portman](crates/portman)** | Lists listening sockets + ownership chain, with baseline diff | Active |
+| **[pulse](crates/pulse)** | Calm read-only TUI showing one suite-health verdict | Active |
 
 ## Installation
 
