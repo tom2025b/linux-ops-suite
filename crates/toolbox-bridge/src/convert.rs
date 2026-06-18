@@ -16,7 +16,6 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use workstate::model::normalized::Finding;
 
 /// Suffix ScriptVault uses for sidecar files; paths already pointing at a
@@ -126,29 +125,26 @@ pub fn convert(findings: &[Finding]) -> Conversion {
     conversion
 }
 
-/// The script path a finding refers to: Bulwark's `path` pass-through field,
-/// kept by Workstate in `Finding.rest`. `None` (skip) when absent, blank, or
-/// not a string — the bridge cannot place a sidecar without a real path.
+/// The script path a finding refers to: Bulwark's `path`, now a first-class
+/// allowlisted field on Workstate's canonical `Finding` (v4; it previously lived
+/// in the removed `rest` bag). `None` (skip) when absent or blank — the bridge
+/// cannot place a sidecar without a real path.
 fn finding_path(finding: &Finding) -> Option<&str> {
-    rest_str(finding, "path")
+    non_blank(finding.path.as_deref())
 }
 
-/// The risk label for the tag and badge: Bulwark's `risk` pass-through field,
-/// falling back to the feed's raw severity string. The canonical `Severity`
-/// buckets (`Unrated`/`Unknown`) are deliberately NOT used as labels — "no
-/// risk signal" must not become a `risk:unrated` tag.
+/// The risk label for the tag and badge: Bulwark's `risk` field (first-class on
+/// the v4 `Finding`), falling back to the feed's raw severity string. The
+/// canonical `Severity` buckets (`Unrated`/`Unknown`) are deliberately NOT used as
+/// labels — "no risk signal" must not become a `risk:unrated` tag.
 fn risk_of(finding: &Finding) -> Option<&str> {
-    rest_str(finding, "risk").or_else(|| non_blank(finding.raw_severity.as_deref()))
+    non_blank(finding.risk.as_deref()).or_else(|| non_blank(finding.raw_severity.as_deref()))
 }
 
-/// The owning user/team, from Bulwark's `owner` pass-through field.
+/// The owning user/team, from Bulwark's `owner` field (first-class on the v4
+/// `Finding`).
 fn owner_of(finding: &Finding) -> Option<&str> {
-    rest_str(finding, "owner")
-}
-
-/// A non-blank string field out of a finding's pass-through `rest` map.
-fn rest_str<'a>(finding: &'a Finding, key: &str) -> Option<&'a str> {
-    non_blank(finding.rest.get(key).and_then(Value::as_str))
+    non_blank(finding.owner.as_deref())
 }
 
 fn non_blank(s: Option<&str>) -> Option<&str> {
@@ -212,7 +208,9 @@ mod tests {
     use super::*;
     use workstate::model::normalized::{FindingId, Severity};
 
-    /// A finding with the pass-through fields Bulwark's workstate-feed carries.
+    /// A finding with the allowlisted fields Bulwark's workstate-feed carries.
+    /// As of Workstate v4 these are first-class `Finding` fields (path/risk/owner),
+    /// not entries in a `rest` bag.
     fn finding(
         path: Option<&str>,
         risk: Option<&str>,
@@ -220,16 +218,6 @@ mod tests {
         desc: Option<&str>,
         severity: Severity,
     ) -> Finding {
-        let mut rest = BTreeMap::new();
-        if let Some(p) = path {
-            rest.insert("path".to_string(), Value::String(p.to_string()));
-        }
-        if let Some(r) = risk {
-            rest.insert("risk".to_string(), Value::String(r.to_string()));
-        }
-        if let Some(o) = owner {
-            rest.insert("owner".to_string(), Value::String(o.to_string()));
-        }
         Finding {
             id: FindingId(path.unwrap_or("subject").to_string()),
             name: None,
@@ -239,7 +227,9 @@ mod tests {
             raw_severity: None,
             category: None,
             location: "unknown".to_string(),
-            rest,
+            path: path.map(str::to_string),
+            risk: risk.map(str::to_string),
+            owner: owner.map(str::to_string),
         }
     }
 
@@ -380,15 +370,15 @@ mod tests {
     }
 
     #[test]
-    fn non_string_rest_values_are_ignored_gracefully() {
+    fn blank_risk_and_owner_are_ignored_gracefully() {
+        // v4: risk/owner are typed Option<String>. A present-but-blank value is
+        // treated as absent (non_blank), so it contributes no tag; the description
+        // still survives. (Pre-v4 this guarded non-string JSON in the rest bag;
+        // with typed fields the analogous edge is the blank string.)
         let mut f = finding(Some("/x/a.sh"), None, None, Some("desc"), Severity::Low);
-        f.rest.insert(
-            "risk".to_string(),
-            Value::Number(serde_json::Number::from(7)),
-        );
-        f.rest.insert("owner".to_string(), Value::Bool(true));
+        f.risk = Some("   ".to_string());
+        f.owner = Some(String::new());
         let out = convert(&[f]);
-        // Malformed risk/owner contribute nothing; the description survives.
         assert!(out.sidecars[0].tags.is_empty());
         assert_eq!(out.sidecars[0].desc.as_deref(), Some("desc"));
     }

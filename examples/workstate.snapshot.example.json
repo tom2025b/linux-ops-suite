@@ -1,12 +1,13 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "built_at": "2026-06-14T12:00:00Z",
   "scripts": {
     "status": "Fresh",
     "provenance": {
       "feed_id": "scripts",
       "fetched_at": "2026-06-14T12:00:00Z",
-      "source_observed_at": "2026-06-14T11:30:00Z"
+      "source_observed_at": "2026-06-14T11:30:00Z",
+      "dropped_records": 0
     },
     "data": {
       "generated_at": "2026-06-14",
@@ -31,7 +32,8 @@
     "provenance": {
       "feed_id": "tools",
       "fetched_at": "2026-06-14T12:00:00Z",
-      "source_observed_at": "2026-06-12T00:00:00Z"
+      "source_observed_at": "2026-06-12T00:00:00Z",
+      "dropped_records": 0
     },
     "data": {
       "as_of": "2026-06-12",
@@ -76,7 +78,8 @@
     "provenance": {
       "feed_id": "findings",
       "fetched_at": "2026-06-14T12:00:00Z",
-      "source_observed_at": null
+      "source_observed_at": null,
+      "dropped_records": 0
     },
     "data": null
   }

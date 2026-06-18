@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/workstate.snapshot.schema.json",
-  "title": "Workstate snapshot (v3)",
+  "title": "Workstate snapshot (v4)",
   "description": "The single versioned artifact Workstate compiles and RexOps consumes as its source of truth. Envelope { schema_version, built_at } wrapping three Section<T> objects (scripts, tools, findings). Modeled from workstate/src/model/snapshot.rs plus the normalized inventory types, cross-checked against the live RexOps fixture. Workstate is strictly read-only and never mutates source tools.",
-  "$comment": "SEAMS (intentional, documented): (1) tools[].review_due remains date-or-null but currently stays null for RexOps compatibility; ToolFoundry's concrete lifecycle review date is the additive tools[].review_after field and the live due signal is review_due_flag. (2) tools.tool_count / attention_count are producer-reported summaries, advisory only, not cross-checked against tools[].length. (3) Record objects allow additionalProperties because producers preserve unmodeled upstream keys: Script flattens them inline (serde flatten); Finding may emit a nested 'rest' object that is OMITTED entirely when empty (skip_serializing_if). (4) section.data is null when a section is Missing/Failed/UnsupportedVersion — graceful degradation, not an error. Obsolete v1 fields (source_tool, projects[], top-level generated_at) are intentionally absent; additionalProperties:true at the root means a stray legacy key degrades rather than hard-failing, matching consumer leniency.",
+  "$comment": "SEAMS (intentional, documented): (1) tools[].review_due remains date-or-null but currently stays null for RexOps compatibility; ToolFoundry's concrete lifecycle review date is the additive tools[].review_after field and the live due signal is review_due_flag. (2) tools.tool_count / attention_count are producer-reported summaries, advisory only, not cross-checked against tools[].length. (3) Record objects allow additionalProperties because producers preserve unmodeled upstream keys: Script flattens them inline (serde flatten). Finding does NOT: as of v4 it carries an explicit field allowlist with no passthrough 'rest' bag, so an unmodeled Bulwark wire field (which can hold matched secrets/PII) never reaches the snapshot. (4) section.data is null when a section is Missing/Failed/UnsupportedVersion — graceful degradation, not an error. (5) v4 adds provenance.dropped_records (count of records normalization dropped for want of a usable id/subject) and a FreshnessUnknown status (a clean read whose source age is unknown, not mislabeled Fresh). Obsolete v1 fields (source_tool, projects[], top-level generated_at) are intentionally absent; additionalProperties:true at the root means a stray legacy key degrades rather than hard-failing, matching consumer leniency.",
   "type": "object",
   "required": ["schema_version"],
   "additionalProperties": true,
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 3,
-      "description": "Major contract version. RexOps gates on this FIRST; only v3 is consumed."
+      "const": 4,
+      "description": "Major contract version. RexOps gates on this FIRST; only v4 is consumed."
     },
     "built_at": {
       "type": "string",
@@ -28,17 +28,19 @@
       "properties": {
         "feed_id": { "type": "string" },
         "fetched_at": { "type": ["string", "null"], "description": "When Workstate READ the feed (UTC); null if never fetched (Missing)." },
-        "source_observed_at": { "type": ["string", "null"], "description": "When the SOURCE tool generated the data (UTC); null if unknown. The real staleness signal." }
+        "source_observed_at": { "type": ["string", "null"], "description": "When the SOURCE tool generated the data (UTC); null if unknown. The real staleness signal." },
+        "dropped_records": { "type": "integer", "minimum": 0, "default": 0, "description": "v4: how many raw records this section's normalization dropped for want of a usable id/subject. 0 for a clean compile and for Missing/Failed/UnsupportedVersion sections. Makes per-record loss visible instead of silent." }
       }
     },
     "status": {
-      "description": "Workstate's freshness verdict. A known string, any other string (forward-compat: degrades to Unknown health on the consumer), or a tagged object for the two data-bearing variants. Intentionally NOT a closed enum.",
+      "description": "Workstate's freshness verdict. A known string (Fresh | Stale | FreshnessUnknown | Missing — FreshnessUnknown added in v4 for a clean read whose source age is unknown), any other string (forward-compat: degrades to Unknown health on the consumer), or a tagged object for the data-bearing variants (UnsupportedVersion, MissingVersion, SourceMismatch, Failed). MissingVersion and SourceMismatch were added in v4. Intentionally NOT a closed enum.",
       "oneOf": [
-        { "type": "string" },
+        { "type": "string", "$comment": "Known bare-string statuses: Fresh, Stale, FreshnessUnknown, Missing. Open by design — an unrecognized value degrades on the consumer rather than failing validation." },
         {
           "type": "object",
           "required": ["UnsupportedVersion"],
           "additionalProperties": true,
+          "$comment": "Feed declared a schema_version we don't support. found is the declared version (always present for this variant as of v4 — a feed declaring NO version is MissingVersion instead).",
           "properties": {
             "UnsupportedVersion": {
               "type": "object",
@@ -46,6 +48,37 @@
               "properties": {
                 "found": { "type": ["integer", "null"] },
                 "supported": { "type": "integer" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["MissingVersion"],
+          "additionalProperties": true,
+          "$comment": "v4: feed declared NO schema_version at all — rejected as strictly as a wrong one, but kept distinct so 'forgot to stamp a version' is tellable from 'stamped an unsupported one'.",
+          "properties": {
+            "MissingVersion": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "supported": { "type": "integer" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["SourceMismatch"],
+          "additionalProperties": true,
+          "$comment": "v4: feed's self-reported source_tool disagreed with the adapter that read it (e.g. a ScriptVault export at the Bulwark path). Data rejected so mislabeled records never enter the snapshot. An empty source_tool is tolerated and does not produce this status.",
+          "properties": {
+            "SourceMismatch": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "expected": { "type": "string" },
+                "found": { "type": "string" }
               }
             }
           }
@@ -164,13 +197,14 @@
               "additionalProperties": true,
               "properties": {
                 "generated_at": { "type": "string" },
+                "dropped_records": { "type": "integer", "minimum": 0, "default": 0, "description": "v4: findings dropped during normalization (no usable subject). Mirrors provenance.dropped_records." },
                 "findings": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "required": ["id", "location"],
-                    "additionalProperties": true,
-                    "$comment": "additionalProperties:true — Finding may carry a nested 'rest' object of unmodeled non-sensitive keys, OMITTED entirely when empty (skip_serializing_if), so it is never required.",
+                    "additionalProperties": false,
+                    "$comment": "v4: additionalProperties:false — Finding is an EXPLICIT allowlist with no passthrough 'rest' bag (removed in v4). Unmodeled Bulwark wire fields can hold matched secrets/PII, so they are dropped at normalization and rejected here rather than baked into the persisted snapshot. The audited non-sensitive fields consumers need (path/risk/owner) are promoted to first-class allowlisted fields below.",
                     "properties": {
                       "id": { "type": "string" },
                       "name": { "type": ["string", "null"] },
@@ -179,7 +213,10 @@
                       "severity": { "type": "string", "description": "Normalized bucket info|low|medium|high|critical|unrated|unknown. String, not enum, so an unforeseen value degrades not fails." },
                       "raw_severity": { "type": ["string", "null"] },
                       "category": { "type": ["string", "null"] },
-                      "location": { "type": "string", "description": "Always present ('unknown' when the source gave none)." }
+                      "location": { "type": "string", "description": "Always present ('unknown' when the source gave none)." },
+                      "path": { "type": ["string", "null"], "description": "v4: filesystem path of the scanned script (Bulwark `path`), if present. Omitted when absent. Downstream consumers (toolbox-bridge) key sidecars by this." },
+                      "risk": { "type": ["string", "null"], "description": "v4: Bulwark's free-form risk label, if present. Omitted when absent." },
+                      "owner": { "type": ["string", "null"], "description": "v4: owning user/team (Bulwark `owner`), if present. Omitted when absent." }
                     }
                   }
                 }

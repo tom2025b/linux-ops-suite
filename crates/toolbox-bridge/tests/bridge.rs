@@ -141,7 +141,9 @@ fn unknown_schema_version_is_refused_before_shape_parsing() {
     match err {
         BridgeError::UnsupportedSchema { found, supported } => {
             assert_eq!(found, Some(99));
-            assert_eq!(supported, 3);
+            // Bind to Workstate's own constant so this can't drift on a schema
+            // bump (it lagged at 3 when the contract moved to v4).
+            assert_eq!(supported, workstate::model::snapshot::SCHEMA_VERSION);
         }
         other => panic!("expected UnsupportedSchema, got: {other}"),
     }

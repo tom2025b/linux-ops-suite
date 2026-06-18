@@ -138,20 +138,28 @@ fn main() -> ExitCode {
 
     print_totals(&statuses, have_tokei, &style);
 
-    // Pass 1: show the full `git status` for every repo that has uncommitted
-    // changes, so a non-zero dirty count above is never left unexplained.
-    show_dirty_statuses(&statuses, &style);
-
-    // Pass 2: audit + (after an explicit y/N) clean any `.claude/` folders.
+    // Pass 1: audit + (after an explicit y/N) clean any `.claude/` folders.
     audit_and_clean_claude(&statuses, &style);
 
-    // Pass 3 (final): always recap which repos are still dirty AFTER the
-    // cleanup above — so the status is the last thing on screen regardless of
-    // the .claude answer — then, at a terminal, offer a one-message
-    // commit-all over those repos. Runs on both yes and no to .claude.
+    // Pass 2 (final): recap the repos that are still dirty AFTER cleanup — so
+    // status is the last thing on screen regardless of the .claude answer —
+    // then, at a terminal, walk them one at a time to commit each with its own
+    // message. The concise per-repo `git status` lives inside this pass, shown
+    // once right where you act on it (no separate verbose status block above).
     offer_commit_dirty(&statuses, &style);
 
     ExitCode::SUCCESS
+}
+
+/// Print a clean, full-width section banner: a heavy rule, the title, a rule.
+/// Used to separate the major phases (cleanup, commit) so the output reads as
+/// distinct blocks instead of one undifferentiated wall.
+fn section(title: &str, style: &Style) {
+    let rule: String = "━".repeat(60);
+    println!();
+    println!("{}{}{}{}", style.bold, style.cyn, rule, style.rst);
+    println!("{}{}{}{}", style.bold, style.cyn, title, style.rst);
+    println!("{}{}{}{}", style.dim, style.cyn, rule, style.rst);
 }
 
 /// Where the suite repos live: `$REX_ROOT`, else `$HOME/projects`, else `./`.
@@ -382,59 +390,6 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
     );
 }
 
-/// Pass 1 — for each present, dirty repo, print a clear header and that repo's
-/// full `git status` output. Read-only; runs unconditionally on every invocation.
-fn show_dirty_statuses(statuses: &[RepoStatus], style: &Style) {
-    let dirty: Vec<&RepoStatus> = statuses
-        .iter()
-        .filter(|s| s.present && s.dirty > 0)
-        .collect();
-    if dirty.is_empty() {
-        return;
-    }
-
-    let names = dirty
-        .iter()
-        .map(|s| s.name.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    println!();
-    println!(
-        "{}{}git status — {} repo(s) with uncommitted changes:{} {}{}{}",
-        style.bold,
-        style.ylw,
-        dirty.len(),
-        style.rst,
-        style.bold,
-        names,
-        style.rst
-    );
-    for s in &dirty {
-        println!();
-        println!(
-            "{}{}▸ {}{} {}({}){}",
-            style.bold,
-            style.cyn,
-            s.name,
-            style.rst,
-            style.dim,
-            s.dir.display(),
-            style.rst
-        );
-        // Full, human-readable status (not porcelain) so the user sees exactly
-        // what git would show them. `git_output` returns stdout even when the
-        // success body is empty, but a dirty repo always has content here.
-        match git_output(&s.dir, &["status"]) {
-            Some(text) => {
-                for line in text.lines() {
-                    println!("    {line}");
-                }
-            }
-            None => println!("    {}(could not read git status){}", style.red, style.rst),
-        }
-    }
-}
-
 /// Pass 2 — audit every repo for a `.claude/` folder. If any exist, print a
 /// warning that lists each with its size, then prompt ONCE for a typed yes
 /// before ignoring + untracking + deleting them. Deletion never happens without
@@ -445,27 +400,22 @@ fn audit_and_clean_claude(statuses: &[RepoStatus], style: &Style) {
         return;
     }
 
-    println!();
-    println!(
-        "{}{}⚠ .claude/ folders detected in {} repo(s){}",
-        style.bold,
-        style.ylw,
-        found.len(),
-        style.rst
+    section(
+        &format!("⚠  .claude/ folders — {} repo(s)", found.len()),
+        style,
     );
     println!(
-        "{}  These hold Claude Code's local worktree/agent state and are not part{}",
-        style.dim, style.rst
-    );
-    println!(
-        "{}  of the suite. rex-check can ignore, untrack, and delete them.{}",
+        "{}  Claude Code's local worktree/agent state; not part of the suite.{}",
         style.dim, style.rst
     );
     println!();
     for s in &found {
         let size = dir_size_human(&s.dir.join(".claude"));
         let tracked = if s.claude_tracked > 0 {
-            format!("{}tracked: {} path(s){}", style.red, s.claude_tracked, style.rst)
+            format!(
+                "{}tracked: {} path(s){}",
+                style.red, s.claude_tracked, style.rst
+            )
         } else {
             format!("{}untracked{}", style.dim, style.rst)
         };
@@ -556,7 +506,10 @@ fn clean_one_claude(s: &RepoStatus, style: &Style, freed: &mut u64) {
                 "    git index    {}removed {} tracked path(s) from index{}",
                 style.grn, s.claude_tracked, style.rst
             ),
-            None => println!("    git index    {}git rm --cached failed{}", style.red, style.rst),
+            None => println!(
+                "    git index    {}git rm --cached failed{}",
+                style.red, style.rst
+            ),
         }
     } else {
         println!("    git index    not tracked — nothing to untrack");
@@ -575,7 +528,10 @@ fn clean_one_claude(s: &RepoStatus, style: &Style, freed: &mut u64) {
                 style.rst
             );
         }
-        Err(e) => println!("    folder       {}delete failed: {e}{}", style.red, style.rst),
+        Err(e) => println!(
+            "    folder       {}delete failed: {e}{}",
+            style.red, style.rst
+        ),
     }
 }
 
@@ -593,64 +549,35 @@ fn offer_commit_dirty(statuses: &[RepoStatus], style: &Style) {
         .filter(|s| s.present && repo_is_dirty(&s.dir))
         .collect();
 
-    println!();
     if dirty.is_empty() {
-        println!(
-            "{}{}✓ all repos clean — nothing to commit.{}",
-            style.bold, style.grn, style.rst
-        );
+        section("✓  All repos clean", style);
+        println!("{}  Nothing to commit.{}", style.dim, style.rst);
         return;
     }
 
-    let names = dirty
-        .iter()
-        .map(|s| s.name.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    println!(
-        "{}{}▶ {} repo(s) still have uncommitted changes:{} {}{}{}",
-        style.bold,
-        style.ylw,
-        dirty.len(),
-        style.rst,
-        style.bold,
-        names,
-        style.rst
+    section(
+        &format!("✎  Uncommitted changes — {} repo(s)", dirty.len()),
+        style,
     );
-    for s in &dirty {
-        println!(
-            "  {}{:<16}{} {}{}{}",
-            style.bold,
-            s.name,
-            style.rst,
-            style.dim,
-            s.dir.display(),
-            style.rst
-        );
-    }
 
-    // No human to answer when piped: show the recap (done above) + a hint, then
-    // stop. Never commit without an interactive yes.
+    // No human to answer when piped: name the dirty repos + a hint, then stop.
+    // Never commit without an interactive yes.
     if !stdin_is_tty() {
+        for s in &dirty {
+            println!("  {}{}{}", style.bold, s.name, style.rst);
+        }
         println!();
         println!(
-            "{}  run rex-check in a terminal to commit these.{}",
+            "{}  Run rex-check in a terminal to commit these.{}",
             style.dim, style.rst
         );
         return;
     }
 
-    println!();
-    match prompt_yes_no(&format!(
-        "{}Commit these dirty repos now, one at a time? [y/N] {}",
-        style.bold, style.rst
-    )) {
-        Some(true) => {}
-        _ => {
-            println!("{}  left as-is.{}", style.dim, style.rst);
-            return;
-        }
-    }
+    println!(
+        "{}  Going through each one at a time — blank message skips a repo.{}",
+        style.dim, style.rst
+    );
 
     // Walk each dirty repo independently: show it, show its status, ask for a
     // message JUST for it, commit only it, then move on. A blank message skips
@@ -659,37 +586,38 @@ fn offer_commit_dirty(statuses: &[RepoStatus], style: &Style) {
     let mut committed = 0usize;
     let mut skipped = 0usize;
     for (i, s) in dirty.iter().enumerate() {
+        // Per-repo header: counter + name on one line, path dimmed beneath, then
+        // the concise status. This is the ONLY place status is shown — there is
+        // no separate verbose status block, so nothing is repeated.
         println!();
         println!(
-            "{}{}── [{}/{}] {}{} {}({}){}",
+            "{}{}[{}/{}] {}{}",
             style.bold,
             style.cyn,
             i + 1,
             dirty.len(),
             s.name,
-            style.rst,
-            style.dim,
-            s.dir.display(),
             style.rst
         );
-        // Show this repo's status right before asking, so the message is written
-        // against what's actually staged/changed here.
-        match git_output(&s.dir, &["status", "--short", "--branch"]) {
+        println!("{}      {}{}", style.dim, s.dir.display(), style.rst);
+        match git_output(&s.dir, &["status", "--short"]) {
             Some(text) => {
                 for line in text.lines() {
-                    println!("    {line}");
+                    println!("    {}{}{}", style.dim, line, style.rst);
                 }
             }
             None => println!("    {}(could not read git status){}", style.red, style.rst),
         }
 
+        // The prompt stands alone on its own line, set off by a marker, so it
+        // never blends into the status lines above it.
         let message = match prompt_line(&format!(
-            "{}Commit message for {} (blank to skip): {}",
-            style.bold, s.name, style.rst
+            "  {}→ commit message{} {}(blank skips):{} ",
+            style.bold, style.rst, style.dim, style.rst
         )) {
             Some(m) if !m.trim().is_empty() => m.trim().to_owned(),
             _ => {
-                println!("{}  skipped — {} left as-is.{}", style.dim, s.name, style.rst);
+                println!("    {}↳ skipped{}", style.dim, style.rst);
                 skipped += 1;
                 continue;
             }
@@ -704,11 +632,16 @@ fn offer_commit_dirty(statuses: &[RepoStatus], style: &Style) {
 
     println!();
     println!(
-        "{}done:{} {} committed, {} left as-is (of {} dirty)",
-        style.dim,
+        "{}{}Summary:{} {}{} committed{}, {}{} skipped{} (of {} dirty)",
+        style.bold,
+        style.grn,
         style.rst,
+        style.grn,
         committed,
+        style.rst,
+        style.dim,
         skipped,
+        style.rst,
         dirty.len()
     );
 }
@@ -718,7 +651,7 @@ fn offer_commit_dirty(statuses: &[RepoStatus], style: &Style) {
 /// is reported and returns false without aborting the caller's sweep.
 fn commit_one(s: &RepoStatus, message: &str, style: &Style) -> bool {
     if git_output(&s.dir, &["add", "-A"]).is_none() {
-        println!("  {}git add failed{}", style.red, style.rst);
+        println!("    {}↳ git add failed{}", style.red, style.rst);
         return false;
     }
     match git_output(&s.dir, &["commit", "-m", message]) {
@@ -726,14 +659,14 @@ fn commit_one(s: &RepoStatus, message: &str, style: &Style) -> bool {
             // Short hash for a tidy confirmation; absence is non-fatal.
             let hash = git(&s.dir, &["rev-parse", "--short", "HEAD"]).unwrap_or_default();
             println!(
-                "  {}committed{} {}{}{}",
+                "    {}↳ committed{} {}{}{}",
                 style.grn, style.rst, style.dim, hash, style.rst
             );
             true
         }
         None => {
             println!(
-                "  {}commit failed (nothing to commit?){}",
+                "    {}↳ commit failed (nothing to commit?){}",
                 style.red, style.rst
             );
             false

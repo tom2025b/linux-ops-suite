@@ -34,7 +34,7 @@ ToolFoundry ─┐
 Bulwark ─────┤  emit *.workstate-feed JSON
 Proto ───────┘
                  │
-            Workstate  ── compiles ──>  snapshot.json (schema v3)
+            Workstate  ── compiles ──>  snapshot.json (schema v4)
                                              │
                                           RexOps  (cockpit / launcher; `rex run`)
                           (also reads Bulwark scan + ScriptVault export directly)
@@ -86,7 +86,7 @@ own repo and will provide the interactive cockpit on the same contracts.
 | **Bulwark** | Rust | ~5.6k | `main` | Scanner + risk classifier. Stable. Consumes suite-ui via git dep (`tui` feature). |
 | **ScriptVault** | Rust | ~13.5k | `main` | Largest tool. Consumes suite-ui via git dep (`clap` feature). |
 | **ToolFoundry** | Rust | ~4.4k | `main` | Lifecycle/ownership/health. |
-| **Workstate** | Rust | ~3.2k | `main` | State compiler (snapshot v3). |
+| **Workstate** | Rust | ~3.2k | `main` | State compiler (snapshot v4). |
 | **Proto** | Rust | ~6.2k | `main` | Guided protocol/checklist runner. |
 | **RexOps** | Rust | ~7.6k | `main` | Cockpit (cli + tui crates). Consumes suite-ui via git dep. |
 
