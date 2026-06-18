@@ -1,0 +1,27 @@
+[package]
+name = "rex-doctor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Diagnostics & health checks for the Linux Ops Suite: verifies the installed suite is wired up end-to-end (PATH/env, binaries & versions) and reports PASS/WARN/FAIL/SKIP with the one command that fixes each finding."
+
+[[bin]]
+name = "rex-doctor"
+path = "src/main.rs"
+
+[lib]
+name = "rex_doctor"
+path = "src/lib.rs"
+
+# Lean on purpose, same philosophy as rex-check: rex-doctor shells out to the
+# suite binaries and `git` rather than linking them, so the only deps are the
+# CLI parser and (for the JSON report envelope) serde. No network, no async.
+[dependencies]
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
