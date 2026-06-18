@@ -6,6 +6,7 @@ members = [
     "crates/toolbox-bridge",
     "crates/linux-ops-install",
     "crates/rex-check",
+    "crates/rex-doctor",
 ]
 
 [workspace.package]
