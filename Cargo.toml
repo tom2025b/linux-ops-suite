@@ -7,6 +7,7 @@ members = [
     "crates/linux-ops-install",
     "crates/rex-check",
     "crates/rex-doctor",
+    "crates/portman",
 ]
 
 [workspace.package]
