@@ -31,6 +31,7 @@
 
 use std::env;
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -646,10 +647,88 @@ fn offer_commit_dirty(statuses: &[RepoStatus], style: &Style) {
     );
 }
 
+/// A reason a commit needs an extra confirmation before it runs: committing
+/// onto a protected branch, onto a detached HEAD, or while a rebase/merge is in
+/// progress. `None` means the commit is routine and needs no extra gate.
+fn commit_hazard(dir: &Path) -> Option<String> {
+    // A rebase/merge in progress: committing now would corrupt that operation.
+    let git_dir = git(dir, &["rev-parse", "--git-dir"])
+        .map(|g| {
+            let p = PathBuf::from(&g);
+            if p.is_absolute() {
+                p
+            } else {
+                dir.join(p)
+            }
+        })
+        .unwrap_or_else(|| dir.join(".git"));
+    for marker in [
+        "rebase-merge",
+        "rebase-apply",
+        "MERGE_HEAD",
+        "CHERRY_PICK_HEAD",
+    ] {
+        if git_dir.join(marker).exists() {
+            return Some(format!("a {} is in progress", marker.replace('-', " ")));
+        }
+    }
+    // Detached HEAD: `--abbrev-ref HEAD` reports the literal "HEAD".
+    match git(dir, &["rev-parse", "--abbrev-ref", "HEAD"]).as_deref() {
+        Some("HEAD") | None => return Some("HEAD is detached (commit would be orphaned)".into()),
+        Some("main") | Some("master") => {
+            return Some(format!(
+                "you are on the protected branch '{}' (commits should go via a PR branch)",
+                git(dir, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default()
+            ))
+        }
+        _ => {}
+    }
+    None
+}
+
 /// `git add -A && git commit -m <message>` for one repo, reporting the result.
 /// Returns true on a successful commit. Best-effort: a failed `add` or `commit`
 /// is reported and returns false without aborting the caller's sweep.
+///
+/// Before staging, two safety gates run: (1) if the commit is hazardous
+/// (protected branch / detached HEAD / rebase|merge in progress) the user must
+/// explicitly confirm; (2) the user is reminded that `git add -A` stages ALL
+/// changes including untracked files. Both gates require an interactive "yes".
 fn commit_one(s: &RepoStatus, message: &str, style: &Style) -> bool {
+    if let Some(hazard) = commit_hazard(&s.dir) {
+        println!("    {}⚠ {}{}", style.red, hazard, style.rst);
+        match prompt_yes_no(&format!(
+            "    {}→ commit anyway?{} {}(y/N):{} ",
+            style.bold, style.rst, style.dim, style.rst
+        )) {
+            Some(true) => {}
+            _ => {
+                println!(
+                    "    {}↳ skipped (hazard not confirmed){}",
+                    style.dim, style.rst
+                );
+                return false;
+            }
+        }
+    }
+
+    // `git add -A` stages untracked files too — make that explicit and confirm,
+    // so a stray secret/temp file is never committed unseen.
+    println!(
+        "    {}note: staging ALL changes, including untracked files{}",
+        style.dim, style.rst
+    );
+    match prompt_yes_no(&format!(
+        "    {}→ stage all and commit?{} {}(y/N):{} ",
+        style.bold, style.rst, style.dim, style.rst
+    )) {
+        Some(true) => {}
+        _ => {
+            println!("    {}↳ skipped{}", style.dim, style.rst);
+            return false;
+        }
+    }
+
     if git_output(&s.dir, &["add", "-A"]).is_none() {
         println!("    {}↳ git add failed{}", style.red, style.rst);
         return false;
@@ -822,15 +901,26 @@ fn tokei_loc(dir: &Path) -> Option<usize> {
     None
 }
 
-/// Whether a command is resolvable on PATH (used to detect tokei).
+/// Whether a command is resolvable on PATH (used to detect tokei). Walks the
+/// PATH entries directly rather than going through `sh -c "command -v {name}"`,
+/// which would be a shell-injection vector if `name` ever came from untrusted
+/// input.
 fn command_exists(name: &str) -> bool {
-    // `command -v` via the shell is the cheapest portable check and mirrors the
-    // shell script's `command -v tokei`.
-    Command::new("sh")
-        .arg("-c")
-        .arg(format!("command -v {name}"))
-        .output()
-        .map(|o| o.status.success())
+    // An absolute/relative path is checked as-is; a bare name is resolved
+    // against each PATH entry.
+    if name.contains('/') {
+        return is_executable_file(Path::new(name));
+    }
+    let Some(path_var) = env::var_os("PATH") else {
+        return false;
+    };
+    env::split_paths(&path_var).any(|dir| is_executable_file(&dir.join(name)))
+}
+
+/// Whether `path` is a regular file with any execute bit set.
+fn is_executable_file(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
 }
 
@@ -968,5 +1058,81 @@ mod tests {
     /// parallel tests never collide.
     fn unique_tmp_dir(label: &str) -> PathBuf {
         env::temp_dir().join(format!("rex-check-test-{label}-{}", std::process::id()))
+    }
+
+    #[test]
+    fn command_exists_finds_a_known_binary_and_rejects_a_bogus_one() {
+        // `sh` is essentially always present; the bogus name never is. This also
+        // confirms the PATH-walk replacement for the old `sh -c` works.
+        assert!(command_exists("sh"));
+        assert!(!command_exists("definitely-not-a-real-command-xyzzy"));
+        // A name containing a path separator is checked as a literal path.
+        assert!(!command_exists("/no/such/bin/nope"));
+    }
+
+    #[test]
+    fn commit_hazard_flags_protected_branch_and_clears_on_feature_branch() {
+        // Build a throwaway git repo so we can drive real branch state. Skips
+        // gracefully if git is unavailable in the test environment.
+        if !command_exists("git") {
+            return;
+        }
+        let dir = unique_tmp_dir("commit-hazard");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .output()
+                .unwrap();
+        };
+        run(&["init", "-q", "-b", "main"]);
+        run(&["config", "user.email", "t@t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(dir.join("f"), "x").unwrap();
+        run(&["add", "f"]);
+        run(&["commit", "-qm", "init"]);
+
+        // On `main`: hazard fires.
+        let hazard = commit_hazard(&dir);
+        assert!(
+            hazard
+                .as_deref()
+                .map(|h| h.contains("protected"))
+                .unwrap_or(false),
+            "main must be flagged as protected, got {hazard:?}"
+        );
+
+        // On a feature branch: no hazard.
+        run(&["checkout", "-q", "-b", "feature/x"]);
+        assert!(
+            commit_hazard(&dir).is_none(),
+            "a feature branch must not be flagged"
+        );
+
+        // Detached HEAD: hazard fires again.
+        let head = String::from_utf8_lossy(
+            &Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .trim()
+        .to_owned();
+        run(&["checkout", "-q", &head]);
+        assert!(
+            commit_hazard(&dir)
+                .as_deref()
+                .map(|h| h.contains("detached"))
+                .unwrap_or(false),
+            "detached HEAD must be flagged"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -19,6 +19,10 @@ pub(crate) fn fetch_http(url: &str) -> Result<(u16, Vec<u8>), InstallError> {
     let stdout = run_command(
         Command::new("curl")
             .arg("-sSL")
+            // Enforce HTTPS even across redirects: a redirect to http:// or
+            // ftp:// is refused rather than followed.
+            .arg("--proto")
+            .arg("=https")
             .arg("--max-redirs")
             .arg("10")
             .arg("-H")
