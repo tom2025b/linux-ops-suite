@@ -1,5 +1,58 @@
 # Last Work
 
+## Deep umbrella review → fix all HIGH/CRITICAL items (3 PRs MERGED)
+
+2026-06-18. Ran a deep code review of the whole umbrella (5 crates + the
+contracts/CI/docs surface) with parallel specialist agents, established a green
+baseline (fmt, clippy -D warnings default+all-features, full test, all 9
+schema/example pairs validated), then fixed every HIGH/CRITICAL finding in
+priority order. Each fix got a new test; the full gate + `rex-check` ran before
+every commit. Landed as normal merge commits across 3 PRs:
+
+**umbrella PR #25 (MERGED) — installer + rex-check security.**
+`linux-ops-install`: a release that PASSES sha256 could still escape, so —
+tar gained `--no-absolute-filenames` (both -xJf/-xzf), unzip gained `-j`
+(zip-slip), `find_binary` now stats with `symlink_metadata` and SKIPS symlinks
+(no redirect/escape), `collect_assets` rejects untrusted asset names that aren't
+a plain single-segment filename (no `/ \ ..`, leading-dot, NUL) and requires an
+https URL, curl got `--proto =https` on both calls, and the prereq probe checks
+the `--version` exit status. `rex-check`: `commit_one` now refuses (unless
+confirmed) on main/master/detached-HEAD/rebase|merge (`commit_hazard`) and warns
+that `git add -A` stages untracked files; `command_exists` dropped the
+`sh -c "command -v"` injection vector for a direct PATH walk.
+
+**umbrella PR #26 (MERGED) — thomas-tui/suite-ui/toolbox-bridge.**
+Five own-crate matches on `#[non_exhaustive]` status enums had no fallback arm
+(adding a variant would break the defining crate) — added neutral fallbacks
+(theme.rs health/severity → plain Style; status_bar Outcome → ("? ", dim),
+JobState → "…"; toast ToastKind → dim text), all `#[allow(unreachable_patterns)]`.
+The toast inner outcome match was made explicit + `unreachable!()` (the old
+`_ => Cancelled` was a silent-misrender trap). `centered_rect` now clamps pct to
+<=100 (was a reachable u16 underflow: panic in debug / wrap in release).
+toolbox-bridge `source_generated_at` no longer emits "" — a blank upstream stamp
+normalizes to an `"unknown"` sentinel (+ operator warning), the field was added
+to the output schema's `required`, and the stale "v3 snapshot" test doc was fixed.
+
+**workstate PR #7 (MERGED) — snapshot/schema, in the sibling repo.**
+`Finding` gained `#[serde(deny_unknown_fields)]` so the v4 allowlist
+(additionalProperties:false — keeps Bulwark secrets/PII out) is enforced on the
+DESERIALIZE path, not just serialize. `FeedStatus` gained an `Unknown(Value)`
+catch-all + custom Deserialize so a status written by a NEWER Workstate degrades
+to "unknown health" instead of hard-failing the entire snapshot for a pinned
+consumer. Also fixed a PRE-EXISTING stale CI pin discovered when its PR went red:
+`HUB_SCHEMA_REF` pointed at v3 commit 3f0d2da while the crate emits v4 → bumped
+to v4 commit f89b1be (the job now passes).
+
+Final `rex-check`: all 7 repos on main, clean; all three touched mains
+(linux-ops-suite, workstate) green in CI.
+
+NOT done (out of scope / blocked): the 6 sibling-repo deep reviews
+(rexops/bulwark/scriptvault/proto/toolfoundry) were dispatched but ABORTED by an
+Anthropic session limit — only workstate completed. **proto still has NO ci.yml**
+(only release.yml) — a confirmed open HIGH to revisit. Lower-severity umbrella
+items (MED/LOW: god-file splits, doc drift in README/AGENT/ARCHITECTURE, MSRV
+1.85-vs-1.96, the unpopulated workstate findings example) were left for a later pass.
+
 ## Cleanup: retire all bump-v0.1.1 branches across the 7 suite repos
 
 2026-06-16. Removed the leftover `bump-v0.1.1` branch from every repo. The task was
