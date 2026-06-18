@@ -32,8 +32,8 @@ const TCP_LISTEN: &str = "0A";
 /// fatal. Only a total inability to read the TCP table is an error — that means
 /// `/proc/net` itself is gone, and portman has nothing to report.
 pub fn listening() -> Result<Vec<RawSocket>, PortmanError> {
-    let tcp = fs::read_to_string("/proc/net/tcp")
-        .map_err(|source| PortmanError::NoProc { source })?;
+    let tcp =
+        fs::read_to_string("/proc/net/tcp").map_err(|source| PortmanError::NoProc { source })?;
 
     let mut out = parse_table(&tcp, Proto::Tcp);
     for (path, proto) in [
@@ -98,9 +98,7 @@ fn parse_line(line: &str, proto: Proto) -> Option<RawSocket> {
 /// which for UDP means the socket is a listener rather than a connected flow.
 fn is_unbound_remote(remote: &str) -> bool {
     match remote.rsplit_once(':') {
-        Some((host, port)) => {
-            port.eq_ignore_ascii_case("0000") && host.bytes().all(|b| b == b'0')
-        }
+        Some((host, port)) => port.eq_ignore_ascii_case("0000") && host.bytes().all(|b| b == b'0'),
         None => false,
     }
 }
@@ -163,10 +161,7 @@ mod tests {
 
     #[test]
     fn decode_v6_unspecified_and_loopback() {
-        assert_eq!(
-            decode_v6("00000000000000000000000000000000").unwrap(),
-            "::"
-        );
+        assert_eq!(decode_v6("00000000000000000000000000000000").unwrap(), "::");
         // ::1 — loopback is the last byte set, little-endian per word.
         assert_eq!(
             decode_v6("00000000000000000000000001000000").unwrap(),

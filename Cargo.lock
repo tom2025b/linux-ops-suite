@@ -623,6 +623,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulse"
+version = "0.1.2"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"

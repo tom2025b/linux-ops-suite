@@ -8,6 +8,7 @@ members = [
     "crates/rex-check",
     "crates/rex-doctor",
     "crates/portman",
+    "crates/pulse",
 ]
 
 [workspace.package]

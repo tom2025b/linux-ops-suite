@@ -184,7 +184,11 @@ fn owner_cell(l: &Listener) -> String {
 
 /// Width of a column = widest cell, floored at the header's own width.
 fn col_width(rows: &[Row], field: impl Fn(&Row) -> &String, min: usize) -> usize {
-    rows.iter().map(|r| field(r).len()).max().unwrap_or(0).max(min)
+    rows.iter()
+        .map(|r| field(r).len())
+        .max()
+        .unwrap_or(0)
+        .max(min)
 }
 
 /// One-line hint, shown only to non-root callers, that some owners may be
@@ -207,7 +211,10 @@ pub fn print_diff(diff: &Diff, style: &Style) {
     println!();
 
     if diff.is_clean() {
-        println!("{}No changes — live listeners match the baseline.{}", style.grn, style.rst);
+        println!(
+            "{}No changes — live listeners match the baseline.{}",
+            style.grn, style.rst
+        );
         return;
     }
 
@@ -427,8 +434,7 @@ mod tests {
 
     #[test]
     fn clean_diff_json_is_marked_clean() {
-        let v: serde_json::Value =
-            serde_json::from_str(&diff_json(&Diff::default())).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&diff_json(&Diff::default())).unwrap();
         assert_eq!(v["clean"], true);
         assert_eq!(v["changes"].as_array().map(|a| a.len()), Some(0));
     }
