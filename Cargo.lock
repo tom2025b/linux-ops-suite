@@ -613,6 +613,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulse"
+version = "0.1.2"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -660,16 +668,6 @@ dependencies = [
 [[package]]
 name = "rex-check"
 version = "0.1.2"
-
-[[package]]
-name = "rex-doctor"
-version = "0.1.2"
-dependencies = [
- "clap",
- "serde",
- "serde_json",
- "tempfile",
-]
 
 [[package]]
 name = "rustix"
