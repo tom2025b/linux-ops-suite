@@ -121,6 +121,15 @@ pub(crate) fn collect_assets(release: &Value) -> ReleaseAssets {
         .filter_map(|asset| {
             let name = asset.get("name").and_then(Value::as_str)?;
             let download_url = asset.get("browser_download_url").and_then(Value::as_str)?;
+            // The asset name comes from untrusted GitHub release JSON and is
+            // later used as a path component (temp_dir.join(name)) and matched
+            // against checksum manifests. Drop any name that isn't a plain
+            // filename so it can never traverse out of the temp dir or alias a
+            // different asset; the URL must be https so curl --proto=https can
+            // fetch it.
+            if !is_safe_asset_name(name) || !download_url.starts_with("https://") {
+                return None;
+            }
             Some(ReleaseAsset {
                 name: name.to_string(),
                 download_url: download_url.to_string(),
@@ -129,6 +138,19 @@ pub(crate) fn collect_assets(release: &Value) -> ReleaseAssets {
         .collect();
 
     ReleaseAssets { all }
+}
+
+/// True if `name` is a plain, single-segment filename safe to use as a path
+/// component: non-empty, no `/` or `\`, not `.`/`..`, and not a hidden/dotfile
+/// (a leading dot would let a crafted asset masquerade as a config file). This
+/// is the gate that keeps a malicious GitHub asset name from escaping the temp
+/// directory via `Path::join`.
+fn is_safe_asset_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('.')
+        && !name.contains('/')
+        && !name.contains('\\')
+        && !name.contains('\0')
 }
 
 pub(crate) fn select_asset(
@@ -310,6 +332,44 @@ mod tests {
             })
             .collect::<Vec<_>>();
         serde_json::json!({ "assets": assets })
+    }
+
+    #[test]
+    fn is_safe_asset_name_accepts_plain_filenames() {
+        assert!(is_safe_asset_name(
+            "bulwark-x86_64-unknown-linux-gnu.tar.gz"
+        ));
+        assert!(is_safe_asset_name("rexops.sha256"));
+    }
+
+    #[test]
+    fn is_safe_asset_name_rejects_traversal_and_tricks() {
+        assert!(!is_safe_asset_name(""));
+        assert!(!is_safe_asset_name("."));
+        assert!(!is_safe_asset_name(".."));
+        assert!(!is_safe_asset_name("../../etc/passwd"));
+        assert!(!is_safe_asset_name("/etc/cron.d/evil"));
+        assert!(!is_safe_asset_name("sub/dir/file.tar.gz"));
+        assert!(!is_safe_asset_name("a\\b"));
+        assert!(!is_safe_asset_name(".bashrc"));
+        assert!(!is_safe_asset_name("nul\0byte"));
+    }
+
+    #[test]
+    fn collect_assets_drops_unsafe_names_and_non_https() {
+        // A traversal name, a non-https URL, and a good asset; only the good one
+        // should survive collection.
+        let release = serde_json::json!({
+            "assets": [
+                { "name": "../escape.tar.gz", "browser_download_url": "https://example.test/x" },
+                { "name": "good.tar.gz", "browser_download_url": "http://example.test/good.tar.gz" },
+                { "name": "good.tar.gz", "browser_download_url": "https://example.test/good.tar.gz" },
+            ]
+        });
+        let assets = collect_assets(&release);
+        assert_eq!(assets.all.len(), 1);
+        assert_eq!(assets.all[0].name, "good.tar.gz");
+        assert!(assets.all[0].download_url.starts_with("https://"));
     }
 
     #[test]

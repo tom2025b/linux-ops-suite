@@ -197,17 +197,33 @@ fn check_command(program: &str, cli: &Cli) -> Result<(), InstallError> {
         return Ok(());
     }
 
-    // Distinguish "tool absent" (friendly MissingPrerequisite remediation) from
-    // "tool present but `--version` failed" (the generic CommandFailed path).
-    Command::new(program)
+    probe_command(program)?;
+    ok(format!("{program} found"));
+    Ok(())
+}
+
+/// Probe that `program` is present AND runnable. A spawn failure (ENOENT) maps
+/// to the friendly `MissingPrerequisite` remediation; a non-zero `--version`
+/// exit means the tool is broken, so we surface it rather than letting a later
+/// step fail with a confusing error. Output is discarded.
+fn probe_command(program: &str) -> Result<(), InstallError> {
+    let output = Command::new(program)
         .arg("--version")
         .output()
         .map_err(|source| InstallError::MissingPrerequisite {
             program: program.to_string(),
             source,
         })?;
-    ok(format!("{program} found"));
-    Ok(())
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(InstallError::MissingPrerequisite {
+            program: program.to_string(),
+            source: io::Error::other(format!(
+                "`{program} --version` exited unsuccessfully; the tool appears broken"
+            )),
+        })
+    }
 }
 
 /// Largest release asset we will download, in bytes (512 MiB). Suite binaries
@@ -220,6 +236,11 @@ pub(crate) fn download_asset(asset: &ReleaseAsset, destination: &Path) -> Result
     run_command(
         Command::new("curl")
             .arg("-fL")
+            // Enforce HTTPS even across redirects: a redirect to http:// or
+            // ftp:// is refused rather than followed (defense-in-depth atop the
+            // https-only asset URL).
+            .arg("--proto")
+            .arg("=https")
             .arg("--progress-bar")
             .arg("--max-redirs")
             .arg("10")
@@ -251,6 +272,11 @@ fn prepare_binary(
         create_dir_all(&extract_dir, "create extraction directory")?;
         run_command(
             Command::new("tar")
+                // `--no-absolute-filenames` + `-P` absence keep a malicious
+                // archive (one that passes SHA256) from writing entries named
+                // `/abs/path` or `../escape` outside extract_dir. See the module
+                // note on extraction safety.
+                .arg("--no-absolute-filenames")
                 .arg("-xJf")
                 .arg(downloaded)
                 .arg("-C")
@@ -263,6 +289,7 @@ fn prepare_binary(
         create_dir_all(&extract_dir, "create extraction directory")?;
         run_command(
             Command::new("tar")
+                .arg("--no-absolute-filenames")
                 .arg("-xzf")
                 .arg(downloaded)
                 .arg("-C")
@@ -275,6 +302,11 @@ fn prepare_binary(
         create_dir_all(&extract_dir, "create extraction directory")?;
         run_command(
             Command::new("unzip")
+                // `-j` junks paths: every entry is flattened into extract_dir,
+                // so a `../../escape` zip entry (zip-slip) cannot write outside
+                // it. We only need the single binary, which find_binary locates
+                // at the top level afterwards.
+                .arg("-j")
                 .arg("-q")
                 .arg(downloaded)
                 .arg("-d")
@@ -292,14 +324,7 @@ fn prepare_binary(
 /// not every release needs extraction, so we verify here at the point of use
 /// rather than letting `tar`/`unzip` fail with a raw CommandFailed.
 fn ensure_extractor_available(program: &str) -> Result<(), InstallError> {
-    Command::new(program)
-        .arg("--version")
-        .output()
-        .map_err(|source| InstallError::MissingPrerequisite {
-            program: program.to_string(),
-            source,
-        })
-        .map(|_| ())
+    probe_command(program)
 }
 
 fn install_binary(source: &Path, destination: &Path) -> Result<(), InstallError> {
@@ -348,11 +373,20 @@ fn find_binary(root: &Path, binary_name: &str) -> Result<PathBuf, InstallError> 
             entries.sort();
 
             for path in entries {
-                let metadata = fs::metadata(&path).map_err(|source| InstallError::Io {
+                // `symlink_metadata` does NOT follow links: a symlink planted in
+                // the archive (e.g. `binary -> /etc/passwd`, or a dir symlink to
+                // an ancestor) is reported as a symlink, not as its target. We
+                // skip symlinks entirely so traversal can't escape extract_dir
+                // and the installed binary is never sourced through one.
+                let metadata = fs::symlink_metadata(&path).map_err(|source| InstallError::Io {
                     context: format!("stat {}", path.display()),
                     source,
                 })?;
-                if metadata.is_dir() {
+                let file_type = metadata.file_type();
+                if file_type.is_symlink() {
+                    continue;
+                }
+                if file_type.is_dir() {
                     next.push(path);
                 } else if path.file_name() == Some(OsStr::new(binary_name)) {
                     matches.push(path);
@@ -493,6 +527,39 @@ mod tests {
         let found = find_binary(root, "rexops").expect("found");
         assert_eq!(found, root.join("rexops"));
         assert_eq!(fs::read_to_string(&found).unwrap(), "shallow");
+    }
+
+    #[test]
+    fn find_binary_skips_symlinks_named_like_the_binary() {
+        // A symlink planted in the archive must never be selected as the binary
+        // source, even if it sits shallower than the real file.
+        let dir = TempDir::new("find-binary-symlink").expect("temp dir");
+        let root = dir.path();
+        let real = root.join("nested");
+        fs::create_dir_all(&real).expect("mkdir nested");
+        fs::write(real.join("rexops"), "real").expect("write real");
+        // Shallow symlink that would otherwise win the BFS.
+        std::os::unix::fs::symlink("/etc/passwd", root.join("rexops")).expect("symlink");
+
+        let found = find_binary(root, "rexops").expect("found");
+        assert_eq!(found, real.join("rexops"));
+        assert_eq!(fs::read_to_string(&found).unwrap(), "real");
+    }
+
+    #[test]
+    fn find_binary_does_not_follow_directory_symlinks() {
+        // A directory symlink pointing OUTSIDE the extraction root (the classic
+        // escape vector) must not be descended. `root` is the extraction dir;
+        // the symlink target lives in a separate temp dir so descending it would
+        // escape. Skipping it means the binary is NOT found.
+        let extract = TempDir::new("find-binary-extract").expect("temp dir");
+        let escape = TempDir::new("find-binary-escape").expect("temp dir");
+        let root = extract.path();
+        fs::write(escape.path().join("rexops"), "escaped").expect("write escaped");
+        std::os::unix::fs::symlink(escape.path(), root.join("link")).expect("dir symlink");
+
+        let err = find_binary(root, "rexops").expect_err("must not follow dir symlink");
+        assert!(matches!(err, InstallError::Io { .. }));
     }
 
     #[test]
