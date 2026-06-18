@@ -1,0 +1,28 @@
+[package]
+name = "portman"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Answers 'what is listening on this machine, and why?': enumerates listening sockets and resolves the full ownership chain (socket -> PID -> process -> systemd unit -> package), with a saveable baseline and a diff against it."
+
+[[bin]]
+name = "portman"
+path = "src/main.rs"
+
+[lib]
+name = "portman"
+path = "src/lib.rs"
+
+# Lean on purpose, same philosophy as rex-doctor/rex-check: portman reads
+# /proc directly (no `ss`/`netstat` dependency) and shells out to `systemctl`
+# and the package manager only as a best-effort last link in the chain. The
+# only hard deps are the CLI parser and serde for the JSON envelope + baseline.
+[dependencies]
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
