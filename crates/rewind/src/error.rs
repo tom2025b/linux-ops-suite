@@ -33,6 +33,11 @@ pub enum RewindError {
     /// A capture id/selector (`show`/`diff`/`restore`) matched no capture, or a
     /// prefix matched more than one.
     UnknownCapture { selector: String },
+    /// A capture-vs-live diff was asked for a capture taken from an explicit
+    /// `--path` set, but this run gave no `--path`/`--config` to reconstruct it —
+    /// so the live side would silently be a *different* set. Refused rather than
+    /// comparing the wrong files.
+    SetMismatch { selector: String },
 }
 
 impl fmt::Display for RewindError {
@@ -61,6 +66,12 @@ impl fmt::Display for RewindError {
             RewindError::UnknownCapture { selector } => {
                 write!(f, "no capture matches '{selector}'")
             }
+            RewindError::SetMismatch { selector } => write!(
+                f,
+                "capture '{selector}' was taken from explicit --path arguments; \
+                 re-run `rewind diff {selector}` with the same --path/--config so \
+                 the live side compares the same files"
+            ),
         }
     }
 }

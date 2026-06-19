@@ -13,8 +13,9 @@ design (storage model, the restore safety contract, JSON envelopes, roadmap).
 
 ## Status
 
-**Phase 1** — the storage layer plus `capture`, the timeline view, and
-`sources`. `show`, `diff`, and the guarded `restore` arrive in later phases.
+**Phase 2** — the storage layer plus `capture`, the timeline view, `sources`,
+`show` (one capture's manifest), and `diff` (two captures, or a capture against
+the live files). The guarded `restore` and `prune` arrive in a later phase.
 
 ## What it captures
 
@@ -39,9 +40,19 @@ rewind                      # timeline view: captures, newest first  (default)
 rewind log                  # alias for the timeline
 rewind capture [--label L]  # record the current capture set as a new immutable capture
 rewind sources              # show the resolved capture set, its source, and store stats
+rewind show <capture>       # show one capture's manifest: paths, sizes, hashes, schema
+rewind diff <a> [<b>]       # compare two captures, or capture <a> against the live files
 ```
 
-Global flags: `--json`, `--no-color`, `--store PATH`, `--path PATH` (repeatable),
+A `<capture>` is a full id, a unique id prefix, `latest`, `latest-good` (the
+newest capture whose snapshot is a valid envelope), or a relative index like
+`~1` (one before latest). `rewind diff <a>` with no second argument compares the
+capture against the current live files — the "has the live state drifted from
+this pin?" check, which exits `1` on any difference (and re-walks captured
+directories, so a newly-appeared or deleted file counts as drift).
+
+Global flags: `--json`, `--no-color`, `-v/--verbose` (extra `show` columns:
+mode, owner, hash prefix, mtime), `--store PATH`, `--path PATH` (repeatable),
 `--config FILE`.
 
 ## Storage
@@ -62,13 +73,16 @@ temp file + atomic rename, so a crash leaves the store consistent.
 ## Exit codes
 
 ```text
-0   success — timeline/sources rendered, or a capture was written
+0   success — timeline/sources/show/diff rendered, capture written, or a
+    diff found no differences
+1   diff drift — `rewind diff` found a difference between the two points
+    (so `rewind diff <pin>` drops into cron as a live-state drift check)
 3   rewind itself could not run — no/corrupt store, empty capture set,
-    a manifest from a newer schema, or no data dir to anchor the store
+    an unknown/ambiguous capture selector, a manifest from a newer schema,
+    or no data dir to anchor the store
 ```
 
-(Exit 1 for `diff` drift and exit 2 for a partial `restore` arrive with those
-commands in later phases.)
+(Exit 2 for a partial `restore` arrives with that command in a later phase.)
 
 ## Lean by design
 

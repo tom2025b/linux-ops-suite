@@ -1,10 +1,11 @@
 //! rewind CLI. Thin shell: parse flags, dispatch to a subcommand, render human
-//! or JSON, exit with a structured code (0 ok / 3 rewind itself could not run).
-//! All the work lives in the library; `main` only chooses what to run and how to
-//! print it — the same shape as tripwire's and portman's main.
+//! or JSON, exit with a structured code (0 ok / 1 diff found a difference / 3
+//! rewind itself could not run). All the work lives in the library; `main` only
+//! chooses what to run and how to print it — the same shape as tripwire's and
+//! portman's main. The exit-code *policy* lives here, never in the library.
 //!
-//! Phase 1 surface: the timeline view (default / `log`), `capture`, and
-//! `sources`. `show`, `diff`, `restore`, and `prune` arrive in later phases.
+//! Surface: the timeline view (default / `log`), `capture`, `sources`, `show`,
+//! and `diff`. The guarded `restore` and `prune` arrive in a later phase.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -36,7 +37,7 @@ struct Cli {
     #[arg(long, global = true)]
     no_color: bool,
 
-    /// Show extra columns (reserved for later phases).
+    /// Show extra columns (hash prefix, mode, uid/gid, mtime) in `show`.
     #[arg(short, long, global = true)]
     verbose: bool,
 
@@ -66,6 +67,23 @@ enum Cmd {
     },
     /// Show the resolved capture set, its source, and store stats.
     Sources,
+    /// Show one capture's manifest (paths, sizes, hashes, schema versions).
+    Show {
+        /// Which capture: an id, a unique id prefix, `latest`, `latest-good`,
+        /// or a relative index like `~1` (one before latest).
+        #[arg(value_name = "CAPTURE")]
+        capture: String,
+    },
+    /// Compare two captures, or a capture against the live files. Exits 1 on any
+    /// difference (a cron drift check), 0 when identical.
+    Diff {
+        /// The first capture (id / prefix / `latest` / `latest-good` / `~N`).
+        #[arg(value_name = "A")]
+        a: String,
+        /// The second capture. Omit to compare A against the current live files.
+        #[arg(value_name = "B")]
+        b: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -76,6 +94,8 @@ fn main() -> ExitCode {
         None | Some(Cmd::Log) => run_timeline(&cli, &style),
         Some(Cmd::Capture { label }) => run_capture(&cli, label.as_deref()),
         Some(Cmd::Sources) => run_sources(&cli, &style),
+        Some(Cmd::Show { capture }) => run_show(&cli, capture, &style),
+        Some(Cmd::Diff { a, b }) => run_diff(&cli, a, b.as_deref(), &style),
     };
 
     match result {
@@ -153,4 +173,37 @@ fn run_sources(cli: &Cli, style: &Style) -> Result<ExitCode, RewindError> {
         report::print_sources(&set, store_bytes, capture_count, &store_path, style);
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// `rewind show <capture>`: render one capture's manifest.
+fn run_show(cli: &Cli, selector: &str, style: &Style) -> Result<ExitCode, RewindError> {
+    let manifest = rewind::show_capture(cli.store.clone(), selector)?;
+    if cli.json {
+        println!("{}", report::show_json(&manifest));
+    } else {
+        report::print_show(&manifest, cli.verbose, style);
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `rewind diff <a> [<b>]`: compare two captures, or A against the live files.
+/// Exit 1 when they differ (the cron drift check), 0 when identical — the
+/// exit-code policy lives here, not in the library.
+fn run_diff(cli: &Cli, a: &str, b: Option<&str>, style: &Style) -> Result<ExitCode, RewindError> {
+    let diff = match b {
+        Some(b) => rewind::diff_captures(cli.store.clone(), a, b)?,
+        None => rewind::diff_capture_vs_live(cli.store.clone(), &cli.paths, config_ref(cli), a)?,
+    };
+
+    if cli.json {
+        println!("{}", report::diff_json(&diff));
+    } else {
+        report::print_diff(&diff, style);
+    }
+
+    Ok(if diff.is_clean() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    })
 }
