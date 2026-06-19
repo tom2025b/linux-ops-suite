@@ -15,7 +15,10 @@ empty — closer to a watch face than a control panel.
 
 Pulse is not RexOps with another skin. RexOps remains the launcher and
 orchestrator. Pulse is the read-only overview: the place to understand whether
-anything deserves attention before deciding where to work.
+anything deserves attention before deciding where to work. RexOps now *opens*
+into Pulse (a bare `rexops` shows the verdict first), and Pulse offers a single
+way back up into the cockpit — the `r` key launches `rexops tui`. Pulse hands
+off to the launcher; it never becomes one.
 
 The guiding instinct for every layout decision: **when the suite is healthy,
 remove things.** Detail, counts, source markers, and key hints all earn their
@@ -67,7 +70,11 @@ Current suite responsibilities from the architecture docs:
 - RexOps is the suite-level consumer/orchestrator and launcher.
 
 Pulse should sit beside RexOps conceptually as a read-only instrument. It should
-not become the launcher.
+not become the launcher — but, as RexOps' default screen, it provides one
+hand-off *to* the launcher (`r` → `rexops tui`). Launching the cockpit is a
+foreground process hand-off, not Pulse taking on launcher responsibilities: it
+spawns one known sibling binary and resumes when that exits. Pulse itself stays
+read-only and owns no tool registry, job manager, or catalog.
 
 ### Existing Producer Contracts
 
@@ -221,7 +228,7 @@ identical; the space simply fills from the center outward.
 
 
  ────────────────────────────────────────────────────────────────────────────
- enter  details      a  attention      f  feeds      /  search      ?  help
+ enter  details      a  attention      f  feeds      /  search      r  cockpit      ?  help
 ```
 
 What changed from healthy, and why:
@@ -261,7 +268,7 @@ What changed from healthy, and why:
 
 
  ────────────────────────────────────────────────────────────────────────────
- enter  details      a  attention      f  feeds      /  search      ?  help
+ enter  details      a  attention      f  feeds      /  search      r  cockpit      ?  help
 ```
 
 Incomplete is distinct from Needs Attention: the suite is not unhealthy, it is
@@ -369,7 +376,7 @@ on the first keypress, and is always present on the Needs Attention and
 Incomplete screens, where action is likely.
 
 ```text
- enter  details      a  attention      f  feeds      /  search      ?  help
+ enter  details      a  attention      f  feeds      /  search      r  cockpit      ?  help
 ```
 
 Primary paths:
@@ -378,6 +385,14 @@ Primary paths:
 - `a`: open the full Attention view.
 - `f`: open feed freshness and source confidence.
 - `/`: search across visible suite status data.
+- `r`: open the full RexOps cockpit (`rexops tui`) — the way out from the calm
+  status screen to the launcher/jobs interface. Pulse is RexOps' default screen
+  (a bare `rexops` opens Pulse), so `r` is the deliberate step *up* into the
+  cockpit when the operator decides to act. It foreground-launches RexOps,
+  handing it the real terminal, and returns to Pulse when the cockpit exits. If
+  `rexops` isn't on PATH this is a no-op with a single dim status line, never an
+  error — the same graceful degradation the rest of the suite follows. `r` is a
+  literal character inside the search box, not the shortcut.
 - `?`: help, and reveal the hint strip if hidden.
 - `q`: quit (always works; intentionally omitted from the strip to reduce its
   width and visual weight).

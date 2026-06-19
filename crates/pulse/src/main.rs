@@ -198,6 +198,7 @@ With no options, Pulse reads the suite's file contracts under $XDG_DATA_HOME
 ";
 
 mod app;
+mod cockpit;
 mod sources;
 mod tui;
 mod verdict;
@@ -546,7 +547,7 @@ fn source_line(v: &Verdict, style: &Style) -> Line {
 /// keep the strip narrow; quit still works.
 fn hint_strip(style: &Style) -> String {
     format!(
-        " {d}enter{r}  details      {d}a{r}  attention      {d}f{r}  feeds      {d}/{r}  search      {d}?{r}  help",
+        " {d}enter{r}  details      {d}a{r}  attention      {d}f{r}  feeds      {d}/{r}  search      {d}r{r}  cockpit      {d}?{r}  help",
         d = style.dim,
         r = style.rst,
     )

@@ -59,6 +59,55 @@ impl RawMode {
             let _ = tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
         }
     }
+
+    /// Hand the real terminal to a foreground child for the duration of `body`,
+    /// then take it back. Leaves raw mode + the alt-screen (so the child runs on
+    /// a normal cooked terminal it fully owns), runs `body`, and re-enters raw
+    /// mode + the alt-screen afterwards. Re-entry runs even when `body` returns
+    /// an error, so Pulse is never left half-suspended — the same guarantee
+    /// `suite_ui::Tui::suspended` gives the crossterm TUIs in the suite.
+    ///
+    /// Used to launch the RexOps cockpit (`rexops tui`) from inside Pulse: the
+    /// cockpit needs the real terminal in its own raw/alt-screen mode, so Pulse
+    /// must step fully out of the way first.
+    pub fn suspend<T>(&mut self, body: impl FnOnce() -> io::Result<T>) -> io::Result<T> {
+        // Step out, IN PLACE: leave the alt-screen + show the cursor, and restore
+        // the original termios — but keep `self.original` so re-entry can put raw
+        // mode back. (We deliberately don't call `restore()`, which *takes*
+        // `original` and would make re-entry impossible.)
+        {
+            let mut out = io::stdout();
+            out.write_all(b"\x1b[?25h\x1b[?1049l")?;
+            out.flush()?;
+        }
+        if let Some(orig) = &self.original {
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, orig)?;
+        }
+
+        // Run the child. Capture the result so we always attempt re-entry before
+        // returning.
+        let result = body();
+
+        // Step back in: raw mode (if we had a termios) + alt-screen + hide
+        // cursor, mirroring `enter`.
+        let reenter = (|| -> io::Result<()> {
+            if let Some(orig) = &self.original {
+                let mut raw = *orig;
+                make_raw(&mut raw);
+                tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw)?;
+            }
+            let mut out = io::stdout();
+            out.write_all(b"\x1b[?1049h\x1b[?25l")?;
+            out.flush()
+        })();
+
+        // A genuine child error wins; otherwise surface any re-entry failure.
+        match (result, reenter) {
+            (Err(e), _) => Err(e),
+            (Ok(_), Err(e)) => Err(e),
+            (Ok(v), Ok(())) => Ok(v),
+        }
+    }
 }
 
 impl Drop for RawMode {
