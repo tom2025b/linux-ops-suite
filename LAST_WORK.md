@@ -1,5 +1,72 @@
 # Last Work
 
+## New tool: Rewind — suite history + safe rollback (crates/rewind), Phase 1
+
+2026-06-19. Designed and started Rewind, the suite's TIME AXIS / black-box
+recorder: it records the suite's own state files (the compiled Workstate
+snapshot, the producer feeds, tripwire's baseline) into a content-addressed
+store, lists the timeline, and — in later phases — diffs any two points and
+RESTORES under a hard safety gate. It is the one suite tool that breaks
+"read-only always," narrowly: restore is dry-run-by-default, only touches
+Rewind's own captures, and auto-takes a pre-restore safety capture first.
+
+Design first: wrote REWIND_DESIGN.md at the repo root (mirrors
+TRIPWIRE/PULSE_DESIGN.md). Tom confirmed two key forks — content-addressed
+object store + manifests (git-blob idea, no git, auto-dedup), and
+auto-capture-current-state-first as the restore safety mechanism. Doc committed
+on this worktree branch (787fa5c).
+
+Phase 1 shipped (this commit): the storage layer + `rewind capture`, the
+timeline view (default / `rewind log`), and `rewind sources`. Deferred to later
+phases: `show`, `diff`, and the guarded `restore` (the one writing path — gets
+the heaviest test coverage when it lands).
+
+Built to tripwire's exact house style — thin `main`, library does the work,
+renderers derive from the model, `Style` resolver, JSON envelope shape
+(`schema_version`+`source_tool`), exit codes 0 ok / 3 can't-run (1 diff-drift
+and 2 partial-restore reserved for later phases). LIFTED tripwire's proven
+primitives verbatim (hash.rs streaming SHA-256, scan/walk.rs, scan/meta.rs) per
+the copy-for-v1 decision in the design doc; extract a shared suite-fs crate only
+if a third consumer appears.
+
+Storage: `$XDG_DATA_HOME/linux-ops-suite/rewind/` with `objects/<aa>/<sha256>`
+(deduped blobs), `captures/<ts>-<id>.json` (one manifest per capture), `HEAD`.
+Each readable file's bytes are hashed and stored once; two captures of identical
+content share one object (verified e2e: 2 captures of the same content = 2
+unique objects total, not 4; store stayed at 68 B). Atomic temp+rename writes;
+manifest written last. Capture id is content-derived (SHA-256 over timestamp +
+label + each entry's path/hash/mode/owner; mtime deliberately excluded so a
+touched-but-identical file doesn't change identity). Envelope sniffing on
+capture records each blob's `source_tool`/`schema_version`, driving the
+timeline's `good`/`snapshot invalid` NOTE and (later) `--latest-good`.
+
+Default capture set = the three suite-state targets (Tom's call): compiled
+snapshot + producer-feeds dir + tripwire baseline, existing-only. Precedence
+cli > config > builtin (line-based capture.conf, no TOML dep), source always
+recorded and shown by `rewind sources`. Graceful degradation: an unreadable file
+is metadata-only (no blob, not restorable), a missing configured path is simply
+absent, a symlink is recorded as a symlink (never followed by default), a
+newer-schema manifest is rejected loudly.
+
+Deps: clap + serde + serde_json + chrono (chrono is the only addition over
+tripwire's set, for the capture timestamp; it's already a workspace dep and
+Tom approved). No sha2/git2/walkdir/compression/network/async.
+
+Gate GREEN: cargo fmt --check (workspace), clippy -p rewind --all-targets
+-D warnings (default AND --all-features, both clean), 58 rewind tests + full
+workspace test (all crates, 0 failures). Manual e2e verified: sources/capture/
+timeline incl --json, dedup, invalid-snapshot NOTE, no-store exit 3, empty-set
+exit 3, builtin set resolution. Registered crates/rewind in the workspace
+Cargo.toml, added it to the suite README tool table + a crate README in
+tripwire's shape.
+
+NOT done (left for Tom's call): not committed/pushed beyond the design doc —
+awaiting approval per the hard rule. No PR opened yet. Phases 2+ (show / diff /
+guarded restore / prune) not started. No JSON schema under contracts/ +
+examples/ yet (tripwire/portman/pulse also ship without one; can add a
+rewind.capture/timeline schema pair if wanted). Work is on worktree branch
+`worktree-rewind-design`.
+
 ## New tool: Tripwire — file-integrity baseline + drift diff (crates/tripwire)
 
 2026-06-18. Designed and implemented Tripwire, the suite's filesystem-surface

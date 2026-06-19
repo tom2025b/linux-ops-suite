@@ -676,6 +676,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rewind"
+version = "0.1.2"
+dependencies = [
+ "chrono",
+ "clap",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "rex-check"
 version = "0.1.2"
 
