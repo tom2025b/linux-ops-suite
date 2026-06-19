@@ -153,14 +153,15 @@ pub fn read_binaries() -> Vec<BinaryStatus> {
         .iter()
         .map(|&name| BinaryStatus {
             name,
-            present: which(name),
+            present: is_on_path(name),
         })
         .collect()
 }
 
 /// Whether `name` resolves to an executable on `$PATH`. An in-process `which(1)`:
-/// scan `$PATH` entries for an executable file, no fork.
-fn which(name: &str) -> bool {
+/// scan `$PATH` entries for an executable file, no fork. Public so `run.rs` can
+/// gate a spawn on availability with the same probe `read_binaries` uses.
+pub fn is_on_path(name: &str) -> bool {
     let Some(path) = std::env::var_os("PATH") else {
         return false;
     };
