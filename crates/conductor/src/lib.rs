@@ -7,6 +7,7 @@
 
 pub mod error;
 pub mod plan;
+pub mod report;
 pub mod sources;
 pub mod state;
 pub mod util;
