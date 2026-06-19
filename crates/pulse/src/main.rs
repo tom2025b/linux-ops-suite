@@ -142,12 +142,12 @@ fn main() -> ExitCode {
         };
     }
 
-    // Interactive mode when we own a real screen: stdout is a TTY, color is
-    // live, and the user didn't ask to pipe (--no-clear) or force a demo state.
+    // Interactive mode when we own a real screen. Color is deliberately not part
+    // of this decision: NO_COLOR must keep the UI interactive, only monochrome.
     // Otherwise render once and exit, which keeps the output greppable and CI-
     // friendly. (A forced --state is a static demo with no live data to drill
     // into, so it stays render-once too.)
-    let interactive = clear && style.color && demo.is_none();
+    let interactive = should_run_interactive(clear, stdout_is_tty(), demo.is_none());
 
     if interactive {
         let readings = verdict::Readings::load(&sources::DataDir::resolve());
@@ -216,7 +216,7 @@ pub(crate) fn render(v: &Verdict, style: &Style, size: TermSize) -> String {
     // Too small to center safely: degrade to a plain, unpadded render that
     // can't clip. Still honors color and the verdict word.
     if size.width < MIN_CENTER_WIDTH || size.height < MIN_CENTER_HEIGHT {
-        return render_compact(v, style);
+        return render_compact(v, style, size.width as usize);
     }
 
     let w = size.width as usize;
@@ -260,10 +260,7 @@ pub(crate) fn render(v: &Verdict, style: &Style, size: TermSize) -> String {
         State::Incomplete => {
             block.push(Line::center(verdict_text(v.state), style.verdict(v.state)));
             block.push(Line::blank());
-            block.push(Line::center(
-                format!("{} sources unavailable", v.unavailable),
-                style.bold,
-            ));
+            block.push(Line::center(incomplete_summary(v), style.bold));
             block.push(Line::blank());
             block.push(Line::blank());
             block.push(Line::center(
@@ -304,7 +301,7 @@ pub(crate) fn render(v: &Verdict, style: &Style, size: TermSize) -> String {
             "─".repeat(w.saturating_sub(2)),
             style.rst
         );
-        lines[h - 2] = hint_strip(style);
+        lines[h - 2] = hint_strip(style, w);
     }
 
     // Timestamp: always present, the dimmest mark on screen, in the lower-right
@@ -317,36 +314,55 @@ pub(crate) fn render(v: &Verdict, style: &Style, size: TermSize) -> String {
 
 /// Plain top-left render for terminals too small to center. No padding math, so
 /// nothing can clip; the verdict still leads.
-fn render_compact(v: &Verdict, style: &Style) -> String {
+fn render_compact(v: &Verdict, style: &Style, width: usize) -> String {
     let mut out = String::new();
-    out.push_str(&format!(
-        "{}{}{}\n",
-        style.verdict(v.state),
-        verdict_text(v.state),
-        style.rst
-    ));
+    push_compact_line(
+        &mut out,
+        &format!(
+            "{}{}{}",
+            style.verdict(v.state),
+            verdict_text(v.state),
+            style.rst
+        ),
+        width,
+        style.rst,
+    );
     match v.state {
         State::Healthy => {}
         State::NeedsAttention => {
-            out.push_str(&format!("{}\n", count_summary(v)));
+            push_compact_line(&mut out, &count_summary(v), width, style.rst);
             if v.confidence_reduced {
-                out.push_str(&format!(
-                    "{}confidence reduced by stale feeds{}\n",
-                    style.ylw, style.rst
-                ));
+                push_compact_line(
+                    &mut out,
+                    &format!(
+                        "{}confidence reduced by stale feeds{}",
+                        style.ylw, style.rst
+                    ),
+                    width,
+                    style.rst,
+                );
             }
         }
         State::Incomplete => {
-            out.push_str(&format!("{} sources unavailable\n", v.unavailable));
+            push_compact_line(&mut out, &compact_incomplete_summary(v), width, style.rst);
         }
     }
-    out.push_str(&format!(
-        "{}{}{}\n",
-        style.dim,
-        timestamp_plain(v),
-        style.rst
-    ));
+    push_compact_line(
+        &mut out,
+        &format!("{}{}{}", style.dim, timestamp_plain(v), style.rst),
+        width,
+        style.rst,
+    );
     out
+}
+
+fn should_run_interactive(clear: bool, stdout_tty: bool, live_data: bool) -> bool {
+    clear && stdout_tty && live_data
+}
+
+fn push_compact_line(out: &mut String, line: &str, width: usize, reset: &str) {
+    out.push_str(&clip_ansi(line, width.max(1), reset));
+    out.push('\n');
 }
 
 /// One renderable line. `body` is already fully rendered (color codes embedded
@@ -408,12 +424,13 @@ impl Line {
         if self.body.is_empty() {
             return String::new();
         }
-        if self.centered {
+        let rendered = if self.centered {
             let pad = w.saturating_sub(self.width) / 2;
             format!("{}{}", " ".repeat(pad), self.body)
         } else {
             self.body.clone()
-        }
+        };
+        clip_ansi(&rendered, w.max(1), "\u{1b}[0m")
     }
 }
 
@@ -446,6 +463,36 @@ fn count_summary(v: &Verdict) -> String {
         (c, 0) => format!("{c} critical"),
         (0, h) => format!("{h} high"),
         (c, h) => format!("{c} critical · {h} high"),
+    }
+}
+
+fn plural(n: usize, one: &str, many: &str) -> String {
+    if n == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{n} {many}")
+    }
+}
+
+fn incomplete_summary(v: &Verdict) -> String {
+    match (v.unavailable, v.stale) {
+        (0, 0) => "suite view unavailable".to_string(),
+        (0, stale) => plural(stale, "source stale", "sources stale"),
+        (unavailable, 0) => plural(unavailable, "source unavailable", "sources unavailable"),
+        (unavailable, stale) => format!(
+            "{} · {}",
+            plural(unavailable, "unavailable", "unavailable"),
+            plural(stale, "stale", "stale")
+        ),
+    }
+}
+
+fn compact_incomplete_summary(v: &Verdict) -> String {
+    match (v.unavailable, v.stale) {
+        (0, 0) => "view unavailable".to_string(),
+        (0, stale) => plural(stale, "stale", "stale"),
+        (unavailable, 0) => plural(unavailable, "unavailable", "unavailable"),
+        (unavailable, stale) => format!("{unavailable} unavailable · {stale} stale"),
     }
 }
 
@@ -545,12 +592,33 @@ fn source_line(v: &Verdict, style: &Style) -> Line {
 
 /// The bottom hint strip for busy states. `q quit` is intentionally omitted to
 /// keep the strip narrow; quit still works.
-fn hint_strip(style: &Style) -> String {
-    format!(
-        " {d}enter{r}  details      {d}a{r}  attention      {d}f{r}  feeds      {d}/{r}  search      {d}r{r}  cockpit      {d}?{r}  help",
-        d = style.dim,
-        r = style.rst,
-    )
+fn hint_strip(style: &Style, width: usize) -> String {
+    let body = if width >= 88 {
+        format!(
+            " {d}enter{r}  details      {d}a{r}  attention      {d}f{r}  feeds      {d}/{r}  search      {d}r{r}  cockpit      {d}?{r}  help",
+            d = style.dim,
+            r = style.rst,
+        )
+    } else if width >= 64 {
+        format!(
+            " {d}enter{r} details  {d}a{r} attention  {d}f{r} feeds  {d}/{r} search  {d}r{r} cockpit  {d}?{r} help",
+            d = style.dim,
+            r = style.rst,
+        )
+    } else if width >= 36 {
+        format!(
+            " {d}enter{r} details  {d}a/f/?{r} views  {d}/{r} search",
+            d = style.dim,
+            r = style.rst,
+        )
+    } else {
+        format!(
+            " {d}enter{r}  {d}a{r} {d}f{r} {d}/{r} {d}r{r} {d}?{r}",
+            d = style.dim,
+            r = style.rst,
+        )
+    };
+    clip_ansi(&body, width.max(1), style.rst)
 }
 
 /// Timestamp string with color. Healthy shows the bare relative value
@@ -571,7 +639,45 @@ fn timestamp_plain(v: &Verdict) -> String {
 /// leaving a one-column right margin.
 fn right_align(colored: &str, plain: &str, w: usize) -> String {
     let pad = w.saturating_sub(plain.chars().count() + 1);
-    format!("{}{}", " ".repeat(pad), colored)
+    clip_ansi(
+        &format!("{}{}", " ".repeat(pad), colored),
+        w.max(1),
+        "\u{1b}[0m",
+    )
+}
+
+fn clip_ansi(input: &str, width: usize, reset: &str) -> String {
+    let mut out = String::new();
+    let mut visible = 0usize;
+    let mut chars = input.chars().peekable();
+    let mut clipped = false;
+
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' {
+            out.push(ch);
+            for c in chars.by_ref() {
+                out.push(c);
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+            continue;
+        }
+        if visible >= width {
+            clipped = true;
+            break;
+        }
+        out.push(ch);
+        visible += 1;
+    }
+
+    if !clipped && chars.peek().is_some() {
+        clipped = true;
+    }
+    if clipped && !reset.is_empty() && input.contains('\u{1b}') {
+        out.push_str(reset);
+    }
+    out
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -785,6 +891,14 @@ mod tests {
     }
 
     #[test]
+    fn no_color_does_not_disable_interactive_mode() {
+        assert!(should_run_interactive(true, true, true));
+        assert!(!should_run_interactive(false, true, true));
+        assert!(!should_run_interactive(true, false, true));
+        assert!(!should_run_interactive(true, true, false));
+    }
+
+    #[test]
     fn healthy_screen_is_almost_empty() {
         let v = Verdict::demo_healthy();
         let frame = render(&v, &plain_style(), size(80, 24));
@@ -839,6 +953,16 @@ mod tests {
     }
 
     #[test]
+    fn stale_incomplete_summary_names_stale_sources() {
+        let mut v = Verdict::demo("incomplete").unwrap();
+        v.unavailable = 0;
+        v.stale = 1;
+        let frame = render(&v, &plain_style(), size(80, 24));
+        assert!(frame.contains("1 source stale"));
+        assert!(!frame.contains("0 sources unavailable"));
+    }
+
+    #[test]
     fn count_summary_drops_zero_sides() {
         let mut v = Verdict::demo("attention").unwrap();
         v.critical = 0;
@@ -881,5 +1005,24 @@ mod tests {
         let frame = render(&v, &plain_style(), size(10, 4));
         assert!(frame.starts_with("all clear"));
         assert!(frame.contains("2m ago"));
+    }
+
+    #[test]
+    fn rendered_lines_do_not_exceed_viewport_width() {
+        let style = plain_style();
+        for (state, w, h) in [
+            ("attention", 80usize, 24u16),
+            ("incomplete", 80, 24),
+            ("attention", 36, 12),
+            ("incomplete", 20, 6),
+        ] {
+            let v = Verdict::demo(state).unwrap();
+            let frame = render(&v, &style, size(w as u16, h));
+            let max = frame.lines().map(|l| l.chars().count()).max().unwrap_or(0);
+            assert!(
+                max <= w,
+                "{state} at {w}x{h} overflowed to {max} columns:\n{frame}"
+            );
+        }
     }
 }
