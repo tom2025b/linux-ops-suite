@@ -10,6 +10,7 @@ pub mod plan;
 pub mod report;
 pub mod sources;
 pub mod state;
+pub mod tui;
 pub mod util;
 
 pub use error::ConductorError;
