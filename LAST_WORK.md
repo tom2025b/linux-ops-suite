@@ -1,5 +1,51 @@
 # Last Work
 
+## Conductor Phase 2 — interactive TUI + Ring-1 spawning (crates/conductor)
+
+2026-06-19. Branch `conductor-phase2` (worktree
+`.claude/worktrees/conductor-design`). Built on top of Phase 1's read-only
+foundation; all Phase 1 tests still pass.
+
+Phase 2 delivered: **interactive TUI** (hand-rolled, no new third-party deps —
+the same raw-terminal discipline as `pulse`): bare `conductor` on a real TTY
+opens the plan view; stdout piped or non-TTY falls back to `status` (scripts
+and CI keep working unchanged). The TUI is the
+`tui/{mod,term,frame,style,run}.rs` stack built in prior tasks, now wired into
+`main.rs`.
+
+**Ring-1 read-only spawning:** `enter` on a read-only step suspends raw mode,
+hands the terminal to the sibling binary (direct `execvp`-style spawn, no shell,
+`$PATH` probed), and marks the step `✓` on return. The `SuspendSpawner` RAII
+pattern restores raw mode unconditionally (even on panic).
+
+**Ring-2 no-op with note:** `enter` on a changes-state step prints "this step
+changes state — needs Phase 3, not run" and stays put. No state-changing command
+is ever run in Phase 2. Zero writes, zero Ring-2 executions — the invariant
+holds.
+
+**`--dump-view <VIEW>`:** hidden flag for deterministic snapshot tests. Builds
+the real plan, renders exactly one frame (`plan` | `healthy` | `compact` |
+`help`), monochrome, and exits 0. Unknown view → stderr + exit 3.
+
+**Tests:** 3 new integration tests in `crates/conductor/tests/cli.rs`, reusing
+the existing `TempRoot` + `run()` harness (stub-bin-dir pattern): (1)
+`--dump-view plan` on a stale-feed state shows "the plan" + "workstate
+snapshot" + "changes state"; (2) `--dump-view healthy` with all bins stubbed
+and empty data dir shows "nothing to conduct"; (3) bare invocation with captured
+stdout (non-TTY) falls back to status text. All 10 integration tests + all unit
+tests green.
+
+Exit codes: 0 ok / 3 can't-run only — 1/2 still reserved for Phase 3.
+`#[allow(dead_code)]` on `run` and `should_run_interactive` in `tui/mod.rs`
+removed (main.rs now calls both). No new dependencies added.
+
+All gates green: `cargo test -p conductor` (all tests pass incl. 3 new),
+`cargo clippy -p conductor --all-targets -D warnings` (zero warnings),
+`cargo fmt -p conductor -- --check` (clean), `cargo build --workspace` (clean).
+NOT pushed — awaiting human approval per the hard rule.
+
+---
+
 ## New tool: Conductor — suite guided operator (crates/conductor), Phase 1
 
 2026-06-19. Designed and built Phase 1 of Conductor, the suite's GUIDED

@@ -5,9 +5,11 @@ files, derives a short **ordered runbook** — *do these things, in this order* 
 and (in later phases) walks you through it, delegating each step to the tool that
 owns it. It never writes a live file itself.
 
-> **Phase 1 (this build)** is the read-only foundation: `status`, `health`,
-> `plan`. The interactive TUI (bare `conductor`) and the guided `orchestrate`
-> runner land in later phases.
+> **Phase 2 (current build)** adds the interactive TUI: bare `conductor` opens
+> the plan on a real TTY, walks you through it step by step, and hands off each
+> action to the tool that owns it. Piped or non-TTY invocations still print
+> `status` — no behavior change for scripts. Phase 3 adds the `orchestrate`
+> driver and Ring-2 (state-changing) confirmation.
 
 ## What it does
 
@@ -29,14 +31,36 @@ Conductor never mutates state with its own code. Every step is classified by a
   (Ring 2, Phase 3).
 - `info` — shows a fix command, runs nothing (Ring 0).
 
-**Phase 1 is entirely Ring 0**: it reads and renders, and runs nothing — no
-subprocess, no writes, no TUI.
+**Phase 2** adds Ring-1 spawning — read-only steps hand the terminal to a sibling
+tool and mark `✓` when it exits. **Ring-2 steps (changes-state) are shown but
+not run** in Phase 2: they need the Phase 3 confirm driver. Conductor still
+writes nothing itself.
+
+## Interactive mode (Phase 2)
+
+Run `conductor` with no arguments in a terminal to open the interactive plan:
+
+    conductor
+
+It shows the situation and the ordered steps, with the current step marked `▸`.
+
+    enter  run step    s  skip    a  advance    r  rexops    ?  help    q  quit
+
+- `enter` runs the current step. **Read-only** steps spawn the tool, hand over
+  the terminal, and mark the step `✓`. A **changes-state** step is shown with
+  its command and `changes state` tag but is **not run** in Phase 2 (it needs
+  the Phase 3 driver) — Conductor says so and leaves it pending.
+- `s` skips, `a` moves focus, `r` hands off to the RexOps cockpit, `q` quits.
+
+Conductor still writes nothing itself and runs no state-changing command. Piped
+or non-interactive (`conductor | cat`, CI), bare `conductor` prints `status`
+instead, so scripts keep working.
 
 ## Usage
 
 ```
-conductor              print the situation + ordered plan (default)
-conductor status       same as above
+conductor              open the interactive plan (TTY) or print status (piped)
+conductor status       print the situation + ordered plan
 conductor plan         just the ordered steps, no prose
 conductor health       per-feed and per-tool readiness
 conductor --json …     emit the JSON envelope (schema_version + source_tool)

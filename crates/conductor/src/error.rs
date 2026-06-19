@@ -13,6 +13,8 @@ pub enum ConductorError {
     /// Neither `$XDG_DATA_HOME` nor `$HOME` resolves, so there's nowhere to read
     /// the suite's contract files from.
     NoDataDir,
+    /// The interactive TUI failed to run (terminal I/O error).
+    Tui(String),
 }
 
 impl fmt::Display for ConductorError {
@@ -21,6 +23,7 @@ impl fmt::Display for ConductorError {
             ConductorError::NoDataDir => f.write_str(
                 "cannot resolve $XDG_DATA_HOME or $HOME; conductor needs one to read suite state",
             ),
+            ConductorError::Tui(msg) => write!(f, "interactive mode failed: {msg}"),
         }
     }
 }

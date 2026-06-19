@@ -228,7 +228,6 @@ fn decode_utf8(b0: u8, input: &mut impl Read) -> io::Result<Key> {
 
 /// Clear the screen and home the cursor, then write `frame`, as one flush. Used
 /// to repaint between key presses without flicker.
-#[allow(dead_code)] // wired up in Task 5 (the event loop calls paint each frame)
 pub fn paint(frame: &str) -> io::Result<()> {
     let mut out = io::stdout();
     out.write_all(b"\x1b[2J\x1b[H")?;
