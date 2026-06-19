@@ -941,6 +941,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tripwire"
+version = "0.1.2"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"

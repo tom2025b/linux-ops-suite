@@ -1,0 +1,28 @@
+[package]
+name = "tripwire"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Read-only file-integrity tripwire for the Linux Ops Suite: records a baseline (SHA-256 + metadata) of a watched set of files/dirs and reports what drifted — added, removed, modified, or re-permissioned — with a cron-friendly exit code."
+
+[[bin]]
+name = "tripwire"
+path = "src/main.rs"
+
+[lib]
+name = "tripwire"
+path = "src/lib.rs"
+
+# Lean on purpose, same philosophy as portman/rex-doctor/rex-check: tripwire
+# walks the filesystem and stats via libc directly (no walkdir/notify) and
+# hashes with a hand-rolled SHA-256 (no sha2/ring) so the only hard deps are
+# the CLI parser and serde for the JSON envelope + baseline. No network, no async.
+[dependencies]
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
