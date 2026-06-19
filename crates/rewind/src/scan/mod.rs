@@ -32,6 +32,27 @@ pub struct Scanned {
 /// `store` and returning the entries. `store` must already have its dirs
 /// (`ensure_dirs`) — the caller does that once before capturing.
 pub fn scan_into(set: &CaptureSet, store: &Store) -> Result<Scanned, RewindError> {
+    scan_set(set, Some(store))
+}
+
+/// Scan a resolved capture set **read-only**: build a [`CaptureEntry`] for every
+/// covered path exactly as [`scan_into`] would, but without persisting any blob
+/// to a store. Used by capture-vs-live diff, which must never mutate the store.
+/// File hashes are computed in memory (the same SHA-256, so they match a real
+/// capture's object keys) and envelopes are sniffed from the same buffer.
+pub fn live_scan(set: &CaptureSet) -> Vec<CaptureEntry> {
+    // No store means no write can fail, so this never errors — only resolving the
+    // set (a bad explicit `--config`) can, and the caller did that already.
+    scan_set(set, None)
+        .map(|s| s.entries)
+        .unwrap_or_else(|_| Vec::new())
+}
+
+/// Shared core of [`scan_into`]/[`live_scan`]: walk every spec and build an entry
+/// per covered path, deduped by absolute path. `store` decides where a readable
+/// file's bytes go — `Some(store)` persists the blob (capture), `None` hashes in
+/// memory only (read-only diff). The two modes produce identical entries.
+fn scan_set(set: &CaptureSet, store: Option<&Store>) -> Result<Scanned, RewindError> {
     // A path may be reached by more than one spec; key by absolute path so each
     // appears once. Last writer wins, which is fine — same path, same content.
     let mut by_path: BTreeMap<String, CaptureEntry> = BTreeMap::new();
@@ -82,13 +103,15 @@ fn normalize_lexical(path: PathBuf) -> PathBuf {
     out
 }
 
-/// Build one [`CaptureEntry`] for a concrete path, storing its content in the
-/// object pool when it's a readable file. Returns `None` only when the path
+/// Build one [`CaptureEntry`] for a concrete path. For a readable file, hash its
+/// bytes — persisting the blob into the object pool when `store` is `Some` (a
+/// real capture), or hashing in memory only when `None` (a read-only diff). The
+/// resulting entry is identical either way. Returns `None` only when the path
 /// doesn't exist at all (listed but vanished, or a configured path not present).
 fn entry_for(
     path: &Path,
     spec: &CaptureSpec,
-    store: &Store,
+    store: Option<&Store>,
 ) -> Result<Option<CaptureEntry>, RewindError> {
     let md = if spec.follow_symlinks {
         std::fs::metadata(path).ok()
@@ -122,12 +145,18 @@ fn entry_for(
             entry.target = meta::read_link_target(path);
         }
         EntryKind::File => {
-            // Read the whole file once: we need the bytes both to store the
-            // object and to sniff the envelope. Files in the capture set are
+            // Read the whole file once: we need the bytes both to hash (store or
+            // in-memory) and to sniff the envelope. Files in the capture set are
             // small suite JSON; if reading fails it's an unreadable entry.
             match std::fs::read(path) {
                 Ok(bytes) => {
-                    let hash = store.put_bytes(&bytes)?;
+                    // Persist into the object pool for a real capture; hash in
+                    // memory only for a read-only diff. Same SHA-256 either way,
+                    // so a live entry's hash matches the captured object key.
+                    let hash = match store {
+                        Some(s) => s.put_bytes(&bytes)?,
+                        None => crate::hash::hex_of(&bytes),
+                    };
                     entry.hash = Some(hash);
                     if let Some((tool, ver)) = sniff_envelope(&bytes) {
                         entry.envelope_tool = Some(tool);
@@ -156,7 +185,7 @@ fn sniff_envelope(bytes: &[u8]) -> Option<(String, Option<u32>)> {
     let ver = obj
         .get("schema_version")
         .and_then(|v| v.as_u64())
-        .map(|v| v as u32);
+        .and_then(|v| u32::try_from(v).ok());
     Some((tool, ver))
 }
 
@@ -292,5 +321,74 @@ mod tests {
         let mut sorted = paths.clone();
         sorted.sort_unstable();
         assert_eq!(paths, sorted);
+    }
+
+    #[test]
+    fn live_scan_writes_nothing_to_any_store() {
+        // A read-only live scan must not create the object pool or any blob.
+        let dir = tempdir().unwrap();
+        let f = dir.path().join("workstate.snapshot.json");
+        fs::write(&f, br#"{"schema_version":4,"source_tool":"workstate"}"#).unwrap();
+
+        // No store is opened or passed at all; just confirm we get entries and
+        // that nothing object-shaped was written under the data dir.
+        let entries = live_scan(&set_of(vec![CaptureSpec::new(f)]));
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].hash.is_some());
+        // The temp dir holds only the file we wrote — no `objects/` appeared.
+        assert!(!dir.path().join("objects").exists());
+    }
+
+    #[test]
+    fn live_scan_matches_capture_hash_and_envelope() {
+        // The in-memory hash AND sniffed envelope must equal what a real capture
+        // records, so capture-vs-live diffs compute true content identity.
+        let dir = tempdir().unwrap();
+        let store = store_in(&dir.path().join("store"));
+        let f = dir.path().join("workstate.snapshot.json");
+        fs::write(
+            &f,
+            br#"{"schema_version":4,"source_tool":"workstate","x":1}"#,
+        )
+        .unwrap();
+        let spec = CaptureSpec::new(f);
+
+        let captured = scan_into(&set_of(vec![spec.clone()]), &store).unwrap();
+        let live = live_scan(&set_of(vec![spec]));
+        assert_eq!(captured.entries.len(), 1);
+        assert_eq!(live.len(), 1);
+
+        let (c, l) = (&captured.entries[0], &live[0]);
+        assert_eq!(c.hash, l.hash, "same SHA-256");
+        assert_eq!(c.envelope_tool, l.envelope_tool, "same sniffed tool");
+        assert_eq!(
+            c.envelope_schema_version, l.envelope_schema_version,
+            "same sniffed schema"
+        );
+        assert_eq!(c.size, l.size);
+        assert_eq!(c.kind, l.kind);
+    }
+
+    #[test]
+    fn live_scan_marks_unreadable_when_content_cannot_be_read() {
+        // A path present as metadata but unreadable as content -> unreadable, no
+        // hash — honest per-path data, never an error (parity with capture).
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let f = dir.path().join("secret.json");
+        fs::write(&f, b"{}").unwrap();
+        // Drop all read permission. (Skipped effectively when run as root, which
+        // can read regardless — then this just asserts the readable path.)
+        fs::set_permissions(&f, fs::Permissions::from_mode(0o000)).unwrap();
+        let unreadable_to_us = fs::read(&f).is_err();
+
+        let live = live_scan(&set_of(vec![CaptureSpec::new(f.clone())]));
+        assert_eq!(live.len(), 1);
+        if unreadable_to_us {
+            assert!(live[0].unreadable);
+            assert!(live[0].hash.is_none());
+        }
+        // Restore perms so the tempdir cleans up.
+        let _ = fs::set_permissions(&f, fs::Permissions::from_mode(0o644));
     }
 }

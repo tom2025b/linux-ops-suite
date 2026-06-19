@@ -1,5 +1,41 @@
 # Last Work
 
+## Rewind Phase 2 — `show`, `diff`, capture selectors + timeline marker
+
+2026-06-19. `crates/rewind/`. Added the read/compare half of Rewind on top of
+Phase 1's storage layer:
+
+- **Selectors** (`lib.rs::resolve_selector`, pure): `latest`, `latest-good`
+  (newest capture whose snapshot is a valid `workstate` envelope), `~N` relative
+  index (digits-only — `~+1`/`~ 1`/`~x` miss), full id, and unique id prefix.
+  Every miss/ambiguity → existing `RewindError::UnknownCapture` (exit 3). Labels
+  are never selectors.
+- **`rewind show <capture>`** — one capture's manifest; `-v` adds mode/owner/hash
+  prefix/mtime. Per-entry note word (unreadable > symlink target > envelope).
+- **`rewind diff <a> [<b>]`** — capture-vs-capture, or capture-vs-**live** when
+  `<b>` omitted. Identity is the content hash, never mtime/mode/owner (byte-equal
+  + new mtime = unchanged); two unreadable files = `changed` (honest, not a false
+  "unchanged"). Exit 1 on any difference, 0 when clean (policy in `main.rs` only).
+- **Capture-vs-live re-walks the set** (read-only `scan::live_scan`, no store
+  write) so a NEW/DELETED file under a captured recursive dir counts as drift —
+  the honest cron "did anything change?" answer (user's chosen semantics).
+- **Diff footer is zero-suppressed** (`1 changed · 1 added · 1 unchanged`;
+  clean → `no differences`) — user's chosen style. JSON always carries all four.
+- **Timeline** gained a `latest` marker column on the newest row (JSON unchanged).
+
+Key refactor: `scan::entry_for` now takes `Option<&Store>` — `Some` persists the
+blob (capture), `None` hashes in memory via the existing `hash::hex_of` (diff);
+both produce identical entries (hash + sniffed envelope parity, tested).
+
+New module `diff.rs` (Change/ChangeKind/Diff, kind-aware classifier). No new
+deps; `error.rs`/`model.rs`/`store.rs`/`Cargo.toml` unchanged. Gate green:
+fmt --check, clippy -D warnings (default AND --all-features), 95 rewind unit
+tests + full workspace all pass. E2E smoke-tested the binary (show/-v, diff
+capture/clean/vs-live, JSON, exit 0/1/3, latest marker). Planned via a
+multi-angle design workflow + adversarial critique before coding.
+
+---
+
 ## New tool: Rewind — suite history + safe rollback (crates/rewind), Phase 1
 
 2026-06-19. Designed and started Rewind, the suite's TIME AXIS / black-box
