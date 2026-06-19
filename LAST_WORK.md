@@ -1,5 +1,60 @@
 # Last Work
 
+## New tool: Tripwire — file-integrity baseline + drift diff (crates/tripwire)
+
+2026-06-18. Designed and implemented Tripwire, the suite's filesystem-surface
+lens (the on-disk counterpart to portman's network lens). Read-only: records a
+baseline (SHA-256 content hash + metadata — kind/mode/uid/gid/size/mtime) of a
+watched set of files/dirs, then diffs the live filesystem against it, reporting
+added / removed / modified (content, mode, owner, size, type, readability).
+Built to portman's exact house style — thin `main`, library does the work,
+renderers derive from the model, `Style` resolver, JSON envelope shape
+(`schema_version`+`source_tool`), exit codes 0 clean / 1 drift / 3 can't-run.
+
+Design first: wrote TRIPWIRE_DESIGN.md (mirrors PULSE_DESIGN.md), Tom approved
+4 forks — ship a built-in default watch set (~14 system files + dotfiles),
+baseline records state only (no config writing), keep the cron-quiet `verify`
+subcommand, line-based `watch.conf` (no TOML dep).
+
+Commands: `tripwire` (view), `watch` (resolved set + source), `baseline`,
+`diff` (exit 1 on drift), `verify` (diff but silent on clean). Watch-set
+precedence: `--path` flags > `--config`/default watch.conf > built-in set;
+source is always recorded. Per-path opts: recursive, follow_symlinks (default
+OFF — symlinks recorded as symlinks, not followed), content (hash on/off),
+exclude globs.
+
+Lean like the rest: deps are clap + serde + serde_json only (dev: tempfile).
+SHA-256 is HAND-ROLLED (hash.rs, streamed in 64KiB chunks, validated against
+FIPS 180-4 known-answer vectors incl. the million-'a' case); the recursive
+directory walk is hand-rolled too (walk.rs, iterative + depth guard, prunes
+excludes, honors symlink policy) — no sha2/walkdir/notify/network/async.
+
+Graceful degradation throughout: an unreadable file (e.g. /etc/shadow as
+non-root) is recorded as metadata with `unreadable:true` and no hash, never an
+error; mtime is NEVER part of identity or the change decision (touched-but-
+identical ≠ drift); readable↔unreadable flip is its own change; type change
+short-circuits; mode/owner changes get a `[PERM]`/`[OWNER]` security tag (the
+analogue of portman's `[PUBLIC]`). Versioned baseline rejects a newer schema
+loudly; NoBaseline vs BadBaseline split like portman.
+
+Caught + fixed a real footgun in manual e2e testing: a baseline file living
+INSIDE a watched dir would self-report as drift. Fixed by threading an `ignore`
+path (the resolved baseline file, canonicalized) through scan() — verified the
+baseline-inside-dir case now diffs clean and a real tamper still trips exit 1.
+
+Gate GREEN: cargo fmt --check, clippy --all-targets -D warnings (default AND
+--all-features), 57 tripwire tests + full workspace test (all crates, 0
+failures), workspace build all clean. Registered crates/tripwire in the
+workspace Cargo.toml and added it to the suite README tool table + a crate
+README in portman's shape.
+
+NOT done (left for Tom's call): not committed/pushed — awaiting approval per the
+hard rule. No GitHub Release/installer entry yet (tripwire is an in-repo crate
+like rex-doctor/portman/pulse, not a sibling-repo release asset). No JSON schema
+under contracts/ + examples/ yet (portman/pulse also ship without one; can add a
+tripwire.scan/diff schema pair if wanted). Work is on worktree branch
+`worktree-tripwire`.
+
 ## Deep umbrella review → fix all HIGH/CRITICAL items (3 PRs MERGED)
 
 2026-06-18. Ran a deep code review of the whole umbrella (5 crates + the

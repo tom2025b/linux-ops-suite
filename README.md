@@ -18,6 +18,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[rex-doctor](crates/rex-doctor)** | Suite diagnostics — checks env/PATH, binaries & versions | Active |
 | **[portman](crates/portman)** | Lists listening sockets + ownership chain, with baseline diff | Active |
 | **[pulse](crates/pulse)** | Calm read-only TUI showing one suite-health verdict | Active |
+| **[tripwire](crates/tripwire)** | File-integrity baseline + drift diff (SHA-256 + metadata) | Active |
 
 ## Installation
 
