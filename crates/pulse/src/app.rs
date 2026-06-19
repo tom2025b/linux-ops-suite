@@ -40,6 +40,13 @@ pub struct App {
     query: String,
     /// Set true once the user asks to quit; ends the loop.
     quit: bool,
+    /// Set true by `r`; the event loop sees it, foreground-launches the RexOps
+    /// cockpit, and clears it. A request flag (not the launch itself) keeps
+    /// `handle` pure and unit-testable — the loop owns the I/O.
+    launch_cockpit: bool,
+    /// A transient one-line status shown on the next repaint (e.g. "rexops not
+    /// found"). Cleared by the next keypress so it never lingers.
+    status: Option<String>,
 }
 
 impl App {
@@ -51,6 +58,8 @@ impl App {
             view: View::Default,
             query: String::new(),
             quit: false,
+            launch_cockpit: false,
+            status: None,
         }
     }
 
@@ -60,7 +69,7 @@ impl App {
     /// a byte cursor via [`App::handle`] instead of calling `run`.
     pub fn run(mut self, style: &Style) -> io::Result<()> {
         tui::install_panic_guard();
-        let _raw = RawMode::enter()?;
+        let mut raw = RawMode::enter()?;
         let mut stdin = io::stdin();
         loop {
             let size = TermSize::resolve();
@@ -73,6 +82,14 @@ impl App {
             if self.quit {
                 // Repaint nothing more; just restore and leave.
                 break;
+            }
+            // `r` requested the cockpit: hand the terminal to `rexops tui` and
+            // come back. The launch is here (not in `handle`) so `handle` stays
+            // pure; `RawMode::suspend` guarantees Pulse's terminal is restored
+            // afterwards. A missing/failed rexops becomes a transient status
+            // line, never an error that ends the session.
+            if std::mem::take(&mut self.launch_cockpit) {
+                self.status = crate::cockpit::open(&mut raw).status_line();
             }
         }
         Ok(())
@@ -104,7 +121,8 @@ impl App {
     /// Apply one key to the state. Pure (no I/O), so the whole navigation model
     /// is unit-testable by feeding keys and asserting on `view`/`query`/`quit`.
     pub fn handle(&mut self, key: Key) {
-        // The search box captures most keys while it's open.
+        // The search box captures most keys while it's open (letters, incl. `r`,
+        // are literal text there — the cockpit shortcut yields to typing).
         if self.view == View::Search {
             match key {
                 Key::Enter | Key::Esc => self.view = View::Default,
@@ -118,8 +136,16 @@ impl App {
             return;
         }
 
+        // Any acted-on key clears a lingering status line (e.g. the "rexops not
+        // found" note) so it shows for exactly one interaction.
+        self.status = None;
+
         match key {
             Key::Char('q') | Key::Eof => self.quit = true,
+            // `r` opens the full RexOps cockpit. We only *request* it here (pure);
+            // the event loop performs the foreground launch. Works from every
+            // view except the search box (handled above).
+            Key::Char('r') => self.launch_cockpit = true,
             // Esc and Enter-from-a-view return to the default screen; from the
             // default screen Enter opens Details.
             Key::Esc => self.view = View::Default,
@@ -152,16 +178,42 @@ impl App {
         }
     }
 
-    /// Render the current view to a full frame for `size`.
+    /// Render the current view to a full frame for `size`, with any transient
+    /// status line overlaid on the bottom row.
     fn frame(&self, style: &Style, size: TermSize) -> String {
-        match self.view {
+        let base = match self.view {
             View::Default => render(&self.verdict, style, size),
             View::Attention => self.view_attention(style, size),
             View::Feeds => self.view_feeds(style, size),
             View::Details => self.view_details(style, size),
             View::Help => self.view_help(style, size),
             View::Search => self.view_search(style, size),
+        };
+        self.overlay_status(base, style, size)
+    }
+
+    /// Replace the bottom row of `frame` with the transient status line when one
+    /// is set (e.g. "rexops not found"). Kept dim and on the last row so it reads
+    /// as an aside, never disturbing the verdict's position above it. No-op when
+    /// there's no status.
+    fn overlay_status(&self, frame: String, style: &Style, size: TermSize) -> String {
+        let Some(msg) = &self.status else {
+            return frame;
+        };
+        let h = size.height.max(1) as usize;
+        let mut lines: Vec<String> = frame.split('\n').map(str::to_string).collect();
+        // Ensure the frame is tall enough to address the last row.
+        if lines.len() < h {
+            lines.resize(h, String::new());
         }
+        let last = lines.len().saturating_sub(1);
+        lines[last] = format!(
+            " {dim}{msg}{rst}",
+            dim = style.dim,
+            msg = msg,
+            rst = style.rst
+        );
+        lines.join("\n")
     }
 
     // ── Views ────────────────────────────────────────────────────────────────
@@ -262,6 +314,7 @@ impl App {
             "  a       attention — everything that needs action".to_string(),
             "  f       feeds — source freshness & confidence".to_string(),
             "  /       search across visible status".to_string(),
+            "  r       open the full RexOps cockpit".to_string(),
             "  ?       this help".to_string(),
             "  q       quit".to_string(),
             String::new(),
@@ -467,6 +520,46 @@ mod tests {
         a.handle(Key::Char('f'));
         a.handle(Key::Char('q'));
         assert!(a.quit);
+    }
+
+    #[test]
+    fn r_requests_the_cockpit_from_any_view() {
+        // From the default screen and from an open view, `r` sets the launch
+        // request (the loop performs the actual foreground launch).
+        let mut a = app();
+        a.handle(Key::Char('r'));
+        assert!(a.launch_cockpit, "r requests the cockpit from default");
+
+        let mut b = app();
+        b.handle(Key::Char('a')); // open a view first
+        b.handle(Key::Char('r'));
+        assert!(b.launch_cockpit, "r requests the cockpit from a view too");
+    }
+
+    #[test]
+    fn r_is_literal_text_in_the_search_box() {
+        // In search, `r` must type into the query, NOT launch the cockpit.
+        let mut a = app();
+        a.handle(Key::Char('/'));
+        a.handle(Key::Char('r'));
+        assert_eq!(a.query, "r");
+        assert!(!a.launch_cockpit, "r in search must not request a launch");
+    }
+
+    #[test]
+    fn a_status_line_overlays_the_bottom_row_then_clears_on_next_key() {
+        let style = Style::plain_for_test();
+        let mut a = app();
+        a.status = Some("rexops not found".to_string());
+        let frame = a.frame(&style, TermSize::for_test(80, 24));
+        let last = frame.split('\n').next_back().unwrap_or("");
+        assert!(
+            last.contains("rexops not found"),
+            "status must overlay the last row:\n{frame}"
+        );
+        // Any acted-on key clears it.
+        a.handle(Key::Char('a'));
+        assert!(a.status.is_none(), "status clears on the next key");
     }
 
     #[test]
