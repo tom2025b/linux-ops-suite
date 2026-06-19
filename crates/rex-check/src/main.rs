@@ -3,7 +3,12 @@
 //! For each suite repo it prints a one-line git status summary (branch,
 //! ahead/behind vs upstream, dirty/clean) and a source line count (via `tokei`
 //! if present, else a `git ls-files` tracked-file count fallback), then an
-//! aligned totals table and a one-line summary.
+//! aligned totals table and a one-line summary. The crates inside the umbrella
+//! (`linux-ops-suite/crates/*`) are auto-discovered at runtime (any subdir with
+//! a `Cargo.toml`) and itemized as indented sub-rows under the `linux-ops-suite`
+//! line, with the umbrella's own count shown net of them — so every crate
+//! (rewind, pulse, portman, …) is visible and the grand total never
+//! double-counts. Adding a crate to the workspace needs no edit here.
 //!
 //! Fast and offline by design: one `git` invocation per fact, never a network
 //! call (ahead/behind reads cached upstream tracking info), and `tokei` is run
@@ -137,7 +142,11 @@ fn main() -> ExitCode {
         print_repo_line(s, &style, &root);
     }
 
-    print_totals(&statuses, have_tokei, &style);
+    // Auto-discovered crates inside the umbrella, each as its own line item so
+    // the headline total visibly accounts for every crate (rewind, pulse, …).
+    let crates = discover_crates(&root, have_tokei);
+
+    print_totals(&statuses, &crates, have_tokei, &style);
 
     // Pass 1: audit + (after an explicit y/N) clean any `.claude/` folders.
     audit_and_clean_claude(&statuses, &style);
@@ -303,8 +312,12 @@ fn print_repo_line(s: &RepoStatus, style: &Style, root: &Path) {
     );
 }
 
-/// Print the aligned totals table and the summary footer.
-fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
+/// Print the aligned totals table and the summary footer. Crates discovered
+/// inside the umbrella (`linux-ops-suite/crates/*`) are itemized as indented
+/// sub-rows beneath the `linux-ops-suite` row, and the umbrella's own count is
+/// shown net of them, so each crate is visible AND the grand total never
+/// double-counts.
+fn print_totals(statuses: &[RepoStatus], crates: &[CrateStat], have_tokei: bool, style: &Style) {
     println!();
 
     // Metric label + per-repo count selector. With tokei we show code lines and
@@ -327,9 +340,14 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
         }
     };
 
-    let rule: String = "─".repeat(52);
+    // Sum of all itemized crate counts — subtracted from the umbrella row so it
+    // shows only the non-crate (root/bin/install) lines, keeping the grand
+    // total identical to a plain whole-repo count.
+    let crates_total: usize = crates.iter().map(|c| c.count).sum();
+
+    let rule: String = "─".repeat(58);
     println!(
-        "{}{:<16}  {:<20}  {:>12}{}",
+        "{}{:<24}  {:<18}  {:>12}{}",
         style.bold, "REPO", "BRANCH", metric, style.rst
     );
     println!("{}{}{}", style.dim, rule, style.rst);
@@ -339,10 +357,18 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
     let mut missing = 0usize;
     let mut dirty_names: Vec<&str> = Vec::new();
     for s in statuses {
+        // The umbrella repo: show its count net of the itemized crates, then
+        // print each crate as an indented sub-row that also feeds the total.
+        let is_umbrella = s.name == "linux-ops-suite";
         let count_disp = match count_of(s) {
             Some(n) => {
-                total += n;
-                n.to_string()
+                let shown = if is_umbrella {
+                    n.saturating_sub(crates_total)
+                } else {
+                    n
+                };
+                total += shown;
+                shown.to_string()
             }
             None => "—".to_owned(),
         };
@@ -354,14 +380,33 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
         } else {
             missing += 1;
         }
-        println!("{:<16}  {:<20}  {:>12}", s.name, s.branch, count_disp);
+        let label = if is_umbrella && !crates.is_empty() {
+            format!("{} (root)", s.name)
+        } else {
+            s.name.clone()
+        };
+        println!("{:<24}  {:<18}  {:>12}", label, s.branch, count_disp);
+
+        if is_umbrella && s.present {
+            for c in crates {
+                total += c.count;
+                // Pad the visible "· name" to the column width BEFORE wrapping
+                // it in style codes, so the dim span doesn't break alignment.
+                let cell = format!("· {}", c.name);
+                println!(
+                    "{}{:<24}{}  {:<18}  {:>12}",
+                    style.dim, cell, style.rst, "crates/", c.count
+                );
+            }
+        }
     }
 
+    let crate_n = crates.len();
     println!("{}{}{}", style.dim, rule, style.rst);
     println!(
-        "{}{:<16}  {:<20}  {:>12}{}",
+        "{}{:<24}  {:<18}  {:>12}{}",
         style.bold,
-        format!("TOTAL ({found} repos)"),
+        format!("TOTAL ({found} repos + {crate_n} crates)"),
         "",
         total,
         style.rst
@@ -389,6 +434,67 @@ fn print_totals(statuses: &[RepoStatus], have_tokei: bool, style: &Style) {
         style.rst,
         metric
     );
+}
+
+/// One auto-discovered crate's name and its line/file count.
+struct CrateStat {
+    name: String,
+    count: usize,
+}
+
+/// Discover every crate under `linux-ops-suite/crates/` at runtime (any subdir
+/// with a `Cargo.toml`) and measure each, sorted by name. No hardcoded list —
+/// a new crate (rewind, …) shows up automatically on the next run. Returns an
+/// empty vec when the umbrella or its crates dir isn't present.
+fn discover_crates(root: &Path, have_tokei: bool) -> Vec<CrateStat> {
+    let crates_dir = root.join("linux-ops-suite").join("crates");
+    let Ok(rd) = std::fs::read_dir(&crates_dir) else {
+        return Vec::new();
+    };
+
+    let mut crates: Vec<CrateStat> = rd
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let path = e.path();
+            if path.is_dir() && path.join("Cargo.toml").is_file() {
+                let name = path.file_name()?.to_string_lossy().into_owned();
+                let count = if have_tokei {
+                    tokei_loc(&path).unwrap_or(0)
+                } else {
+                    count_rs_files(&path)
+                };
+                Some(CrateStat { name, count })
+            } else {
+                None
+            }
+        })
+        .collect();
+    crates.sort_by(|a, b| a.name.cmp(&b.name));
+    crates
+}
+
+/// Count `.rs` files under `dir` recursively — used as the no-tokei fallback
+/// for the crates table (analogous to the `git ls-files` count for repos).
+fn count_rs_files(dir: &Path) -> usize {
+    let mut count = 0usize;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in rd.filter_map(|e| e.ok()) {
+            let p = entry.path();
+            if p.is_dir() {
+                // skip target/ to avoid counting build artefacts
+                if p.file_name().is_some_and(|n| n != "target") {
+                    stack.push(p);
+                }
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                count += 1;
+            }
+        }
+    }
+    count
 }
 
 /// Pass 2 — audit every repo for a `.claude/` folder. If any exist, print a
@@ -972,6 +1078,58 @@ mod tests {
                 "{expected} must be in the roster"
             );
         }
+    }
+
+    #[test]
+    fn discover_crates_finds_cargo_dirs_sorted_and_ignores_non_crates() {
+        // Lay out a fake `<root>/linux-ops-suite/crates/` with three crate dirs
+        // (each with a Cargo.toml) plus noise that must be skipped.
+        let root = unique_tmp_dir("disc-crates");
+        let crates = root.join("linux-ops-suite").join("crates");
+        for name in ["pulse", "rewind", "portman"] {
+            let c = crates.join(name);
+            std::fs::create_dir_all(c.join("src")).unwrap();
+            std::fs::write(c.join("Cargo.toml"), b"[package]\n").unwrap();
+            // one .rs file each so the no-tokei fallback yields a count.
+            std::fs::write(c.join("src").join("main.rs"), b"fn main() {}\n").unwrap();
+        }
+        // Noise: a plain dir without Cargo.toml, and a loose file.
+        std::fs::create_dir_all(crates.join("not-a-crate")).unwrap();
+        std::fs::write(crates.join("README.md"), b"x").unwrap();
+
+        let found = discover_crates(&root, false); // no tokei → file-count fallback
+        let names: Vec<&str> = found.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["portman", "pulse", "rewind"],
+            "only Cargo.toml dirs, sorted by name"
+        );
+        for c in &found {
+            assert_eq!(c.count, 1, "one .rs file counted per crate (no-tokei path)");
+        }
+    }
+
+    #[test]
+    fn discover_crates_empty_when_no_umbrella() {
+        let root = unique_tmp_dir("disc-none");
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(discover_crates(&root, false).is_empty());
+    }
+
+    #[test]
+    fn count_rs_files_recurses_and_skips_target() {
+        let dir = unique_tmp_dir("count-rs");
+        std::fs::create_dir_all(dir.join("src").join("scan")).unwrap();
+        std::fs::create_dir_all(dir.join("target").join("debug")).unwrap();
+        std::fs::write(dir.join("src").join("lib.rs"), b"").unwrap();
+        std::fs::write(dir.join("src").join("scan").join("mod.rs"), b"").unwrap();
+        std::fs::write(dir.join("Cargo.toml"), b"").unwrap(); // not .rs
+        std::fs::write(dir.join("target").join("debug").join("build.rs"), b"").unwrap(); // skipped
+        assert_eq!(
+            count_rs_files(&dir),
+            2,
+            "two .rs under src/, target/ ignored"
+        );
     }
 
     #[test]
