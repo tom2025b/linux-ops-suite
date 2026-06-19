@@ -58,6 +58,7 @@ RUST_TOOLS=(
 WORKSPACE_TOOLS=(
   "toolbox-bridge:toolbox-bridge"
   "rex-check:rex-check"
+  "conductor:conductor"
 )
 
 # --- flags -------------------------------------------------------------------

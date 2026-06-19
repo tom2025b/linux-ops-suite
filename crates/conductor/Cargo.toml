@@ -1,0 +1,30 @@
+[package]
+name = "conductor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The Linux Ops Suite's guided operator: reads the suite's own state, derives a short ordered runbook (do these things, in this order), and walks the operator through it — delegating every step to the tool that owns it. Read-only by default; it never writes a live file itself."
+
+[[bin]]
+name = "conductor"
+path = "src/main.rs"
+
+[lib]
+name = "conductor"
+path = "src/lib.rs"
+
+# Lean on purpose, same philosophy as rewind/tripwire/pulse: Conductor reads the
+# suite's contract files (serde_json), probes $PATH, and renders. It hand-rolls
+# its isatty/XDG helpers via tiny extern "C" calls (no libc dep) and uses chrono
+# only for the "checked Nm ago" stamp. No network, no async, no new 3rd-party dep.
+[dependencies]
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
