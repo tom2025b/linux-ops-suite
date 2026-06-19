@@ -6,6 +6,7 @@
 //! prints. See `CONDUCTOR_DESIGN.md` at the repo root.
 
 pub mod error;
+pub mod plan;
 pub mod sources;
 pub mod state;
 pub mod util;
@@ -33,7 +34,7 @@ pub fn load_state(dir: &sources::DataDir) -> SuiteState {
 mod tests {
     use super::*;
     use std::io::Write;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn temp_root(tag: &str) -> PathBuf {
         let mut dir = std::env::temp_dir();
@@ -45,7 +46,7 @@ mod tests {
         dir
     }
 
-    fn write(root: &PathBuf, rel: &str, body: &str) {
+    fn write(root: &Path, rel: &str, body: &str) {
         let p = root.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::File::create(p).unwrap().write_all(body.as_bytes()).unwrap();
