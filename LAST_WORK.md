@@ -36,6 +36,22 @@ multi-angle design workflow + adversarial critique before coding.
 
 ---
 
+## rex-check: itemize umbrella crates into the totals table (incl. rewind)
+
+2026-06-19. `crates/rex-check/src/main.rs`. The crates inside the umbrella
+(`linux-ops-suite/crates/*`) are auto-discovered at runtime (`discover_crates`,
+any subdir with a `Cargo.toml`, sorted) and itemized as indented `·` sub-rows
+under the `linux-ops-suite` row in the SINGLE totals table. The umbrella's own
+row is shown net of the crates (`linux-ops-suite (root)`), so the grand TOTAL is
+identical to a plain whole-repo tokei (no double-count) but every crate —
+rewind, pulse, portman, tripwire, … — is now a visible line item. Footer total
+reads `TOTAL (7 repos + N crates)`. `count_rs_files()` is the no-tokei fallback.
+No hardcoded crate list; new crates appear automatically. Widened the name
+column to 24 for alignment. 12 tests pass (added discover_crates ×2 +
+count_rs_files), clippy clean, fmt applied.
+
+---
+
 ## New tool: Rewind — suite history + safe rollback (crates/rewind), Phase 1
 
 2026-06-19. Designed and started Rewind, the suite's TIME AXIS / black-box
