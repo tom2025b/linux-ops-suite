@@ -6,6 +6,7 @@
 //! prints. See `CONDUCTOR_DESIGN.md` at the repo root.
 
 pub mod error;
+pub mod sources;
 pub mod state;
 pub mod util;
 
