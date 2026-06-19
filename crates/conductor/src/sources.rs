@@ -426,12 +426,15 @@ mod tests {
 
     #[test]
     fn binary_probe_covers_the_suite_and_detects_a_real_binary() {
+        // Reads $PATH, so it shares the global PATH lock with the tests that
+        // mutate it (in `run` and `tui`) to avoid a parallel-test race.
+        let _guard = crate::ENV_TEST_LOCK.lock().unwrap();
         let checks = read_binaries();
         assert_eq!(checks.len(), SUITE_BINARIES.len());
         // `sh` is on every PATH — sanity-check the probe itself without depending
         // on suite tools being installed.
-        assert!(which("sh"));
-        assert!(!which("definitely-not-a-real-binary-xyzzy"));
+        assert!(is_on_path("sh"));
+        assert!(!is_on_path("definitely-not-a-real-binary-xyzzy"));
     }
 
     #[test]

@@ -15,6 +15,16 @@ pub mod tui;
 pub mod util;
 
 pub use error::ConductorError;
+
+/// A process-wide lock shared by every test that mutates or reads process
+/// environment variables (`$PATH`, `$HOME`, `$XDG_DATA_HOME`, …). The
+/// environment is global mutable state and cargo runs tests in parallel within a
+/// binary, so tests in different modules (`sources`, `run`, `tui`, `util`) that
+/// touch it would otherwise race — one narrowing `$PATH` or clearing
+/// `$XDG_DATA_HOME` while another reads it. Each such test holds this lock for
+/// its critical section (set → assert → restore).
+#[cfg(test)]
+pub(crate) static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 use state::SuiteState;
 
 /// Assemble the normalized suite state by running every fault-tolerant reader.
