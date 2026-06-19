@@ -19,6 +19,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[portman](crates/portman)** | Lists listening sockets + ownership chain, with baseline diff | Active |
 | **[pulse](crates/pulse)** | Calm read-only TUI showing one suite-health verdict | Active |
 | **[tripwire](crates/tripwire)** | File-integrity baseline + drift diff (SHA-256 + metadata) | Active |
+| **[rewind](crates/rewind)** | Suite history + safe rollback — content-addressed captures of suite state, with guarded restore | Active |
 
 ## Installation
 

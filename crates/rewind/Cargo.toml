@@ -1,0 +1,30 @@
+[package]
+name = "rewind"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "History, snapshot, and safe-rollback tool for the Linux Ops Suite: records the suite's own state files into a content-addressed store, lists/diffs the timeline, and restores under a hard safety gate. Read-only by default; restore is dry-run-by-default and only touches Rewind's own captures."
+
+[[bin]]
+name = "rewind"
+path = "src/main.rs"
+
+[lib]
+name = "rewind"
+path = "src/lib.rs"
+
+# Lean on purpose, same philosophy as tripwire/portman: rewind walks the
+# filesystem and stats via libc directly (no walkdir) and hashes with a
+# hand-rolled SHA-256 (no sha2/ring), storing blobs content-addressed (no git).
+# chrono (already a workspace dep) supplies the capture timestamp. No network,
+# no async, no compression.
+[dependencies]
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
