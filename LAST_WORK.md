@@ -1,5 +1,66 @@
 # Last Work
 
+## New tool: Conductor — suite guided operator (crates/conductor), Phase 1
+
+2026-06-19. Designed and built Phase 1 of Conductor, the suite's GUIDED
+OPERATOR / "brain": it reads the suite's own state and turns it into a short,
+deterministic ORDERED RUNBOOK ("do these things, in this order"), delegating
+every action to the tool that owns it. It fills the gap between Pulse (the calm
+read-only *verdict*) and RexOps (the free *launcher*): Conductor is the
+opinionated *sequence* — what to do, in what order — and is the one tool that
+correlates ACROSS tools (signature move: a tripwire drift on the same file as a
+bulwark finding gets lifted to the top, annotated "start here").
+
+Design-first (Tom's process): wrote `CONDUCTOR_DESIGN.md` at the repo root
+(mirrors PULSE/REWIND/TRIPWIRE_DESIGN.md), got sign-off, then a 10-task TDD plan
+at `docs/superpowers/plans/2026-06-19-conductor-phase-1.md`. Tom locked the two
+forks: built-in rules from state (no config language in v1) and "spawn, never
+write itself".
+
+Safety model — THREE RINGS, the heart of the tool: Ring 0 = Conductor's own code,
+always read-only (reads contracts, probes $PATH, builds + renders the plan); Ring
+1 = spawn a read-only sibling; Ring 2 = spawn a state-changing sibling ONLY after
+a deliberate confirm. The rule: **Conductor never mutates state with its own
+code** — the most it ever does is type a command a human could have. No shell
+(direct argv), no --yes-to-all, no unattended runs.
+
+Phase 1 shipped (this branch, 8 commits): the entire READ-ONLY foundation, 100%
+Ring 0 — `conductor status` (situation + ordered plan), `conductor health`
+(per-feed/per-tool readiness), `conductor plan` (steps only), all with `--json`,
+`--no-color`, `--data-dir`, `-v`. NO subprocess, NO TUI, NO writes (those are
+Phases 2–3). Bare `conductor` prints status (scriptable + RexOps-launchable).
+Exit 0 ok / 3 can't-run; 1/2 reserved for the Phase 3 `orchestrate` driver.
+
+Built to the suite house style: thin `main` (clap, rewind's shape) → library
+does the work → renderers derive from the model. Modules each have ONE job:
+`sources.rs` reads contracts fault-tolerantly (lifts pulse's discipline:
+missing/malformed ⇒ "unavailable", never panics), `state.rs` holds normalized
+facts (no I/O), `plan/rules.rs` is the pure `&SuiteState -> Plan` rule engine
+(the brain, densest tests), `report.rs` renders human + the suite JSON envelope.
+The 7 v1 rules in priority order: refresh stale feeds → wiring-gap fix commands →
+safety-capture (only when real work follows) → investigate findings (worst-first,
+drift-correlated lifted + annotated) → review failed jobs → else "nothing to
+conduct". Tom's upgrade: stable kebab `step.id` + deterministic `plan_id`
+(FNV-1a) in the JSON envelope, for the future Phase 3 driver.
+
+Tests (44 unit + 7 integration, all green; clippy + fmt clean; full workspace
+builds): the rule engine's full synthetic matrix passes incl the signature
+drift×finding correlation; readers covered by temp-dir failure-mode tests; the
+CLI covered end-to-end. ONE debugging catch worth noting: the integration tests'
+"empty suite ⇒ nothing to conduct" cases failed on this dev box because 5 of the
+8 suite binaries are actually installed (so the wiring-gap rule fired) — fixed
+honestly by stubbing ALL 8 suite binaries in the test sandbox and pointing PATH
+there, so the probe is deterministic across machines (not by special-casing).
+
+Registered as a workspace member (`crates/conductor` in root Cargo.toml) and in
+the installer (`conductor:conductor` in WORKSPACE_TOOLS — one line; the
+build/verify/uninstall loops already iterate it). Bare binary on PATH, NO
+r-conductor wrapper, NO alias (per Tom's standing rule).
+
+Phase 2 (the TUI + Ring 1 read-only spawns) and Phase 3 (the `orchestrate`
+driver + Ring 2 confirm — the only writing path, heaviest gate) are separate
+plans, not started.
+
 ## Rewind Phase 2 — `show`, `diff`, capture selectors + timeline marker
 
 2026-06-19. `crates/rewind/`. Added the read/compare half of Rewind on top of
