@@ -79,9 +79,7 @@ impl SuiteState {
 
     /// True if any feed is stale or unavailable (rule 1's precondition).
     pub fn has_stale_or_unavailable_feed(&self) -> bool {
-        self.feeds
-            .iter()
-            .any(|f| f.freshness != Freshness::Current)
+        self.feeds.iter().any(|f| f.freshness != Freshness::Current)
     }
 
     /// The suite binaries missing from `$PATH` (rule 2's precondition).
@@ -105,9 +103,15 @@ mod tests {
     #[test]
     fn stale_or_unavailable_feed_is_detected() {
         let mut s = SuiteState::empty();
-        s.feeds.push(FeedStatus { name: "scripts", freshness: Freshness::Current });
+        s.feeds.push(FeedStatus {
+            name: "scripts",
+            freshness: Freshness::Current,
+        });
         assert!(!s.has_stale_or_unavailable_feed());
-        s.feeds.push(FeedStatus { name: "tools", freshness: Freshness::Stale });
+        s.feeds.push(FeedStatus {
+            name: "tools",
+            freshness: Freshness::Stale,
+        });
         assert!(s.has_stale_or_unavailable_feed());
     }
 
@@ -123,8 +127,14 @@ mod tests {
     #[test]
     fn missing_binaries_lists_only_absent_ones() {
         let mut s = SuiteState::empty();
-        s.binaries.push(BinaryStatus { name: "pulse", present: true });
-        s.binaries.push(BinaryStatus { name: "rewind", present: false });
+        s.binaries.push(BinaryStatus {
+            name: "pulse",
+            present: true,
+        });
+        s.binaries.push(BinaryStatus {
+            name: "rewind",
+            present: false,
+        });
         let missing = s.missing_binaries();
         assert_eq!(missing.len(), 1);
         assert_eq!(missing[0].name, "rewind");

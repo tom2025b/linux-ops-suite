@@ -112,13 +112,22 @@ pub fn read_feeds(dir: &DataDir) -> (Option<String>, Vec<FeedStatus>) {
     };
     let mut feeds = Vec::new();
     if let Some(s) = &snap.scripts {
-        feeds.push(FeedStatus { name: "scripts", freshness: s.freshness() });
+        feeds.push(FeedStatus {
+            name: "scripts",
+            freshness: s.freshness(),
+        });
     }
     if let Some(s) = &snap.tools {
-        feeds.push(FeedStatus { name: "tools", freshness: s.freshness() });
+        feeds.push(FeedStatus {
+            name: "tools",
+            freshness: s.freshness(),
+        });
     }
     if let Some(s) = &snap.findings {
-        feeds.push(FeedStatus { name: "findings", freshness: s.freshness() });
+        feeds.push(FeedStatus {
+            name: "findings",
+            freshness: s.freshness(),
+        });
     }
     (snap.built_at, feeds)
 }
@@ -126,15 +135,26 @@ pub fn read_feeds(dir: &DataDir) -> (Option<String>, Vec<FeedStatus>) {
 // ── Binary presence on $PATH ─────────────────────────────────────────────────
 
 /// The suite binaries conductor expects, and may need to spawn in later phases.
-pub const SUITE_BINARIES: &[&str] =
-    &["pulse", "rewind", "tripwire", "portman", "bulwark", "workstate", "proto", "rexops"];
+pub const SUITE_BINARIES: &[&str] = &[
+    "pulse",
+    "rewind",
+    "tripwire",
+    "portman",
+    "bulwark",
+    "workstate",
+    "proto",
+    "rexops",
+];
 
 /// Probe each suite binary on `$PATH`. Pure filesystem lookups, no subprocess —
 /// conductor stays read-only and can't hang on a slow child.
 pub fn read_binaries() -> Vec<BinaryStatus> {
     SUITE_BINARIES
         .iter()
-        .map(|&name| BinaryStatus { name, present: which(name) })
+        .map(|&name| BinaryStatus {
+            name,
+            present: which(name),
+        })
         .collect()
 }
 
@@ -215,41 +235,44 @@ struct BulwarkItem {
 /// high/critical items (low/medium inventory noise is left out of the plan).
 /// Always sorted highest-severity first.
 pub fn read_findings(dir: &DataDir) -> Vec<Finding> {
-    let mut findings: Vec<Finding> = if let Some(snap) =
-        read_json::<RexopsSnapshot>(&dir.rexops_snapshot())
-    {
-        snap.attention
-            .into_iter()
-            .map(|a| Finding {
-                what: if a.id.is_empty() { a.tool.clone() } else { a.id },
-                why: a.reason,
-                source: a.tool,
-                severity: parse_severity(&a.severity).unwrap_or(Severity::Low),
-            })
-            .collect()
-    } else if let Some(feed) = read_json::<BulwarkFeed>(&dir.bulwark_feed()) {
-        feed.items
-            .into_iter()
-            .filter_map(|it| {
-                let sev = parse_severity(&it.severity)?;
-                if sev < Severity::High {
-                    return None;
-                }
-                Some(Finding {
-                    what: if it.name.is_empty() { it.id } else { it.name },
-                    why: if it.description.is_empty() {
-                        "flagged by bulwark".to_string()
+    let mut findings: Vec<Finding> =
+        if let Some(snap) = read_json::<RexopsSnapshot>(&dir.rexops_snapshot()) {
+            snap.attention
+                .into_iter()
+                .map(|a| Finding {
+                    what: if a.id.is_empty() {
+                        a.tool.clone()
                     } else {
-                        it.description
+                        a.id
                     },
-                    source: "bulwark".to_string(),
-                    severity: sev,
+                    why: a.reason,
+                    source: a.tool,
+                    severity: parse_severity(&a.severity).unwrap_or(Severity::Low),
                 })
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+                .collect()
+        } else if let Some(feed) = read_json::<BulwarkFeed>(&dir.bulwark_feed()) {
+            feed.items
+                .into_iter()
+                .filter_map(|it| {
+                    let sev = parse_severity(&it.severity)?;
+                    if sev < Severity::High {
+                        return None;
+                    }
+                    Some(Finding {
+                        what: if it.name.is_empty() { it.id } else { it.name },
+                        why: if it.description.is_empty() {
+                            "flagged by bulwark".to_string()
+                        } else {
+                            it.description
+                        },
+                        source: "bulwark".to_string(),
+                        severity: sev,
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
     // Highest severity first; stable so equal severities keep producer order.
     findings.sort_by_key(|f| std::cmp::Reverse(f.severity));
     findings
@@ -288,7 +311,9 @@ pub fn read_failed_jobs(dir: &DataDir) -> Vec<FailedJob> {
         };
         if s.steps.iter().any(|st| st.status == "failed") {
             jobs.push(FailedJob {
-                title: s.protocol_title.unwrap_or_else(|| "protocol run".to_string()),
+                title: s
+                    .protocol_title
+                    .unwrap_or_else(|| "protocol run".to_string()),
             });
         }
     }
@@ -310,7 +335,11 @@ struct TripwireDrift {
 /// via `DataDir::tripwire_drift()`, like every other reader reads its own path.
 pub fn read_drift(dir: &DataDir) -> Vec<DriftedPath> {
     match read_json::<TripwireDrift>(&dir.tripwire_drift()) {
-        Some(d) => d.paths.into_iter().map(|p| DriftedPath { path: p }).collect(),
+        Some(d) => d
+            .paths
+            .into_iter()
+            .map(|p| DriftedPath { path: p })
+            .collect(),
         None => Vec::new(),
     }
 }
@@ -342,7 +371,10 @@ mod tests {
         fn write(&self, rel: &str, body: &str) {
             let p = self.dir.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            std::fs::File::create(p).unwrap().write_all(body.as_bytes()).unwrap();
+            std::fs::File::create(p)
+                .unwrap()
+                .write_all(body.as_bytes())
+                .unwrap();
         }
     }
 
@@ -408,10 +440,19 @@ mod tests {
             d.workstate_snapshot(),
             PathBuf::from("/data/rexops/feeds/workstate.snapshot.json")
         );
-        assert_eq!(d.rexops_snapshot(), PathBuf::from("/data/rexops/snapshot.json"));
-        assert_eq!(d.bulwark_feed(), PathBuf::from("/data/workstate/feeds/bulwark.json"));
+        assert_eq!(
+            d.rexops_snapshot(),
+            PathBuf::from("/data/rexops/snapshot.json")
+        );
+        assert_eq!(
+            d.bulwark_feed(),
+            PathBuf::from("/data/workstate/feeds/bulwark.json")
+        );
         assert_eq!(d.proto_sessions(), PathBuf::from("/data/proto/sessions"));
-        assert_eq!(d.tripwire_drift(), PathBuf::from("/data/tripwire/drift.json"));
+        assert_eq!(
+            d.tripwire_drift(),
+            PathBuf::from("/data/tripwire/drift.json")
+        );
     }
 
     #[test]
@@ -481,7 +522,10 @@ mod tests {
     fn drift_is_empty_when_absent_and_parsed_when_present() {
         let t = TempData::new("drift");
         assert!(read_drift(&t.data()).is_empty());
-        t.write("tripwire/drift.json", r#"{ "paths": ["deploy-prod.sh", "etc/hosts"] }"#);
+        t.write(
+            "tripwire/drift.json",
+            r#"{ "paths": ["deploy-prod.sh", "etc/hosts"] }"#,
+        );
         let d = read_drift(&t.data());
         assert_eq!(d.len(), 2);
         assert_eq!(d[0].path, "deploy-prod.sh");

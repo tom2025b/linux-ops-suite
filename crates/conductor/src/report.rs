@@ -40,7 +40,15 @@ impl Style {
                 rst: "\u{1b}[0m",
             }
         } else {
-            Style { bold: "", dim: "", red: "", grn: "", ylw: "", cyn: "", rst: "" }
+            Style {
+                bold: "",
+                dim: "",
+                red: "",
+                grn: "",
+                ylw: "",
+                cyn: "",
+                rst: "",
+            }
         }
     }
 
@@ -167,7 +175,10 @@ pub fn print_health(state: &SuiteState, style: &Style) -> String {
         } else {
             ("missing", style.dim)
         };
-        out.push_str(&format!("  {:<12} {}{}{}\n", b.name, color, mark, style.rst));
+        out.push_str(&format!(
+            "  {:<12} {}{}{}\n",
+            b.name, color, mark, style.rst
+        ));
     }
     out
 }
@@ -259,12 +270,18 @@ pub fn health_json(state: &SuiteState) -> String {
         feeds: state
             .feeds
             .iter()
-            .map(|f| FeedOut { name: f.name, freshness: freshness_word(f.freshness) })
+            .map(|f| FeedOut {
+                name: f.name,
+                freshness: freshness_word(f.freshness),
+            })
             .collect(),
         tools: state
             .binaries
             .iter()
-            .map(|b| BinaryOut { name: b.name, present: b.present })
+            .map(|b| BinaryOut {
+                name: b.name,
+                present: b.present,
+            })
             .collect(),
     };
     serde_json::to_string_pretty(&env).unwrap_or_else(|_| "{}".to_string())
@@ -278,7 +295,10 @@ mod tests {
 
     fn plan_with_findings() -> Plan {
         let mut s = SuiteState::empty();
-        s.feeds.push(FeedStatus { name: "tools", freshness: Freshness::Stale });
+        s.feeds.push(FeedStatus {
+            name: "tools",
+            freshness: Freshness::Stale,
+        });
         s.findings.push(Finding {
             what: "deploy-prod.sh".into(),
             why: "AWS key".into(),
@@ -298,8 +318,11 @@ mod tests {
 
     #[test]
     fn status_shows_situation_then_plan_with_commands_and_tags() {
-        let out =
-            print_status(&plan_with_findings(), Some("2026-06-14T12:00:00Z"), &Style::plain());
+        let out = print_status(
+            &plan_with_findings(),
+            Some("2026-06-14T12:00:00Z"),
+            &Style::plain(),
+        );
         assert!(out.contains("the situation"));
         assert!(out.contains("the plan"));
         assert!(out.contains("workstate snapshot")); // refresh command shown
@@ -318,9 +341,18 @@ mod tests {
     #[test]
     fn health_lists_feeds_and_tools() {
         let mut s = SuiteState::empty();
-        s.feeds.push(FeedStatus { name: "tools", freshness: Freshness::Stale });
-        s.binaries.push(BinaryStatus { name: "pulse", present: true });
-        s.binaries.push(BinaryStatus { name: "rewind", present: false });
+        s.feeds.push(FeedStatus {
+            name: "tools",
+            freshness: Freshness::Stale,
+        });
+        s.binaries.push(BinaryStatus {
+            name: "pulse",
+            present: true,
+        });
+        s.binaries.push(BinaryStatus {
+            name: "rewind",
+            present: false,
+        });
         let out = print_health(&s, &Style::plain());
         assert!(out.contains("tools"));
         assert!(out.contains("stale"));
@@ -362,8 +394,14 @@ mod tests {
     #[test]
     fn health_json_is_the_suite_envelope() {
         let mut s = SuiteState::empty();
-        s.feeds.push(FeedStatus { name: "tools", freshness: Freshness::Current });
-        s.binaries.push(BinaryStatus { name: "pulse", present: true });
+        s.feeds.push(FeedStatus {
+            name: "tools",
+            freshness: Freshness::Current,
+        });
+        s.binaries.push(BinaryStatus {
+            name: "pulse",
+            present: true,
+        });
         let json = health_json(&s);
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["schema_version"], 1);
@@ -375,6 +413,9 @@ mod tests {
     #[test]
     fn no_color_output_has_no_escape_codes() {
         let out = print_status(&plan_with_findings(), None, &Style::plain());
-        assert!(!out.contains('\u{1b}'), "plain style must emit no ANSI escapes");
+        assert!(
+            !out.contains('\u{1b}'),
+            "plain style must emit no ANSI escapes"
+        );
     }
 }

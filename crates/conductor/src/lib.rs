@@ -50,7 +50,10 @@ mod tests {
     fn write(root: &Path, rel: &str, body: &str) {
         let p = root.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::File::create(p).unwrap().write_all(body.as_bytes()).unwrap();
+        std::fs::File::create(p)
+            .unwrap()
+            .write_all(body.as_bytes())
+            .unwrap();
     }
 
     #[test]

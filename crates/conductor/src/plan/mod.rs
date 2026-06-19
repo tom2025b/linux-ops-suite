@@ -189,7 +189,12 @@ mod tests {
 
     #[test]
     fn new_step_defaults_to_pending_and_unannotated() {
-        let s = Step::new("do-thing", "do a thing", Some("pulse".to_string()), Ring::ReadOnly);
+        let s = Step::new(
+            "do-thing",
+            "do a thing",
+            Some("pulse".to_string()),
+            Ring::ReadOnly,
+        );
         assert_eq!(s.id, "do-thing");
         assert_eq!(s.status, StepStatus::Pending);
         assert!(s.annotation.is_none());

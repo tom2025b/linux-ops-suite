@@ -18,8 +18,16 @@ struct TempRoot {
 /// The suite binaries conductor probes for. Mirrors `sources::SUITE_BINARIES`;
 /// the tests stub all of them so the wiring-gap rule stays dormant and the
 /// probe's outcome doesn't depend on what the dev machine has installed.
-const SUITE_BINARIES: &[&str] =
-    &["pulse", "rewind", "tripwire", "portman", "bulwark", "workstate", "proto", "rexops"];
+const SUITE_BINARIES: &[&str] = &[
+    "pulse",
+    "rewind",
+    "tripwire",
+    "portman",
+    "bulwark",
+    "workstate",
+    "proto",
+    "rexops",
+];
 
 impl TempRoot {
     fn new(tag: &str) -> Self {
@@ -50,7 +58,10 @@ impl TempRoot {
         std::fs::create_dir_all(&bin).unwrap();
         for name in SUITE_BINARIES {
             let p = bin.join(name);
-            std::fs::File::create(&p).unwrap().write_all(b"#!/bin/sh\n").unwrap();
+            std::fs::File::create(&p)
+                .unwrap()
+                .write_all(b"#!/bin/sh\n")
+                .unwrap();
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;

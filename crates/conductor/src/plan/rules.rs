@@ -156,14 +156,23 @@ mod tests {
     #[test]
     fn stale_snapshot_only_emits_a_single_refresh_first() {
         let mut s = SuiteState::empty();
-        s.feeds.push(FeedStatus { name: "tools", freshness: Freshness::Stale });
-        s.feeds.push(FeedStatus { name: "scripts", freshness: Freshness::Unavailable });
+        s.feeds.push(FeedStatus {
+            name: "tools",
+            freshness: Freshness::Stale,
+        });
+        s.feeds.push(FeedStatus {
+            name: "scripts",
+            freshness: Freshness::Unavailable,
+        });
         let plan = super::super::build(&s);
         assert_eq!(plan.steps[0].id, "refresh-stale-data");
         assert_eq!(plan.steps[0].ring, Ring::ChangesState);
         assert_eq!(plan.steps[0].command.as_deref(), Some("workstate snapshot"));
         assert_eq!(
-            plan.steps.iter().filter(|s| s.id == "refresh-stale-data").count(),
+            plan.steps
+                .iter()
+                .filter(|s| s.id == "refresh-stale-data")
+                .count(),
             1,
             "one refresh, not one per stale feed"
         );
@@ -172,7 +181,10 @@ mod tests {
     #[test]
     fn refresh_only_plan_does_not_force_a_safety_capture() {
         let mut s = SuiteState::empty();
-        s.feeds.push(FeedStatus { name: "tools", freshness: Freshness::Stale });
+        s.feeds.push(FeedStatus {
+            name: "tools",
+            freshness: Freshness::Stale,
+        });
         let plan = super::super::build(&s);
         assert!(!plan.steps.iter().any(|s| s.id == "safety-capture"));
     }
@@ -180,25 +192,53 @@ mod tests {
     #[test]
     fn critical_finding_with_no_drift_investigates_read_only_after_capture() {
         let mut s = SuiteState::empty();
-        s.findings.push(finding("deploy-prod.sh", Severity::Critical));
+        s.findings
+            .push(finding("deploy-prod.sh", Severity::Critical));
         let plan = super::super::build(&s);
         // capture precedes investigation; investigation is read-only
-        let cap = plan.steps.iter().position(|s| s.id == "safety-capture").unwrap();
-        let inv = plan.steps.iter().position(|s| s.id == "investigate-deploy-prod-sh").unwrap();
+        let cap = plan
+            .steps
+            .iter()
+            .position(|s| s.id == "safety-capture")
+            .unwrap();
+        let inv = plan
+            .steps
+            .iter()
+            .position(|s| s.id == "investigate-deploy-prod-sh")
+            .unwrap();
         assert!(cap < inv);
         assert_eq!(plan.steps[inv].ring, Ring::ReadOnly);
-        assert!(plan.steps[inv].annotation.is_none(), "no drift ⇒ no correlation note");
+        assert!(
+            plan.steps[inv].annotation.is_none(),
+            "no drift ⇒ no correlation note"
+        );
     }
 
     #[test]
     fn findings_get_a_safety_capture_after_refresh_and_before_investigation() {
         let mut s = SuiteState::empty();
-        s.feeds.push(FeedStatus { name: "tools", freshness: Freshness::Stale });
-        s.findings.push(finding("deploy-prod.sh", Severity::Critical));
+        s.feeds.push(FeedStatus {
+            name: "tools",
+            freshness: Freshness::Stale,
+        });
+        s.findings
+            .push(finding("deploy-prod.sh", Severity::Critical));
         let plan = super::super::build(&s);
-        let refresh = plan.steps.iter().position(|s| s.id == "refresh-stale-data").unwrap();
-        let capture = plan.steps.iter().position(|s| s.id == "safety-capture").unwrap();
-        let investigate = plan.steps.iter().position(|s| s.id.starts_with("investigate")).unwrap();
+        let refresh = plan
+            .steps
+            .iter()
+            .position(|s| s.id == "refresh-stale-data")
+            .unwrap();
+        let capture = plan
+            .steps
+            .iter()
+            .position(|s| s.id == "safety-capture")
+            .unwrap();
+        let investigate = plan
+            .steps
+            .iter()
+            .position(|s| s.id.starts_with("investigate"))
+            .unwrap();
         assert!(refresh < capture, "capture must follow refresh");
         assert!(capture < investigate, "capture must precede investigation");
     }
@@ -210,8 +250,11 @@ mod tests {
         s.findings.push(finding("crit.sh", Severity::Critical));
         sort_findings(&mut s);
         let plan = super::super::build(&s);
-        let investigate: Vec<&Step> =
-            plan.steps.iter().filter(|s| s.id.starts_with("investigate")).collect();
+        let investigate: Vec<&Step> = plan
+            .steps
+            .iter()
+            .filter(|s| s.id.starts_with("investigate"))
+            .collect();
         assert_eq!(investigate[0].id, "investigate-crit-sh");
         assert!(investigate.iter().all(|s| s.ring == Ring::ReadOnly));
     }
@@ -224,10 +267,15 @@ mod tests {
         s.findings.push(finding("crit.sh", Severity::Critical));
         s.findings.push(finding("deploy-prod.sh", Severity::High));
         sort_findings(&mut s);
-        s.drift.push(DriftedPath { path: "deploy-prod.sh".into() });
+        s.drift.push(DriftedPath {
+            path: "deploy-prod.sh".into(),
+        });
         let plan = super::super::build(&s);
-        let investigate: Vec<&Step> =
-            plan.steps.iter().filter(|s| s.id.starts_with("investigate")).collect();
+        let investigate: Vec<&Step> = plan
+            .steps
+            .iter()
+            .filter(|s| s.id.starts_with("investigate"))
+            .collect();
         assert_eq!(investigate[0].id, "investigate-deploy-prod-sh");
         assert_eq!(
             investigate[0].annotation.as_deref(),
@@ -242,17 +290,31 @@ mod tests {
         let mut s = SuiteState::empty();
         s.findings.push(finding("x.sh", Severity::High));
         let plan = super::super::build(&s);
-        let cap = plan.steps.iter().find(|s| s.id == "safety-capture").unwrap();
+        let cap = plan
+            .steps
+            .iter()
+            .find(|s| s.id == "safety-capture")
+            .unwrap();
         assert_eq!(cap.ring, Ring::ChangesState);
-        assert_eq!(cap.command.as_deref(), Some("rewind capture --label pre-conductor"));
+        assert_eq!(
+            cap.command.as_deref(),
+            Some("rewind capture --label pre-conductor")
+        );
     }
 
     #[test]
     fn missing_binary_emits_an_info_fix_step() {
         let mut s = SuiteState::empty();
-        s.binaries.push(BinaryStatus { name: "rewind", present: false });
+        s.binaries.push(BinaryStatus {
+            name: "rewind",
+            present: false,
+        });
         let plan = super::super::build(&s);
-        let fix = plan.steps.iter().find(|s| s.id == "install-rewind").unwrap();
+        let fix = plan
+            .steps
+            .iter()
+            .find(|s| s.id == "install-rewind")
+            .unwrap();
         assert_eq!(fix.ring, Ring::Info);
         assert_eq!(fix.command.as_deref(), Some("install.sh --only rewind"));
     }
@@ -260,9 +322,15 @@ mod tests {
     #[test]
     fn failed_job_emits_a_read_only_review_step() {
         let mut s = SuiteState::empty();
-        s.failed_jobs.push(FailedJob { title: "nightly-backup".into() });
+        s.failed_jobs.push(FailedJob {
+            title: "nightly-backup".into(),
+        });
         let plan = super::super::build(&s);
-        let review = plan.steps.iter().find(|s| s.id == "review-nightly-backup").unwrap();
+        let review = plan
+            .steps
+            .iter()
+            .find(|s| s.id == "review-nightly-backup")
+            .unwrap();
         assert_eq!(review.ring, Ring::ReadOnly);
         assert_eq!(review.command.as_deref(), Some("proto show nightly-backup"));
     }
@@ -271,13 +339,23 @@ mod tests {
     fn mixed_priority_and_correlation_orders_all_groups_correctly() {
         // refresh → wiring → capture → findings(correlated first) → jobs
         let mut s = SuiteState::empty();
-        s.feeds.push(FeedStatus { name: "tools", freshness: Freshness::Stale });
-        s.binaries.push(BinaryStatus { name: "portman", present: false });
+        s.feeds.push(FeedStatus {
+            name: "tools",
+            freshness: Freshness::Stale,
+        });
+        s.binaries.push(BinaryStatus {
+            name: "portman",
+            present: false,
+        });
         s.findings.push(finding("crit.sh", Severity::Critical));
         s.findings.push(finding("deploy-prod.sh", Severity::High));
         sort_findings(&mut s);
-        s.drift.push(DriftedPath { path: "deploy-prod.sh".into() });
-        s.failed_jobs.push(FailedJob { title: "backup".into() });
+        s.drift.push(DriftedPath {
+            path: "deploy-prod.sh".into(),
+        });
+        s.failed_jobs.push(FailedJob {
+            title: "backup".into(),
+        });
         let plan = super::super::build(&s);
         let ids: Vec<&str> = plan.steps.iter().map(|s| s.id.as_str()).collect();
         let pos = |needle: &str| ids.iter().position(|t| *t == needle).unwrap();
