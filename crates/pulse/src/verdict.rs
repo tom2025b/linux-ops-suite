@@ -73,6 +73,7 @@ pub struct Verdict {
     pub high: usize,
     pub confidence_reduced: bool,
     pub unavailable: usize,
+    pub stale: usize,
     pub causes: Vec<Cause>,
     pub sources: Vec<SourceMark>,
 }
@@ -234,6 +235,10 @@ impl Verdict {
             .iter()
             .filter(|s| s.freshness == Source::Missing)
             .count();
+        let stale = sources
+            .iter()
+            .filter(|s| s.freshness == Source::Stale)
+            .count();
         let snapshot_present = !freshness.sections.is_empty();
         let any_stale =
             freshness.any_stale() || sources.iter().any(|s| s.freshness == Source::Stale);
@@ -241,7 +246,7 @@ impl Verdict {
         // ---- State decision (precedence: attention > incomplete > healthy)-
         let state = if !attention.is_empty() {
             State::NeedsAttention
-        } else if !snapshot_present || unavailable > 0 {
+        } else if !snapshot_present || unavailable > 0 || any_stale {
             State::Incomplete
         } else {
             State::Healthy
@@ -281,6 +286,7 @@ impl Verdict {
             high,
             confidence_reduced,
             unavailable,
+            stale,
             causes,
             // Healthy hides the source line entirely (the renderer also guards
             // this), so only carry marks when they have something to say.
@@ -301,6 +307,7 @@ impl Verdict {
             high: 0,
             confidence_reduced: false,
             unavailable: 0,
+            stale: 0,
             causes: Vec::new(),
             sources: Vec::new(),
         }
@@ -326,7 +333,8 @@ impl Verdict {
                 critical: 2,
                 high: 4,
                 confidence_reduced: true,
-                unavailable: 0,
+                unavailable: 1,
+                stale: 1,
                 causes: vec![
                     cause("deploy-prod.sh", "token-like secret", "bulwark"),
                     cause("findings", "unsupported feed version", "workstate"),
@@ -345,6 +353,7 @@ impl Verdict {
                 high: 0,
                 confidence_reduced: false,
                 unavailable: 2,
+                stale: 0,
                 causes: Vec::new(),
                 sources: vec![
                     mark("workstate", Source::Current),
@@ -391,7 +400,25 @@ fn source_freshness(
     bulwark: &BulwarkView,
     binaries: &[BinaryCheck],
 ) -> Source {
-    // 1. RexOps's aggregated presence map is the most authoritative when present.
+    // 1. Direct feed freshness wins where Pulse has direct evidence. Installed
+    // binaries are intentionally not freshness: a producer on PATH does not mean
+    // its data contract is present or current.
+    if name == "workstate" {
+        return match snap.worst() {
+            Some(f) => f.into(),
+            None => Source::Missing, // no snapshot at all
+        };
+    }
+    if name == "bulwark" {
+        return if bulwark.present {
+            Source::Current
+        } else {
+            Source::Missing
+        };
+    }
+
+    // 2. RexOps's aggregated presence map is the best available signal for
+    // sources Pulse does not read directly.
     if let Some(rx) = rexops {
         // RexOps uses "scriptvault" where the Pulse roster says "vault".
         let key = if name == "vault" { "scriptvault" } else { name };
@@ -403,25 +430,9 @@ fn source_freshness(
             };
         }
     }
-    // 2. Workstate's own snapshot: "workstate" maps to the snapshot itself
-    //    (present + its worst section freshness); other names aren't in it.
-    if name == "workstate" {
-        return match snap.worst() {
-            Some(f) => f.into(),
-            None => Source::Missing, // no snapshot at all
-        };
-    }
-    // 3. Bulwark's feed presence.
-    if name == "bulwark" {
-        return if bulwark.present {
-            Source::Current
-        } else {
-            Source::Missing
-        };
-    }
-    // 4. Fall back to whether the producer's binary is installed at all.
+
     match binaries.iter().find(|b| b.name == name) {
-        Some(b) if b.present => Source::Current,
+        Some(b) if b.present => Source::Stale,
         _ => Source::Missing,
     }
 }
@@ -676,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_section_reduces_confidence_but_stays_healthy_if_nothing_else() {
+    fn stale_section_makes_the_verdict_incomplete() {
         let mut snap = fresh_snapshot();
         snap.sections[1].1 = Freshness::Stale; // tools stale
         let rx = RexopsView {
@@ -701,10 +712,74 @@ mod tests {
             all_binaries_present(),
             Some(parse_rfc3339_secs("2026-06-14T13:00:00Z").unwrap()),
         );
-        // Stale ≠ unavailable: no finding, no missing source → still Healthy,
-        // but the workstate marker would be amber if shown.
-        assert_eq!(v.state, State::Healthy);
+        assert_eq!(v.state, State::Incomplete);
+        assert_eq!(v.stale, 1);
+        assert!(v
+            .sources
+            .iter()
+            .any(|s| { s.name == "workstate" && s.freshness == Source::Stale }));
         assert_eq!(v.age, "1h ago");
+    }
+
+    #[test]
+    fn installed_binary_does_not_count_as_current_feed() {
+        let v = Verdict::compose(
+            fresh_snapshot(),
+            no_rexops(),
+            BulwarkView {
+                attention: Vec::new(),
+                present: true,
+            },
+            Vec::new(),
+            all_binaries_present(),
+            Some(parse_rfc3339_secs("2026-06-14T12:02:00Z").unwrap()),
+        );
+        assert_eq!(v.state, State::Incomplete);
+        assert!(v
+            .sources
+            .iter()
+            .any(|s| { s.name == "proto" && s.freshness == Source::Stale }));
+        assert!(v
+            .sources
+            .iter()
+            .any(|s| { s.name == "toolfoundry" && s.freshness == Source::Stale }));
+    }
+
+    #[test]
+    fn stale_binary_fallback_prevents_healthy() {
+        let rx = RexopsView {
+            generated_at: Some("2026-06-14T12:00:00Z".to_string()),
+            sources: vec![
+                ("workstate".to_string(), true),
+                ("bulwark".to_string(), true),
+                ("scriptvault".to_string(), true),
+            ],
+            attention: Vec::new(),
+        };
+
+        let v = Verdict::compose(
+            fresh_snapshot(),
+            Some(rx),
+            BulwarkView {
+                attention: Vec::new(),
+                present: true,
+            },
+            Vec::new(),
+            all_binaries_present(),
+            Some(parse_rfc3339_secs("2026-06-14T12:02:00Z").unwrap()),
+        );
+
+        assert_eq!(v.state, State::Incomplete);
+        assert_eq!(v.stale, 2);
+        assert!(v.confidence_reduced);
+        assert!(v
+            .sources
+            .iter()
+            .any(|s| s.name == "proto" && s.freshness == Source::Stale));
+        assert!(v
+            .sources
+            .iter()
+            .any(|s| s.name == "toolfoundry" && s.freshness == Source::Stale));
     }
 
     #[test]

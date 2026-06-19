@@ -50,7 +50,8 @@ impl Baseline {
     }
 
     /// Load a baseline from `path`, distinguishing "not recorded yet" from
-    /// "recorded but corrupt" so the CLI can give the right next step.
+    /// "recorded but corrupt" so the CLI can give the right next step, and
+    /// rejecting a schema/source this build should not interpret.
     pub fn load(path: &Path) -> Result<Self, PortmanError> {
         if !path.exists() {
             return Err(PortmanError::NoBaseline {
@@ -61,10 +62,31 @@ impl Baseline {
             path: path.to_path_buf(),
             detail: e.to_string(),
         })?;
-        serde_json::from_str(&text).map_err(|e| PortmanError::BadBaseline {
-            path: path.to_path_buf(),
-            detail: e.to_string(),
-        })
+        let baseline: Baseline =
+            serde_json::from_str(&text).map_err(|e| PortmanError::BadBaseline {
+                path: path.to_path_buf(),
+                detail: e.to_string(),
+            })?;
+        if baseline.schema_version > Self::SCHEMA {
+            return Err(PortmanError::BadBaseline {
+                path: path.to_path_buf(),
+                detail: format!(
+                    "baseline schema v{} is newer than this portman understands (v{}); upgrade portman or re-record",
+                    baseline.schema_version,
+                    Self::SCHEMA
+                ),
+            });
+        }
+        if baseline.source_tool != "portman" {
+            return Err(PortmanError::BadBaseline {
+                path: path.to_path_buf(),
+                detail: format!(
+                    "expected source_tool=portman, found {}",
+                    baseline.source_tool
+                ),
+            });
+        }
+        Ok(baseline)
     }
 }
 
@@ -100,7 +122,7 @@ impl Diff {
 
 /// Compare a live scan (`current`) against a recorded `baseline`. Matches
 /// listeners by their stable key (proto/addr/port); same-key listeners with a
-/// different owner label become an `OwnerChanged`, not an add+remove pair.
+/// different owner chain become an `OwnerChanged`, not an add+remove pair.
 pub fn diff(baseline: &[Listener], current: &[Listener]) -> Diff {
     let base_by_key: BTreeMap<String, &Listener> = baseline.iter().map(|l| (l.key(), l)).collect();
     let cur_by_key: BTreeMap<String, &Listener> = current.iter().map(|l| (l.key(), l)).collect();
@@ -112,13 +134,11 @@ pub fn diff(baseline: &[Listener], current: &[Listener]) -> Diff {
         match base_by_key.get(key) {
             None => changes.push(Change::Added((*cur).clone())),
             Some(base) => {
-                let was = base.owner_label();
-                let now = cur.owner_label();
-                if was != now {
+                if owner_fingerprint(base) != owner_fingerprint(cur) {
                     changes.push(Change::OwnerChanged {
                         key: key.clone(),
-                        was,
-                        now,
+                        was: owner_summary(base),
+                        now: owner_summary(cur),
                     });
                 }
             }
@@ -133,6 +153,36 @@ pub fn diff(baseline: &[Listener], current: &[Listener]) -> Diff {
     }
 
     Diff { changes }
+}
+
+fn owner_fingerprint(listener: &Listener) -> String {
+    let o = &listener.owner;
+    format!(
+        "process={}|exe={}|unit={}|package={}",
+        opt(&o.process),
+        opt(&o.exe),
+        opt(&o.unit),
+        opt(&o.package)
+    )
+}
+
+fn owner_summary(listener: &Listener) -> String {
+    let o = &listener.owner;
+    let mut parts = vec![listener.owner_label()];
+    if let Some(unit) = &o.unit {
+        parts.push(format!("unit={unit}"));
+    }
+    if let Some(package) = &o.package {
+        parts.push(format!("pkg={package}"));
+    }
+    if let Some(exe) = &o.exe {
+        parts.push(format!("exe={exe}"));
+    }
+    parts.join(" ")
+}
+
+fn opt(value: &Option<String>) -> &str {
+    value.as_deref().unwrap_or("")
 }
 
 #[cfg(test)]
@@ -188,6 +238,52 @@ mod tests {
     }
 
     #[test]
+    fn load_newer_schema_is_rejected() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("future.json");
+        fs::write(
+            &path,
+            r#"{"schema_version":999,"source_tool":"portman","listeners":[]}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            Baseline::load(&path),
+            Err(PortmanError::BadBaseline { .. })
+        ));
+    }
+
+    #[test]
+    fn load_wrong_source_tool_is_rejected() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("tripwire.json");
+        fs::write(
+            &path,
+            r#"{"schema_version":1,"source_tool":"tripwire","listeners":[]}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            Baseline::load(&path),
+            Err(PortmanError::BadBaseline { .. })
+        ));
+    }
+
+    #[test]
+    fn load_current_schema_with_portman_source_is_accepted() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("current.json");
+        fs::write(
+            &path,
+            r#"{"schema_version":1,"source_tool":"portman","listeners":[]}"#,
+        )
+        .unwrap();
+
+        let loaded = Baseline::load(&path).expect("current portman baseline should load");
+        assert_eq!(loaded.schema_version, 1);
+        assert_eq!(loaded.source_tool, "portman");
+        assert!(loaded.listeners.is_empty());
+    }
+
+    #[test]
     fn diff_detects_added_removed_and_owner_change() {
         let base = vec![listener(22, "sshd"), listener(80, "nginx")];
         // 80 now owned by a different process; 22 gone; 443 new.
@@ -227,5 +323,65 @@ mod tests {
         let mut cur_l = listener(22, "sshd");
         cur_l.owner.pid = Some(200);
         assert!(diff(&[base_l], &[cur_l]).is_clean());
+    }
+
+    #[test]
+    fn pid_only_restart_with_full_owner_chain_is_clean() {
+        let mut base_l = listener(443, "server");
+        base_l.owner.pid = Some(100);
+        base_l.owner.exe = Some("/usr/bin/server".into());
+        base_l.owner.unit = Some("server.service".into());
+        base_l.owner.package = Some("server".into());
+
+        let mut cur_l = listener(443, "server");
+        cur_l.owner.pid = Some(200);
+        cur_l.owner.exe = Some("/usr/bin/server".into());
+        cur_l.owner.unit = Some("server.service".into());
+        cur_l.owner.package = Some("server".into());
+
+        assert!(diff(&[base_l], &[cur_l]).is_clean());
+    }
+
+    #[test]
+    fn same_process_name_with_different_chain_is_a_change() {
+        let mut base_l = listener(443, "server");
+        base_l.owner.exe = Some("/usr/bin/server".into());
+        base_l.owner.unit = Some("server.service".into());
+        base_l.owner.package = Some("server".into());
+
+        let mut cur_l = listener(443, "server");
+        cur_l.owner.exe = Some("/tmp/server".into());
+        cur_l.owner.unit = Some("user-server.service".into());
+        cur_l.owner.package = Some("local-build".into());
+
+        let d = diff(&[base_l], &[cur_l]);
+        assert!(d.changes.iter().any(|c| matches!(
+            c,
+            Change::OwnerChanged { was, now, .. }
+                if was.contains("/usr/bin/server") && now.contains("/tmp/server")
+        )));
+    }
+
+    #[test]
+    fn unit_or_package_change_is_owner_drift_even_with_same_process_and_exe() {
+        let mut base_l = listener(8443, "server");
+        base_l.owner.exe = Some("/usr/bin/server".into());
+        base_l.owner.unit = Some("server.service".into());
+        base_l.owner.package = Some("server".into());
+
+        let mut cur_l = listener(8443, "server");
+        cur_l.owner.exe = Some("/usr/bin/server".into());
+        cur_l.owner.unit = Some("server-alt.service".into());
+        cur_l.owner.package = Some("server-alt".into());
+
+        let d = diff(&[base_l], &[cur_l]);
+        assert!(d.changes.iter().any(|c| matches!(
+            c,
+            Change::OwnerChanged { was, now, .. }
+                if was.contains("unit=server.service")
+                    && was.contains("pkg=server")
+                    && now.contains("unit=server-alt.service")
+                    && now.contains("pkg=server-alt")
+        )));
     }
 }

@@ -13,7 +13,7 @@ pub mod walk;
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::error::TripwireError;
 use crate::model::{Entry, EntryKind};
@@ -75,17 +75,55 @@ fn canonical_or_self(p: &Path) -> PathBuf {
     fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
+/// Absolute, lexical path used as the stable entry identity. Unlike
+/// `canonicalize`, this does not follow the final symlink, so identity stays the
+/// watched path even when `follow_symlinks` asks metadata/content to come from the
+/// target.
+fn absolute_lexical(p: &Path) -> PathBuf {
+    let joined = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(p)
+    };
+    normalize_lexical(joined)
+}
+
+fn normalize_lexical(path: PathBuf) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => out.push(prefix.as_os_str()),
+            Component::RootDir => out.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !matches!(out.components().next_back(), Some(Component::RootDir)) {
+                    out.pop();
+                }
+            }
+            Component::Normal(part) => out.push(part),
+        }
+    }
+    out
+}
+
 /// Build one [`Entry`] for a concrete path under the given watch options.
 /// Returns `None` only when the path doesn't exist at all (it was listed but
 /// vanished, or a configured path that isn't present) — those are simply absent
 /// from the view, and a diff reports a baselined-but-absent path as `removed`.
 fn entry_for(path: &Path, opts: &WatchEntry) -> Option<Entry> {
-    // lstat first so a symlink is described as itself. If even that fails the
-    // path is gone/inaccessible at the directory level — skip it.
-    let lmd = fs::symlink_metadata(path).ok()?;
-    let m = meta::Meta::from_metadata(&lmd);
+    // By default, lstat so a symlink is described as itself. With
+    // follow_symlinks=true, stat the target and treat the watched path as the
+    // target object.
+    let md = if opts.follow_symlinks {
+        fs::metadata(path).ok()?
+    } else {
+        fs::symlink_metadata(path).ok()?
+    };
+    let m = meta::Meta::from_metadata(&md);
 
-    let path_str = path.to_string_lossy().into_owned();
+    let path_str = absolute_lexical(path).to_string_lossy().into_owned();
     let mut entry = Entry {
         path: path_str,
         kind: m.kind,
@@ -164,6 +202,33 @@ mod tests {
     }
 
     #[test]
+    fn entry_identity_is_absolute_and_lexical() {
+        let cargo_a = absolute_lexical(Path::new("Cargo.toml"));
+        let cargo_b = absolute_lexical(Path::new("./Cargo.toml"));
+        assert!(cargo_a.is_absolute());
+        assert_eq!(cargo_a, cargo_b);
+    }
+
+    #[test]
+    fn relative_watch_paths_are_stored_as_absolute_identities() {
+        let scan = scan_set(
+            &set_of(vec![WatchEntry::new(PathBuf::from("Cargo.toml"))]),
+            None,
+        );
+
+        let e = scan
+            .entries
+            .iter()
+            .find(|entry| entry.path.ends_with("/Cargo.toml"))
+            .expect("workspace Cargo.toml should be scanned");
+        assert!(Path::new(&e.path).is_absolute());
+        assert_eq!(
+            e.path,
+            absolute_lexical(Path::new("Cargo.toml")).to_string_lossy()
+        );
+    }
+
+    #[test]
     fn missing_configured_path_is_simply_absent() {
         let dir = tempdir().unwrap();
         let scan = scan_set(
@@ -186,6 +251,56 @@ mod tests {
         assert_eq!(e.kind, EntryKind::Symlink);
         assert!(e.hash.is_none());
         assert_eq!(e.target.as_deref(), target.to_str());
+    }
+
+    #[test]
+    fn symlink_default_and_follow_modes_are_distinct() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("real");
+        fs::write(&target, b"abc").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let default_scan = scan_set(&set_of(vec![WatchEntry::new(link.clone())]), None);
+        let default = &default_scan.entries[0];
+        assert_eq!(default.kind, EntryKind::Symlink);
+        assert!(default.hash.is_none());
+        assert_eq!(default.target.as_deref(), target.to_str());
+
+        let mut follow_watch = WatchEntry::new(link.clone());
+        follow_watch.follow_symlinks = true;
+        let follow_scan = scan_set(&set_of(vec![follow_watch]), None);
+        let followed = &follow_scan.entries[0];
+        assert_eq!(followed.kind, EntryKind::File);
+        assert_eq!(followed.size, Some(3));
+        assert!(followed.target.is_none());
+        assert_eq!(
+            followed.hash.as_deref(),
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        );
+        assert_eq!(followed.path, absolute_lexical(&link).to_string_lossy());
+    }
+
+    #[test]
+    fn follow_symlinks_records_target_file_content() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("real");
+        fs::write(&target, b"abc").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let mut watch = WatchEntry::new(link.clone());
+        watch.follow_symlinks = true;
+        let scan = scan_set(&set_of(vec![watch]), None);
+        let e = &scan.entries[0];
+        assert_eq!(e.kind, EntryKind::File);
+        assert_eq!(e.size, Some(3));
+        assert!(e.target.is_none());
+        assert_eq!(
+            e.hash.as_deref(),
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        );
+        assert_eq!(e.path, absolute_lexical(&link).to_string_lossy());
     }
 
     #[test]

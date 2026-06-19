@@ -207,11 +207,15 @@ impl App {
             lines.resize(h, String::new());
         }
         let last = lines.len().saturating_sub(1);
-        lines[last] = format!(
-            " {dim}{msg}{rst}",
-            dim = style.dim,
-            msg = msg,
-            rst = style.rst
+        lines[last] = clip_ansi(
+            &format!(
+                " {dim}{msg}{rst}",
+                dim = style.dim,
+                msg = msg,
+                rst = style.rst
+            ),
+            size.width.max(1) as usize,
+            style.rst,
         );
         lines.join("\n")
     }
@@ -377,14 +381,18 @@ impl App {
 /// the top, and a dim footer on the last row telling the operator how to leave.
 fn panel(style: &Style, size: TermSize, title: &str, body: &[String], footer: &str) -> String {
     let h = size.height.max(4) as usize;
-    let w = size.width.max(20) as usize;
+    let w = size.width.max(1) as usize;
     let mut lines: Vec<String> = vec![String::new(); h];
 
-    lines[0] = format!(
-        " {dim}pulse · {title}{rst}",
-        dim = style.dim,
-        title = title,
-        rst = style.rst
+    lines[0] = clip_ansi(
+        &format!(
+            " {dim}pulse · {title}{rst}",
+            dim = style.dim,
+            title = title,
+            rst = style.rst
+        ),
+        w,
+        style.rst,
     );
 
     // Body starts two rows down, clipped to leave room for the footer.
@@ -394,22 +402,64 @@ fn panel(style: &Style, size: TermSize, title: &str, body: &[String], footer: &s
         if row >= h - 2 {
             break;
         }
-        lines[row] = line.clone();
+        lines[row] = clip_ansi(line, w, style.rst);
     }
 
-    lines[h - 2] = format!(
-        " {dim}{}{rst}",
-        "─".repeat(w.saturating_sub(2)),
-        dim = style.dim,
-        rst = style.rst
+    lines[h - 2] = clip_ansi(
+        &format!(
+            " {dim}{}{rst}",
+            "─".repeat(w.saturating_sub(2)),
+            dim = style.dim,
+            rst = style.rst
+        ),
+        w,
+        style.rst,
     );
-    lines[h - 1] = format!(
-        " {dim}{footer}{rst}",
-        dim = style.dim,
-        footer = footer,
-        rst = style.rst
+    lines[h - 1] = clip_ansi(
+        &format!(
+            " {dim}{footer}{rst}",
+            dim = style.dim,
+            footer = footer,
+            rst = style.rst
+        ),
+        w,
+        style.rst,
     );
     lines.join("\n")
+}
+
+fn clip_ansi(input: &str, width: usize, reset: &str) -> String {
+    let mut out = String::new();
+    let mut visible = 0usize;
+    let mut chars = input.chars().peekable();
+    let mut clipped = false;
+
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' {
+            out.push(ch);
+            for c in chars.by_ref() {
+                out.push(c);
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+            continue;
+        }
+        if visible >= width {
+            clipped = true;
+            break;
+        }
+        out.push(ch);
+        visible += 1;
+    }
+
+    if !clipped && chars.peek().is_some() {
+        clipped = true;
+    }
+    if clipped && !reset.is_empty() && input.contains('\u{1b}') {
+        out.push_str(reset);
+    }
+    out
 }
 
 fn severity_label(s: crate::verdict::Severity) -> &'static str {
@@ -523,6 +573,50 @@ mod tests {
     }
 
     #[test]
+    fn plain_style_stays_fully_interactive() {
+        let style = Style::plain_for_test();
+        assert!(
+            !style.color,
+            "test must exercise the NO_COLOR-style renderer"
+        );
+
+        let mut a = app();
+        assert_eq!(a.view, View::Default);
+        assert!(a
+            .frame(&style, TermSize::for_test(80, 24))
+            .contains("NEEDS ATTENTION"));
+
+        a.handle(Key::Enter);
+        assert_eq!(a.view, View::Details);
+        assert!(a
+            .frame(&style, TermSize::for_test(80, 24))
+            .contains("pulse · DETAILS"));
+
+        a.handle(Key::Enter);
+        assert_eq!(a.view, View::Default);
+
+        a.handle(Key::Char('f'));
+        assert_eq!(a.view, View::Feeds);
+        assert!(a
+            .frame(&style, TermSize::for_test(80, 24))
+            .contains("pulse · FEEDS"));
+
+        a.handle(Key::Char('/'));
+        a.handle(Key::Char('a'));
+        a.handle(Key::Char('w'));
+        a.handle(Key::Char('s'));
+        assert_eq!(a.view, View::Search);
+        assert_eq!(a.query, "aws");
+        assert!(!a.quit);
+
+        a.handle(Key::Enter);
+        assert_eq!(a.view, View::Default);
+
+        a.handle(Key::Char('q'));
+        assert!(a.quit);
+    }
+
+    #[test]
     fn r_requests_the_cockpit_from_any_view() {
         // From the default screen and from an open view, `r` sets the launch
         // request (the loop performs the actual foreground launch).
@@ -608,5 +702,36 @@ mod tests {
                 assert!(!frame.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn views_do_not_exceed_viewport_width() {
+        let style = Style::plain_for_test();
+        for v in [
+            View::Attention,
+            View::Feeds,
+            View::Details,
+            View::Help,
+            View::Search,
+        ] {
+            let mut a = app();
+            a.view = v;
+            let frame = a.frame(&style, TermSize::for_test(20, 6));
+            let max = frame.lines().map(|l| l.chars().count()).max().unwrap_or(0);
+            assert!(max <= 20, "{v:?} overflowed to {max} columns:\n{frame}");
+        }
+    }
+
+    #[test]
+    fn status_line_is_clipped_to_viewport_width() {
+        let style = Style::plain_for_test();
+        let mut a = app();
+        a.status = Some(
+            "rexops not found on PATH — install it to open the cockpit (or run `rexops tui`)."
+                .to_string(),
+        );
+        let frame = a.frame(&style, TermSize::for_test(40, 10));
+        let last = frame.split('\n').next_back().unwrap_or("");
+        assert!(last.chars().count() <= 40, "status overflowed: {last}");
     }
 }
