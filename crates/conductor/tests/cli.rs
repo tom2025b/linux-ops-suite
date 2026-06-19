@@ -193,3 +193,61 @@ fn plan_verb_prints_steps_without_situation() {
     assert!(stdout.contains("workstate snapshot"));
     assert!(!stdout.contains("the situation"));
 }
+
+#[test]
+fn dump_view_plan_renders_steps_for_a_stale_feed_state() {
+    let t = TempRoot::new("dumpplan");
+    // A stale workstate feed → a refresh step in the plan.
+    t.write(
+        "rexops/feeds/workstate.snapshot.json",
+        r#"{ "built_at":"2026-06-14T12:00:00Z", "tools": { "status": "Stale" } }"#,
+    );
+    let out = run(&t, &["--dump-view", "plan"]);
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("the plan"), "frame:\n{s}");
+    assert!(s.contains("workstate snapshot"), "frame:\n{s}");
+    assert!(s.contains("changes state"), "frame:\n{s}");
+}
+
+#[test]
+fn dump_view_healthy_says_nothing_to_conduct_when_all_clear() {
+    // Empty data dir: no feeds, no findings → empty plan → healthy screen.
+    // run() already points PATH at stub_bin_dir, so all 8 bins are "present"
+    // and the wiring-gap rule stays dormant.
+    let t = TempRoot::new("dumphealthy");
+    let out = run(&t, &["--dump-view", "healthy"]);
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("nothing to conduct"), "frame:\n{s}");
+}
+
+#[test]
+fn bare_non_tty_falls_back_to_status_not_the_tui() {
+    // Output is captured (not a TTY), so bare conductor must print status text.
+    let t = TempRoot::new("barenontty");
+    t.write(
+        "rexops/feeds/workstate.snapshot.json",
+        r#"{ "built_at":"2026-06-14T12:00:00Z", "tools": { "status": "Stale" } }"#,
+    );
+    let out = run(&t, &[]);
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let s = String::from_utf8_lossy(&out.stdout);
+    // status output contains the plan heading; the TUI would have needed a TTY.
+    assert!(
+        s.contains("the plan") || s.contains("nothing to conduct"),
+        "frame:\n{s}"
+    );
+}

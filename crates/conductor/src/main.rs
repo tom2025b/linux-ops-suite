@@ -3,9 +3,9 @@
 //! could not run). All the work lives in the library; `main` only chooses what to
 //! run and how to print it — the same shape as rewind's and pulse's main.
 //!
-//! Phase 1 surface: `status` (default), `health`, `plan`. The interactive TUI
-//! (`conductor` bare) and `orchestrate` arrive in Phases 2–3; until then, bare
-//! `conductor` prints `status`, which keeps it useful and scriptable.
+//! Phase 2: bare `conductor` opens the interactive TUI on a real TTY; falls back
+//! to `status` when piped / in CI so scripts keep working. `--dump-view` renders
+//! one frame deterministically for snapshot tests.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -42,6 +42,11 @@ struct Cli {
     /// Read suite contracts from this directory instead of the XDG default.
     #[arg(long, value_name = "DIR", global = true)]
     data_dir: Option<PathBuf>,
+
+    /// Render one TUI frame once and exit (no event loop): plan | healthy |
+    /// compact | help. For deterministic snapshot tests; hidden from help.
+    #[arg(long, value_name = "VIEW", global = true, hide = true)]
+    dump_view: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -58,8 +63,14 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let style = Style::resolve(cli.no_color);
 
+    // Deterministic frame dump for tests: build the real plan, render one frame.
+    if let Some(view) = &cli.dump_view {
+        return run_dump_view(&cli, view);
+    }
+
     let result = match &cli.command {
-        None | Some(Cmd::Status) => run_status(&cli, &style),
+        None => run_bare(&cli, &style),
+        Some(Cmd::Status) => run_status(&cli, &style),
         Some(Cmd::Health) => run_health(&cli, &style),
         Some(Cmd::Plan) => run_plan(&cli, &style),
     };
@@ -79,6 +90,48 @@ fn data_dir(cli: &Cli) -> Result<DataDir, ConductorError> {
         Some(p) => Ok(DataDir::new(p.clone())),
         None => DataDir::from_env(),
     }
+}
+
+/// Bare `conductor`: open the interactive TUI on a real terminal; otherwise fall
+/// back to the scriptable `status` output so pipes/CI still work.
+fn run_bare(cli: &Cli, style: &Style) -> Result<ExitCode, ConductorError> {
+    if cli.json || !conductor::tui::should_run_interactive() {
+        return run_status(cli, style);
+    }
+    let dir = data_dir(cli)?;
+    let state = load_state(&dir);
+    let plan = plan::build(&state);
+    conductor::tui::run(plan, cli.no_color).map_err(|e| ConductorError::Tui(e.to_string()))?;
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Render exactly one TUI frame (no event loop) and exit 0 — the test backbone.
+fn run_dump_view(cli: &Cli, view: &str) -> ExitCode {
+    let dir = match data_dir(cli) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("conductor: {e}");
+            return ExitCode::from(3);
+        }
+    };
+    let state = load_state(&dir);
+    let plan = plan::build(&state);
+    let style = conductor::tui::style::Style::resolve(true); // dumps are monochrome
+    use conductor::tui::frame;
+    let frame = match view {
+        "plan" => frame::plan_screen(&plan, 0, None, &style),
+        "healthy" => frame::healthy_screen(&style),
+        "compact" => frame::compact_plan(&plan, 0, &style),
+        "help" => frame::help_screen(&style),
+        other => {
+            eprintln!(
+                "conductor: --dump-view needs one of: plan healthy compact help (got {other})"
+            );
+            return ExitCode::from(3);
+        }
+    };
+    print!("{frame}");
+    ExitCode::SUCCESS
 }
 
 fn run_status(cli: &Cli, style: &Style) -> Result<ExitCode, ConductorError> {

@@ -40,6 +40,9 @@ mod tests {
 
     #[test]
     fn data_root_prefers_xdg_data_home() {
+        // Mutates process env; share the crate-wide lock so it can't race the
+        // sibling test below (or PATH tests elsewhere) under parallel runs.
+        let _guard = crate::ENV_TEST_LOCK.lock().unwrap();
         // Save + restore env to avoid cross-test leakage.
         let prev_xdg = env::var_os("XDG_DATA_HOME");
         env::set_var("XDG_DATA_HOME", "/tmp/conductor-xdg-test");
@@ -52,6 +55,8 @@ mod tests {
 
     #[test]
     fn data_root_falls_back_to_home_local_share() {
+        // Mutates process env; share the crate-wide lock (see sibling test).
+        let _guard = crate::ENV_TEST_LOCK.lock().unwrap();
         let prev_xdg = env::var_os("XDG_DATA_HOME");
         let prev_home = env::var_os("HOME");
         env::remove_var("XDG_DATA_HOME");
