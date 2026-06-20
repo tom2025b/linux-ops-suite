@@ -57,6 +57,10 @@ enum Cmd {
     Health,
     /// Print just the ordered steps, no situation prose.
     Plan,
+    /// Walk the plan interactively, confirming each changes-state step (the
+    /// driver). Same as bare `conductor` on a terminal; falls back to `status`
+    /// when not a TTY or with --json.
+    Orchestrate,
 }
 
 fn main() -> ExitCode {
@@ -73,6 +77,7 @@ fn main() -> ExitCode {
         Some(Cmd::Status) => run_status(&cli, &style),
         Some(Cmd::Health) => run_health(&cli, &style),
         Some(Cmd::Plan) => run_plan(&cli, &style),
+        Some(Cmd::Orchestrate) => run_bare(&cli, &style),
     };
 
     match result {
@@ -92,8 +97,10 @@ fn data_dir(cli: &Cli) -> Result<DataDir, ConductorError> {
     }
 }
 
-/// Bare `conductor`: open the interactive TUI on a real terminal; otherwise fall
-/// back to the scriptable `status` output so pipes/CI still work.
+/// Bare `conductor` (and `orchestrate`): open the interactive TUI on a real
+/// terminal; otherwise fall back to the scriptable `status` output so pipes/CI
+/// still work. The guided run's outcome becomes the exit code: 1 a step failed,
+/// 2 quit with steps still pending/skipped, 0 clean / all done / nothing to do.
 fn run_bare(cli: &Cli, style: &Style) -> Result<ExitCode, ConductorError> {
     if cli.json || !conductor::tui::should_run_interactive() {
         return run_status(cli, style);
@@ -101,8 +108,9 @@ fn run_bare(cli: &Cli, style: &Style) -> Result<ExitCode, ConductorError> {
     let dir = data_dir(cli)?;
     let state = load_state(&dir);
     let plan = plan::build(&state);
-    conductor::tui::run(plan, cli.no_color).map_err(|e| ConductorError::Tui(e.to_string()))?;
-    Ok(ExitCode::SUCCESS)
+    let report =
+        conductor::tui::run(plan, cli.no_color).map_err(|e| ConductorError::Tui(e.to_string()))?;
+    Ok(ExitCode::from(report.exit_code()))
 }
 
 /// Render exactly one TUI frame (no event loop) and exit 0 — the test backbone.
@@ -123,9 +131,20 @@ fn run_dump_view(cli: &Cli, view: &str) -> ExitCode {
         "healthy" => frame::healthy_screen(&style),
         "compact" => frame::compact_plan(&plan, 0, &style),
         "help" => frame::help_screen(&style),
+        // The confirm modal only ever opens for a changes-state step in the real
+        // TUI, so the dump renders the first such step (not just the first step,
+        // which could be an Info/wiring entry). Falls back to healthy if none.
+        "confirm" => match plan
+            .steps
+            .iter()
+            .find(|s| s.ring == conductor::plan::Ring::ChangesState)
+        {
+            Some(step) => frame::confirm_screen(step, &style),
+            None => frame::healthy_screen(&style),
+        },
         other => {
             eprintln!(
-                "conductor: --dump-view needs one of: plan healthy compact help (got {other})"
+                "conductor: --dump-view needs one of: plan healthy compact help confirm (got {other})"
             );
             return ExitCode::from(3);
         }

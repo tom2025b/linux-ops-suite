@@ -251,3 +251,47 @@ fn bare_non_tty_falls_back_to_status_not_the_tui() {
         "frame:\n{s}"
     );
 }
+
+#[test]
+fn orchestrate_verb_is_listed_in_help() {
+    let t = TempRoot::new("orch-help");
+    let out = run(&t, &["--help"]);
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("orchestrate"),
+        "help must list the orchestrate verb"
+    );
+}
+
+#[test]
+fn orchestrate_json_is_non_interactive_and_matches_status() {
+    // orchestrate shares the non-TTY fallback: with --json it prints the status
+    // envelope and exits 0, never opening a TUI (the test harness is not a TTY).
+    let t = TempRoot::new("orch-json");
+    let o = run(&t, &["orchestrate", "--json"]);
+    let s = run(&t, &["status", "--json"]);
+    assert!(o.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&s.stdout),
+        "orchestrate --json must equal status --json"
+    );
+}
+
+#[test]
+fn dump_view_confirm_renders_the_ring2_modal() {
+    // A stale feed yields a Ring-2 refresh step at the top; the confirm view
+    // renders its modal deterministically (no PTY).
+    let t = TempRoot::new("confirm-dump");
+    t.write(
+        "rexops/feeds/workstate.snapshot.json",
+        r#"{ "built_at":"2026-06-14T12:00:00Z", "tools": { "status": "Stale" } }"#,
+    );
+    let out = run(&t, &["--dump-view", "confirm"]);
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("this will run:"));
+    assert!(text.contains("changes state"));
+    assert!(text.contains("y  run it"));
+}
