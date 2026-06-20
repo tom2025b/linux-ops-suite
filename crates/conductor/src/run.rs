@@ -39,6 +39,12 @@ pub enum RunOutcome {
     NotAvailable(String),
     /// The step has no runnable command (Info, or no command at all).
     NotRunnable,
+    /// The spawn itself failed — the child never produced an exit status. With
+    /// the real [`crate::tui::SuspendSpawner`] this is almost always a failure to
+    /// suspend or re-enter the terminal around the child, which leaves the
+    /// display in a bad state; it is NOT the same as a tool exiting non-zero, so
+    /// callers must report it differently. Carries the error text.
+    SpawnError(String),
 }
 
 /// Is `name` a binary Conductor is allowed to spawn? Only the known suite tools
@@ -47,12 +53,42 @@ pub fn known_program(name: &str) -> bool {
     SUITE_BINARIES.contains(&name)
 }
 
-/// Split a step's command into an argv vector on ASCII whitespace. The command
-/// is a fixed string the rules built; an id within it is already a single token,
-/// so it stays one argv element here — never interpolated, never shell-split
-/// beyond plain whitespace.
+/// Split a step's command string into an argv vector. Tokens are separated by
+/// ASCII whitespace, except inside a single-quoted run `'…'`, which is taken
+/// verbatim as one token (quotes stripped). This is the exact inverse of
+/// [`crate::plan::quote_arg`]: a finding id or job title that contains spaces is
+/// emitted single-quoted by the rules, so it round-trips back to ONE argv
+/// element here — the modal's displayed command and the spawned argv are
+/// guaranteed to be the same list. No other shell syntax is interpreted (no
+/// double quotes, no escapes, no globbing): the command is never a user shell
+/// line, only the suite's own fixed verbs plus a quoted id.
 fn argv_of(cmd: &str) -> Vec<String> {
-    cmd.split_whitespace().map(|s| s.to_string()).collect()
+    let mut argv = Vec::new();
+    let mut cur = String::new();
+    let mut in_quote = false;
+    let mut have_token = false; // distinguishes "" (a real empty arg) from no arg
+    for ch in cmd.chars() {
+        match ch {
+            '\'' => {
+                in_quote = !in_quote;
+                have_token = true; // quotes always start a token, even if empty
+            }
+            c if c.is_ascii_whitespace() && !in_quote => {
+                if have_token {
+                    argv.push(std::mem::take(&mut cur));
+                    have_token = false;
+                }
+            }
+            c => {
+                cur.push(c);
+                have_token = true;
+            }
+        }
+    }
+    if have_token {
+        argv.push(cur);
+    }
+    argv
 }
 
 /// The literal command a Ring-2 confirm should display — the SAME string
@@ -82,7 +118,10 @@ pub fn run_step(step: &Step, spawner: &dyn Spawner) -> RunOutcome {
     }
     match spawner.spawn(&argv) {
         Ok(status) => RunOutcome::Ran(status.success()),
-        Err(_) => RunOutcome::Ran(false),
+        // The child never ran (or the terminal suspend/re-enter around it
+        // failed). Surface it as its own outcome, not a silent `Ran(false)` that
+        // masquerades as "the tool exited non-zero".
+        Err(e) => RunOutcome::SpawnError(e.to_string()),
     }
 }
 
@@ -179,6 +218,51 @@ mod tests {
         assert_eq!(confirm_command(&prose), None);
     }
 
+    /// A spawner that always fails the launch — models the SuspendSpawner
+    /// failing to suspend/re-enter the terminal around the child.
+    struct FailSpawner;
+    impl Spawner for FailSpawner {
+        fn spawn(&self, _argv: &[String]) -> std::io::Result<ExitStatus> {
+            Err(std::io::Error::other("suspend failed"))
+        }
+    }
+
+    #[test]
+    fn spawn_failure_is_its_own_outcome_not_ran_false() {
+        // M3 regression: a failed launch must NOT collapse to Ran(false) (which
+        // reads as "the tool exited non-zero"); it is a distinct SpawnError so
+        // the TUI can warn that the terminal state is suspect.
+        let dir = tempfile::tempdir().unwrap();
+        let stub = dir.path().join("bulwark");
+        std::fs::write(&stub, "#!/bin/sh\nexit 0\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let _guard = crate::ENV_TEST_LOCK.lock().unwrap();
+        let orig = std::env::var_os("PATH");
+        let new_path = match &orig {
+            Some(p) => {
+                let mut v = std::ffi::OsString::from(dir.path());
+                v.push(":");
+                v.push(p);
+                v
+            }
+            None => std::ffi::OsString::from(dir.path()),
+        };
+        std::env::set_var("PATH", &new_path);
+
+        let outcome = run_step(&ro("bulwark show x.sh"), &FailSpawner);
+        assert!(
+            matches!(outcome, RunOutcome::SpawnError(ref m) if m.contains("suspend failed")),
+            "got {outcome:?}"
+        );
+
+        match orig {
+            Some(v) => std::env::set_var("PATH", v),
+            None => std::env::remove_var("PATH"),
+        }
+    }
+
     #[test]
     fn info_step_is_not_runnable() {
         let sp = TestSpawner::new(true);
@@ -231,6 +315,66 @@ mod tests {
         match orig {
             Some(v) => std::env::set_var("PATH", v),
             None => std::env::remove_var("PATH"),
+        }
+    }
+
+    #[test]
+    fn quoted_id_with_spaces_stays_one_argv_token_and_matches_display() {
+        // M1 regression: a finding/title with a space must NOT fragment into
+        // extra argv elements, and the spawned argv must match the displayed
+        // command exactly. The rules quote such a value via plan::quote_arg, so
+        // the command string here is `proto show 'Nightly Backup'`.
+        let dir = tempfile::tempdir().unwrap();
+        let stub = dir.path().join("proto");
+        std::fs::write(&stub, "#!/bin/sh\nexit 0\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let _guard = crate::ENV_TEST_LOCK.lock().unwrap();
+        let orig = std::env::var_os("PATH");
+        let new_path = match &orig {
+            Some(p) => {
+                let mut v = std::ffi::OsString::from(dir.path());
+                v.push(":");
+                v.push(p);
+                v
+            }
+            None => std::ffi::OsString::from(dir.path()),
+        };
+        std::env::set_var("PATH", &new_path);
+
+        let cmd = format!("proto show {}", crate::plan::quote_arg("Nightly Backup"));
+        assert_eq!(cmd, "proto show 'Nightly Backup'");
+        let step = Step::new("rev", "review", Some(cmd.clone()), Ring::ReadOnly);
+
+        // What the confirm modal would display is exactly `cmd`…
+        assert_eq!(confirm_command(&step), Some(cmd.as_str()));
+        // …and what gets spawned is ["proto","show","Nightly Backup"] — the id
+        // is one token, not two.
+        let sp = TestSpawner::new(true);
+        let outcome = run_step(&step, &sp);
+        assert!(matches!(outcome, RunOutcome::Ran(true)));
+        let calls = sp.calls.borrow();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0], vec!["proto", "show", "Nightly Backup"]);
+
+        match orig {
+            Some(v) => std::env::set_var("PATH", v),
+            None => std::env::remove_var("PATH"),
+        }
+    }
+
+    #[test]
+    fn argv_of_round_trips_quote_arg() {
+        // Direct unit coverage of the split/quote inverse pair, no PATH needed.
+        use crate::plan::quote_arg;
+        for raw in ["x.sh", "deploy prod.sh", "two  spaces", "", "a'b"] {
+            let cmd = format!("bulwark show {}", quote_arg(raw));
+            let argv = argv_of(&cmd);
+            assert_eq!(argv[0], "bulwark");
+            assert_eq!(argv[1], "show");
+            // The id is always exactly one trailing token (quotes stripped a '\'').
+            assert_eq!(argv.len(), 3, "cmd={cmd:?} argv={argv:?}");
         }
     }
 
