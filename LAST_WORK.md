@@ -1,5 +1,48 @@
 # Last Work
 
+## new-tools review — LOW findings (tripwire/portman/pulse)
+
+2026-06-20. Worktree `.claude/worktrees/fix-low-findings`, branch
+`worktree-fix-low-findings`, off main at d3db6e1 (after the HIGH+MEDIUM merge).
+NOT committed yet. The deferred LOW findings from the new-tools review:
+
+L2 — tripwire `changed_fields` reported NO content drift on a content-tracking
+toggle (`baseline.rs`). When one run had a hash and the other didn't (content=
+true→false) with no readability flip, the (Some,None) pair hit `_=>{}` and was
+silent. Fix: collapse the not-both-hashed arms to fall back to Size drift, so a
+hash↔no-hash transition with a changed size now surfaces.
+
+L3 — tripwire watch.conf parser truncated paths containing `#` (`watch.rs`). It
+stripped from the first `#` anywhere on the line, but `#` is legal in a filename
+(`/var/data#v2.log`) → wrong file watched. Fix: a `#` is a comment only when it
+starts the (trimmed) line; inline `#` is kept verbatim.
+
+L4 — portman + tripwire `json_string` produced invalid JSON for control chars
+(`main.rs` ×2). The one-line baseline confirmation envelope escaped only " \ \n,
+leaving \r \t and other U+0000–U+001F raw (RFC 8259 violation). Fix: add \r \t
+\b \f and a \u00xx fallback for all control chars; identical helper in both. Both
+binaries gained their first `#[cfg(test)] mod tests`.
+
+L6 — pulse silently mis-ranked unknown severities (`sources.rs`). The rexops
+path did `unwrap_or(Severity::Low)` and the bulwark path `?`-dropped unknowns, so
+a novel/misspelled severity from a producer sank below the High threshold or
+vanished. Fix: unknown severity now escalates to High in both paths (surface, not
+bury), and Severity::parse is case-insensitive ("CRITICAL" now parses).
+
+L5 (pulse Esc blocking read, `tui.rs`) — DEFERRED, not fixed. read_key takes
+`&mut impl Read` with no access to the tty fd, and the lone-Esc fix requires
+toggling termios VTIME around the Esc peek; threading the fd through breaks the
+in-memory test seam. Low-frequency (only high-latency terminals) and the proper
+fix is disproportionate/untestable through the current seam — left as-is.
+
+5 new regression tests (content_toggle_with_size_change_is_not_silent,
+hash_in_path_is_kept_but_leading_hash_is_a_comment, json_string_escapes_control_
+chars_to_valid_json ×2, unknown_or_uppercase_severity_escalates_not_drops).
+Verification: `cargo test --workspace` 593 passed / 0 failed; clippy 0 warnings;
+fmt clean. All review findings now addressed except the deferred L5.
+
+---
+
 ## new-tools review — M1–M6 MEDIUM fixes (conductor/tripwire/portman/pulse/rewind)
 
 2026-06-20. Same worktree `.claude/worktrees/fix-top2-portman-rexdoctor`
