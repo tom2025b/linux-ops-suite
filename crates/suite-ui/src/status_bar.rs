@@ -96,6 +96,38 @@ pub struct StatusBar<'a> {
     pub job: JobState<'a>,
 }
 
+impl JobState<'_> {
+    /// The terminal [`Outcome`] for a finished state (the single "how it ended"
+    /// vocabulary shared with [`Toast`](crate::Toast)), or `None` while the job is
+    /// [`Idle`](JobState::Idle) or [`Running`](JobState::Running). Names the mapping
+    /// [`StatusBar::line`] paints through, so callers (history rows, footers) can
+    /// reuse the identical outcome without re-deriving it from `ok`.
+    pub fn outcome(&self) -> Option<Outcome> {
+        match self {
+            JobState::Idle | JobState::Running { .. } => None,
+            JobState::Done { ok: true, .. } => Some(Outcome::Success),
+            JobState::Done { ok: false, .. } => Some(Outcome::Failure),
+            JobState::Cancelled { .. } => Some(Outcome::Cancelled),
+            // `JobState` is #[non_exhaustive]: a future finished state has no known
+            // outcome here until it is mapped, so report None rather than guess.
+            #[allow(unreachable_patterns)]
+            _ => None,
+        }
+    }
+}
+
+/// The trailing word a finished [`Outcome`] reads as in the status line.
+fn outcome_verb(outcome: Outcome) -> &'static str {
+    match outcome {
+        Outcome::Success => "done",
+        Outcome::Failure => "failed",
+        Outcome::Cancelled => "cancelled",
+        // `Outcome` is #[non_exhaustive]: a future variant gets a neutral verb.
+        #[allow(unreachable_patterns)]
+        _ => "finished",
+    }
+}
+
 impl StatusBar<'_> {
     /// The composed status [`Line`], for a caller that wants to fold the segment
     /// into a footer row it lays out itself (e.g. status + " | " + keybind hints).
@@ -104,36 +136,27 @@ impl StatusBar<'_> {
     /// under `NO_COLOR`, where the hues drop away:
     /// `●` running, `✓` done-ok, `✗` done-failed, `■` cancelled.
     pub fn line(&self, theme: Theme) -> Line<'static> {
+        // Finished states share one path: the outcome (via `JobState::outcome`) picks
+        // the glyph/style/verb, so the mapping lives in exactly one place.
+        let name = match self.job {
+            JobState::Done { name, .. } | JobState::Cancelled { name } => Some(name),
+            _ => None,
+        };
+        if let (Some(name), Some(outcome)) = (name, self.job.outcome()) {
+            let (glyph, style) = outcome.glyph_style(theme);
+            return Line::from(vec![
+                Span::styled(glyph, style),
+                Span::styled(format!("{name} — {}", outcome_verb(outcome)), style),
+            ]);
+        }
         match self.job {
             JobState::Idle => Line::from(Span::styled("idle", theme.dim())),
             JobState::Running { name } => Line::from(vec![
                 Span::styled("● ", theme.live_marker()),
                 Span::styled(format!("running {name}"), theme.title()),
             ]),
-            JobState::Done { name, ok: true } => {
-                let (glyph, style) = Outcome::Success.glyph_style(theme);
-                Line::from(vec![
-                    Span::styled(glyph, style),
-                    Span::styled(format!("{name} — done"), style),
-                ])
-            }
-            JobState::Done { name, ok: false } => {
-                let (glyph, style) = Outcome::Failure.glyph_style(theme);
-                Line::from(vec![
-                    Span::styled(glyph, style),
-                    Span::styled(format!("{name} — failed"), style),
-                ])
-            }
-            JobState::Cancelled { name } => {
-                let (glyph, style) = Outcome::Cancelled.glyph_style(theme);
-                Line::from(vec![
-                    Span::styled(glyph, style),
-                    Span::styled(format!("{name} — cancelled"), style),
-                ])
-            }
-            // `JobState` is #[non_exhaustive]: a future state renders as a neutral
-            // dim marker rather than failing to compile. Unreachable today
-            // (own-crate match) but required once a variant is added.
+            // Finished states are handled above; any other (future) state renders as
+            // a neutral dim marker rather than failing to compile.
             #[allow(unreachable_patterns)]
             _ => Line::from(Span::styled("…", theme.dim())),
         }
@@ -165,6 +188,32 @@ mod tests {
             .iter()
             .map(|s| s.content.to_string())
             .collect()
+    }
+
+    #[test]
+    fn outcome_maps_finished_states_and_is_none_otherwise() {
+        assert_eq!(JobState::Idle.outcome(), None);
+        assert_eq!(JobState::Running { name: "j" }.outcome(), None);
+        assert_eq!(
+            JobState::Done {
+                name: "j",
+                ok: true
+            }
+            .outcome(),
+            Some(Outcome::Success)
+        );
+        assert_eq!(
+            JobState::Done {
+                name: "j",
+                ok: false
+            }
+            .outcome(),
+            Some(Outcome::Failure)
+        );
+        assert_eq!(
+            JobState::Cancelled { name: "j" }.outcome(),
+            Some(Outcome::Cancelled)
+        );
     }
 
     #[test]
