@@ -4,6 +4,7 @@
 //! reads the same with color stripped. The structure mirrors portman's report.rs.
 
 use serde::Serialize;
+use suite_core::fmt::human_size;
 
 use crate::baseline::{Change, Diff, Field};
 use crate::model::{Entry, EntryKind};
@@ -50,22 +51,6 @@ impl Style {
             }
         }
     }
-}
-
-/// Human-readable byte size: `563 B`, `2.1 KB`, `3.4 MB`. Kept tiny and
-/// dependency-free; precision is one decimal above the kilobyte.
-fn human_size(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-    if bytes < 1024 {
-        return format!("{bytes} B");
-    }
-    let mut val = bytes as f64;
-    let mut unit = 0;
-    while val >= 1024.0 && unit < UNITS.len() - 1 {
-        val /= 1024.0;
-        unit += 1;
-    }
-    format!("{val:.1} {}", UNITS[unit])
 }
 
 // ---- Current view ---------------------------------------------------------
@@ -609,13 +594,6 @@ mod tests {
             target: None,
             unreadable: hash.is_none(),
         }
-    }
-
-    #[test]
-    fn human_size_scales() {
-        assert_eq!(human_size(563), "563 B");
-        assert_eq!(human_size(2150), "2.1 KB");
-        assert_eq!(human_size(3_500_000), "3.3 MB");
     }
 
     #[test]

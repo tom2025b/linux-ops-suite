@@ -204,6 +204,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "suite-core",
  "tempfile",
 ]
 
@@ -492,6 +493,7 @@ version = "0.1.2"
 dependencies = [
  "clap",
  "serde_json",
+ "suite-core",
 ]
 
 [[package]]
@@ -611,6 +613,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "suite-core",
  "tempfile",
 ]
 
@@ -639,6 +642,7 @@ version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
+ "suite-core",
 ]
 
 [[package]]
@@ -694,12 +698,16 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "suite-core",
  "tempfile",
 ]
 
 [[package]]
 name = "rex-check"
 version = "0.1.2"
+dependencies = [
+ "suite-core",
+]
 
 [[package]]
 name = "rex-doctor"
@@ -708,6 +716,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "suite-core",
  "tempfile",
 ]
 
@@ -888,6 +897,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "suite-core"
+version = "0.1.2"
+
+[[package]]
 name = "suite-ui"
 version = "0.1.2"
 dependencies = [
@@ -969,6 +982,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "suite-core",
  "tempfile",
 ]
 

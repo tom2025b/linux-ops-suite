@@ -36,9 +36,11 @@
 
 use std::env;
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+
+use suite_core::fmt::human_size;
+use suite_core::path::is_executable_file;
 
 /// The suite repos, in display order. Mirrors the roster the installers know.
 const REPOS: &[&str] = &[
@@ -921,23 +923,6 @@ fn dir_size_human(path: &Path) -> String {
     human_size(dir_size_bytes(path))
 }
 
-/// Format a byte count as a short human string (B/K/M/G/T), one decimal for
-/// non-byte units. Powers of 1024, matching `du -h`.
-fn human_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "K", "M", "G", "T"];
-    let mut size = bytes as f64;
-    let mut unit = 0;
-    while size >= 1024.0 && unit < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit += 1;
-    }
-    if unit == 0 {
-        format!("{bytes}{}", UNITS[0])
-    } else {
-        format!("{size:.1}{}", UNITS[unit])
-    }
-}
-
 /// Run `git -C <dir> <args...>` and return its stdout on success regardless of
 /// whether it is empty (unlike [`git`], which treats an empty body as "no
 /// data"). Used by the action passes where a successful empty result (e.g.
@@ -1010,13 +995,6 @@ fn command_exists(name: &str) -> bool {
         return false;
     };
     env::split_paths(&path_var).any(|dir| is_executable_file(&dir.join(name)))
-}
-
-/// Whether `path` is a regular file with any execute bit set.
-fn is_executable_file(path: &Path) -> bool {
-    std::fs::metadata(path)
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
 }
 
 /// Whether fd 1 (stdout) is a TTY, via `isatty(3)`. One tiny libc call; avoids a
@@ -1134,14 +1112,15 @@ mod tests {
 
     #[test]
     fn human_size_scales_units_and_keeps_bytes_whole() {
-        // Bytes render without a decimal; larger units get one decimal place,
-        // using powers of 1024 (du -h style).
-        assert_eq!(human_size(0), "0B");
-        assert_eq!(human_size(512), "512B");
-        assert_eq!(human_size(1024), "1.0K");
-        assert_eq!(human_size(1536), "1.5K");
-        assert_eq!(human_size(1024 * 1024), "1.0M");
-        assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0G");
+        // Now sourced from suite_core::fmt::human_size: bytes render without a
+        // decimal; larger units get one decimal place and a space + two-letter
+        // unit (powers of 1024). This is the suite-wide form (was "K/M/G").
+        assert_eq!(human_size(0), "0 B");
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(1024), "1.0 KB");
+        assert_eq!(human_size(1536), "1.5 KB");
+        assert_eq!(human_size(1024 * 1024), "1.0 MB");
+        assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 GB");
     }
 
     #[test]

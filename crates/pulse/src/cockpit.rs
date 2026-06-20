@@ -70,21 +70,12 @@ pub fn open(raw: &mut RawMode) -> LaunchOutcome {
     }
 }
 
-/// Find an executable named `bin` by walking `$PATH`, returning the first match
-/// that exists. Dependency-free (no `which` crate); mirrors how the other lean
-/// suite tools resolve a sibling binary.
+/// Find an executable named `bin` by walking `$PATH`, returning the first
+/// executable match. Delegated to suite-core, which checks the execute bit (the
+/// old local copy only tested `is_file()`, so a non-executable file shadowing
+/// the name could be wrongly "found").
 fn resolve_on_path(bin: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path) {
-        if dir.as_os_str().is_empty() {
-            continue;
-        }
-        let candidate = dir.join(bin);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    None
+    suite_core::path::resolve_on_path(bin)
 }
 
 #[cfg(test)]

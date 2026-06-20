@@ -6,6 +6,7 @@
 //! these functions only present it.
 
 use serde::Serialize;
+use suite_core::fmt::human_size;
 
 use crate::diff::{Change, ChangeKind, Diff};
 use crate::model::{CaptureEntry, EntryKind, Manifest, SnapshotState};
@@ -51,21 +52,6 @@ impl Style {
             }
         }
     }
-}
-
-/// Human-readable byte size: `563 B`, `2.1 KB`, `3.4 MB`. Dependency-free.
-fn human_size(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-    if bytes < 1024 {
-        return format!("{bytes} B");
-    }
-    let mut val = bytes as f64;
-    let mut unit = 0;
-    while val >= 1024.0 && unit < UNITS.len() - 1 {
-        val /= 1024.0;
-        unit += 1;
-    }
-    format!("{val:.1} {}", UNITS[unit])
 }
 
 /// A short id prefix for the timeline, matching the on-disk filename prefix.
@@ -810,12 +796,6 @@ mod tests {
                 unreadable: false,
             }],
         }
-    }
-
-    #[test]
-    fn human_size_formats_units() {
-        assert_eq!(human_size(563), "563 B");
-        assert_eq!(human_size(2150), "2.1 KB");
     }
 
     #[test]

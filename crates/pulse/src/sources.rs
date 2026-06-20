@@ -466,26 +466,11 @@ pub fn read_binaries() -> Vec<BinaryCheck> {
         .collect()
 }
 
-/// Whether `name` resolves to an executable on `$PATH`. A `which(1)` done in
-///-process: scan `$PATH` entries for an executable file, no fork.
+/// Whether `name` resolves to an executable on `$PATH`. A `which(1)` done
+/// in-process (delegated to suite-core): scan `$PATH` for an executable file,
+/// no fork.
 fn which(name: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| is_executable(&dir.join(name)))
-}
-
-#[cfg(unix)]
-fn is_executable(p: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p)
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn is_executable(p: &Path) -> bool {
-    p.is_file()
+    suite_core::path::which(name)
 }
 
 #[cfg(test)]

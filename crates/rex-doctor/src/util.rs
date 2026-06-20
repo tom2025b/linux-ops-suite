@@ -1,12 +1,16 @@
-//! Small, dependency-free environment helpers shared by the check modules.
+//! Rex-doctor's environment helpers.
 //!
-//! These mirror rex-check's helpers deliberately (same PATH-walk, same TTY rule
-//! via `isatty(3)`) so the two tools agree on what "on PATH" and "a terminal"
-//! mean. Nothing here does I/O beyond `stat`/`isatty` and reading `$PATH`.
+//! The generic primitives (TTY rule, `$HOME`, `$PATH` resolution, the exec-bit
+//! predicate) now come from [`suite_core`] so the whole suite agrees on what
+//! "on PATH" and "a terminal" mean. What stays here is rex-doctor's own
+//! diagnostics-specific logic: the suite-binary roster, *all* PATH matches for
+//! a name (shadow detection), and the "is this dir on PATH" check.
 
 use std::env;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+
+pub use suite_core::env::stdout_is_tty;
+pub use suite_core::path::is_executable_file;
 
 /// The suite binaries rex-doctor expects on `PATH`, in display order. Mirrors
 /// the roster the installers and rex-check know (the seven shipped tools plus
@@ -22,42 +26,21 @@ pub const SUITE_BINS: &[&str] = &[
     "rex-check",
 ];
 
-/// Whether stdout is a TTY — gates color and (later) any interactive repair.
-pub fn stdout_is_tty() -> bool {
-    is_tty(1)
-}
-
-/// Whether the given fd is a TTY, via `isatty(3)`.
-fn is_tty(fd: i32) -> bool {
-    // SAFETY: isatty merely queries a file descriptor and has no preconditions.
-    extern "C" {
-        fn isatty(fd: i32) -> i32;
-    }
-    unsafe { isatty(fd) == 1 }
-}
-
 /// Resolve `$HOME` as a path, if set and non-empty.
 pub fn home() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
+    suite_core::env::home_dir()
 }
 
 /// Locate a bare command name on `PATH`, returning the first match. A name
-/// containing `/` is treated as a literal path. Same resolution rex-check uses.
+/// containing `/` is treated as a literal path. Delegates to suite-core's
+/// `resolve_on_path` (same resolution rex-check uses).
 pub fn which(name: &str) -> Option<PathBuf> {
-    if name.contains('/') {
-        let p = PathBuf::from(name);
-        return is_executable_file(&p).then_some(p);
-    }
-    let path_var = env::var_os("PATH")?;
-    env::split_paths(&path_var)
-        .map(|dir| dir.join(name))
-        .find(|p| is_executable_file(p))
+    suite_core::path::resolve_on_path(name)
 }
 
 /// Every PATH match for a bare name, in PATH order. Used to detect shadowing
-/// (two copies of the same suite binary winning/losing on PATH).
+/// (two copies of the same suite binary winning/losing on PATH). Built on
+/// suite-core's exec-bit predicate.
 pub fn which_all(name: &str) -> Vec<PathBuf> {
     if name.contains('/') {
         let p = PathBuf::from(name);
@@ -78,15 +61,6 @@ pub fn which_all(name: &str) -> Vec<PathBuf> {
         }
     }
     hits
-}
-
-/// Whether `path` is a regular file with any execute bit set. Same predicate
-/// rex-check uses to decide a binary is runnable.
-pub fn is_executable_file(path: &Path) -> bool {
-    match std::fs::metadata(path) {
-        Ok(md) => md.is_file() && (md.permissions().mode() & 0o111) != 0,
-        Err(_) => false,
-    }
 }
 
 /// Whether `dir` appears as an entry in `$PATH`. Compared on normalized

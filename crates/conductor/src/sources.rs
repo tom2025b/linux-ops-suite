@@ -158,27 +158,12 @@ pub fn read_binaries() -> Vec<BinaryStatus> {
         .collect()
 }
 
-/// Whether `name` resolves to an executable on `$PATH`. An in-process `which(1)`:
-/// scan `$PATH` entries for an executable file, no fork. Public so `run.rs` can
-/// gate a spawn on availability with the same probe `read_binaries` uses.
+/// Whether `name` resolves to an executable on `$PATH`. An in-process `which(1)`
+/// (delegated to suite-core): scan `$PATH` for an executable file, no fork.
+/// Public so `run.rs` can gate a spawn on availability with the same probe
+/// `read_binaries` uses.
 pub fn is_on_path(name: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| is_executable(&dir.join(name)))
-}
-
-#[cfg(unix)]
-fn is_executable(p: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p)
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn is_executable(p: &Path) -> bool {
-    p.is_file()
+    suite_core::path::which(name)
 }
 
 // ── Findings — RexOps aggregate snapshot, else Bulwark feed ───────────────────

@@ -21,6 +21,7 @@ path = "src/lib.rs"
 # chrono (already a workspace dep) supplies the capture timestamp. No network,
 # no async, no compression.
 [dependencies]
+suite-core = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
