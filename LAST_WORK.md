@@ -1,5 +1,27 @@
 # Last Work
 
+## Release 0.2.0 prep — umbrella
+
+2026-06-20. Branch `release/0.2.0` off main at d2e5d87. Committed on the branch,
+**NOT pushed until approved** (PR to main, then tag is a SEPARATE step Tom gates).
+Umbrella-only release (sibling `scripts/release.sh` intentionally NOT run).
+
+- Bumped `[workspace.package] version` 0.1.2 → **0.2.0** (one edit; all 12 crates
+  inherit via `version.workspace = true`). `cargo build` refreshed Cargo.lock.
+- MINOR bump per SemVer: two new library crates (suite-ui, thomas-tui) + suite-core,
+  five new tools graduated in (conductor, rewind, tripwire, portman, rex-doctor),
+  Pulse's TUI rewritten onto suite-ui, broad suite-core refactor — mostly additive;
+  pre-1.0 so 0.2.0 (not 1.0.0).
+- Added **CHANGELOG.md** (Keep a Changelog format) with a full 0.2.0 section
+  (Added/Changed/Fixed/Notes from the 94 commits since v0.1.2) + backfilled
+  0.1.x stubs + compare links.
+- README: the manual `gh release create` examples now use a `vX.Y.Z` placeholder
+  instead of a pinned stale version.
+- Gate before PR: cargo build/test/clippy -D warnings/fmt --all green.
+- TAG IS DEFERRED: `v0.2.0` triggers `.github/workflows/release.yml`, so the tag
+  is pushed only AFTER this PR merges to main and CI is green — Tom gives the
+  go-ahead first.
+
 ## Pulse TUI migration to suite-ui (T1–T10) — pulse
 
 2026-06-20. Worktree `.claude/worktrees/pulse-suite-ui-migration`, branch

@@ -109,11 +109,11 @@ Example for a tool whose repo and binary are both `bulwark`:
 cargo build --release
 mkdir -p dist
 tar -C target/release -czf dist/bulwark-x86_64-unknown-linux-gnu.tar.gz bulwark
-gh release create v0.1.0 \
+gh release create vX.Y.Z \
   dist/bulwark-x86_64-unknown-linux-gnu.tar.gz \
   --repo tom2025b/bulwark \
-  --title "v0.1.0" \
-  --notes "First Linux release"
+  --title "vX.Y.Z" \
+  --notes "Linux release"
 ```
 
 For `toolbox-bridge`, build from this repo:
@@ -122,11 +122,11 @@ For `toolbox-bridge`, build from this repo:
 cargo build --release -p toolbox-bridge
 mkdir -p dist
 tar -C target/release -czf dist/linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz toolbox-bridge
-gh release create v0.1.0 \
+gh release create vX.Y.Z \
   dist/linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz \
   --repo tom2025b/linux-ops-suite \
-  --title "v0.1.0" \
-  --notes "First toolbox-bridge release"
+  --title "vX.Y.Z" \
+  --notes "toolbox-bridge release"
 ```
 
 Repeat with an `aarch64` build if you want ARM Linux installs to work without falling back to source builds.
