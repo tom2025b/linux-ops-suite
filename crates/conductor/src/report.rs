@@ -67,12 +67,14 @@ fn ring_color(ring: Ring, style: &Style) -> &'static str {
 }
 
 /// The glyph for a step's status: the one-shot renderer marks every pending step
-/// with `○` (the TUI decides the `▸` current marker); `✓` done, `·` skipped.
+/// with `○` (the TUI decides the `▸` current marker); `✓` done, `·` skipped,
+/// `✗` failed.
 fn status_glyph(status: StepStatus) -> char {
     match status {
         StepStatus::Pending => '○',
         StepStatus::Done => '✓',
         StepStatus::Skipped => '·',
+        StepStatus::Failed => '✗',
     }
 }
 
@@ -417,5 +419,10 @@ mod tests {
             !out.contains('\u{1b}'),
             "plain style must emit no ANSI escapes"
         );
+    }
+
+    #[test]
+    fn failed_step_renders_a_cross_glyph() {
+        assert_eq!(status_glyph(StepStatus::Failed), '✗');
     }
 }

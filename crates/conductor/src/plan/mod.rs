@@ -31,13 +31,16 @@ impl Ring {
     }
 }
 
-/// A step's lifecycle. Phase 1 only ever produces `Pending`; `Done`/`Skipped`
-/// are driven by the Phase 2/3 TUI.
+/// A step's lifecycle. Phase 1 only ever produces `Pending`; `Done`/`Skipped`/
+/// `Failed` are driven by the Phase 2/3 TUI. `Failed` means a delegated step
+/// actually ran and its sibling exited non-zero — distinct from Skipped (the
+/// operator passed on it) and used to drive the guided run's exit code.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum StepStatus {
     Pending,
     Done,
     Skipped,
+    Failed,
 }
 
 /// One ordered action in the plan.
@@ -221,6 +224,15 @@ mod tests {
         assert_eq!(slug("Refresh Stale Data"), "refresh-stale-data");
         assert_eq!(slug("  weird __ name!! "), "weird-name");
         assert_eq!(slug("already-kebab"), "already-kebab");
+    }
+
+    #[test]
+    fn step_status_has_a_failed_variant() {
+        // Failed is distinct from the other three lifecycle states.
+        let f = StepStatus::Failed;
+        assert_ne!(f, StepStatus::Pending);
+        assert_ne!(f, StepStatus::Done);
+        assert_ne!(f, StepStatus::Skipped);
     }
 
     #[test]

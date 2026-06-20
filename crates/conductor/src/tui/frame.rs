@@ -23,6 +23,7 @@ fn glyph(status: StepStatus, is_current: bool) -> char {
         StepStatus::Pending => '○',
         StepStatus::Done => '✓',
         StepStatus::Skipped => '·',
+        StepStatus::Failed => '✗',
     }
 }
 
