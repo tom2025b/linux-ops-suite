@@ -19,6 +19,9 @@ ratatui = { workspace = true }
 crossterm = { workspace = true }
 thomas-tui = { path = "../thomas-tui" }
 
+[dev-dependencies]
+insta = { workspace = true }
+
 [[example]]
 name = "gallery"
 path = "examples/gallery.rs"
