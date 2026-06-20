@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 # Intentionally dependency-free: rex-check shells out to `git` (and optionally
 # `tokei`) exactly like the suite's install.sh, so std is all it needs. No
-# network, no extra crates — keeps it tiny and fast to build inside the
-# umbrella workspace.
+# network, no extra crates beyond suite-core (the shared, dependency-free
+# helper crate) — keeps it tiny and fast to build inside the umbrella workspace.
 [dependencies]
+suite-core = { workspace = true }
