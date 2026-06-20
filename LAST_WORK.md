@@ -37,6 +37,115 @@ re-diff clean → `prune --keep-last 1 --gc` (reclaims orphan) → bad-duration 
 
 ---
 
+## Conductor Phase 2 — interactive TUI + Ring-1 spawning (crates/conductor)
+
+2026-06-19. Branch `conductor-phase2` (worktree
+`.claude/worktrees/conductor-design`). Built on top of Phase 1's read-only
+foundation; all Phase 1 tests still pass.
+
+Phase 2 delivered: **interactive TUI** (hand-rolled, no new third-party deps —
+the same raw-terminal discipline as `pulse`): bare `conductor` on a real TTY
+opens the plan view; stdout piped or non-TTY falls back to `status` (scripts
+and CI keep working unchanged). The TUI is the
+`tui/{mod,term,frame,style,run}.rs` stack built in prior tasks, now wired into
+`main.rs`.
+
+**Ring-1 read-only spawning:** `enter` on a read-only step suspends raw mode,
+hands the terminal to the sibling binary (direct `execvp`-style spawn, no shell,
+`$PATH` probed), and marks the step `✓` on return. The `SuspendSpawner` RAII
+pattern restores raw mode unconditionally (even on panic).
+
+**Ring-2 no-op with note:** `enter` on a changes-state step prints "this step
+changes state — needs Phase 3, not run" and stays put. No state-changing command
+is ever run in Phase 2. Zero writes, zero Ring-2 executions — the invariant
+holds.
+
+**`--dump-view <VIEW>`:** hidden flag for deterministic snapshot tests. Builds
+the real plan, renders exactly one frame (`plan` | `healthy` | `compact` |
+`help`), monochrome, and exits 0. Unknown view → stderr + exit 3.
+
+**Tests:** 3 new integration tests in `crates/conductor/tests/cli.rs`, reusing
+the existing `TempRoot` + `run()` harness (stub-bin-dir pattern): (1)
+`--dump-view plan` on a stale-feed state shows "the plan" + "workstate
+snapshot" + "changes state"; (2) `--dump-view healthy` with all bins stubbed
+and empty data dir shows "nothing to conduct"; (3) bare invocation with captured
+stdout (non-TTY) falls back to status text. All 10 integration tests + all unit
+tests green.
+
+Exit codes: 0 ok / 3 can't-run only — 1/2 still reserved for Phase 3.
+`#[allow(dead_code)]` on `run` and `should_run_interactive` in `tui/mod.rs`
+removed (main.rs now calls both). No new dependencies added.
+
+All gates green: `cargo test -p conductor` (all tests pass incl. 3 new),
+`cargo clippy -p conductor --all-targets -D warnings` (zero warnings),
+`cargo fmt -p conductor -- --check` (clean), `cargo build --workspace` (clean).
+NOT pushed — awaiting human approval per the hard rule.
+
+---
+
+## New tool: Conductor — suite guided operator (crates/conductor), Phase 1
+
+2026-06-19. Designed and built Phase 1 of Conductor, the suite's GUIDED
+OPERATOR / "brain": it reads the suite's own state and turns it into a short,
+deterministic ORDERED RUNBOOK ("do these things, in this order"), delegating
+every action to the tool that owns it. It fills the gap between Pulse (the calm
+read-only *verdict*) and RexOps (the free *launcher*): Conductor is the
+opinionated *sequence* — what to do, in what order — and is the one tool that
+correlates ACROSS tools (signature move: a tripwire drift on the same file as a
+bulwark finding gets lifted to the top, annotated "start here").
+
+Design-first (Tom's process): wrote `CONDUCTOR_DESIGN.md` at the repo root
+(mirrors PULSE/REWIND/TRIPWIRE_DESIGN.md), got sign-off, then a 10-task TDD plan
+at `docs/superpowers/plans/2026-06-19-conductor-phase-1.md`. Tom locked the two
+forks: built-in rules from state (no config language in v1) and "spawn, never
+write itself".
+
+Safety model — THREE RINGS, the heart of the tool: Ring 0 = Conductor's own code,
+always read-only (reads contracts, probes $PATH, builds + renders the plan); Ring
+1 = spawn a read-only sibling; Ring 2 = spawn a state-changing sibling ONLY after
+a deliberate confirm. The rule: **Conductor never mutates state with its own
+code** — the most it ever does is type a command a human could have. No shell
+(direct argv), no --yes-to-all, no unattended runs.
+
+Phase 1 shipped (this branch, 8 commits): the entire READ-ONLY foundation, 100%
+Ring 0 — `conductor status` (situation + ordered plan), `conductor health`
+(per-feed/per-tool readiness), `conductor plan` (steps only), all with `--json`,
+`--no-color`, `--data-dir`, `-v`. NO subprocess, NO TUI, NO writes (those are
+Phases 2–3). Bare `conductor` prints status (scriptable + RexOps-launchable).
+Exit 0 ok / 3 can't-run; 1/2 reserved for the Phase 3 `orchestrate` driver.
+
+Built to the suite house style: thin `main` (clap, rewind's shape) → library
+does the work → renderers derive from the model. Modules each have ONE job:
+`sources.rs` reads contracts fault-tolerantly (lifts pulse's discipline:
+missing/malformed ⇒ "unavailable", never panics), `state.rs` holds normalized
+facts (no I/O), `plan/rules.rs` is the pure `&SuiteState -> Plan` rule engine
+(the brain, densest tests), `report.rs` renders human + the suite JSON envelope.
+The 7 v1 rules in priority order: refresh stale feeds → wiring-gap fix commands →
+safety-capture (only when real work follows) → investigate findings (worst-first,
+drift-correlated lifted + annotated) → review failed jobs → else "nothing to
+conduct". Tom's upgrade: stable kebab `step.id` + deterministic `plan_id`
+(FNV-1a) in the JSON envelope, for the future Phase 3 driver.
+
+Tests (44 unit + 7 integration, all green; clippy + fmt clean; full workspace
+builds): the rule engine's full synthetic matrix passes incl the signature
+drift×finding correlation; readers covered by temp-dir failure-mode tests; the
+CLI covered end-to-end. ONE debugging catch worth noting: the integration tests'
+"empty suite ⇒ nothing to conduct" cases failed on this dev box because 5 of the
+8 suite binaries are actually installed (so the wiring-gap rule fired) — fixed
+honestly by stubbing ALL 8 suite binaries in the test sandbox and pointing PATH
+there, so the probe is deterministic across machines (not by special-casing).
+
+Registered as a workspace member (`crates/conductor` in root Cargo.toml) and in
+the installer (`conductor:conductor` in WORKSPACE_TOOLS — one line; the
+build/verify/uninstall loops already iterate it). Bare binary on PATH, NO
+r-conductor wrapper, NO alias (per Tom's standing rule).
+
+Phase 2 (the TUI + Ring 1 read-only spawns) and Phase 3 (the `orchestrate`
+driver + Ring 2 confirm — the only writing path, heaviest gate) are separate
+plans, not started.
+
+---
+
 ## Rewind Phase 2 — `show`, `diff`, capture selectors + timeline marker
 
 2026-06-19. `crates/rewind/`. Added the read/compare half of Rewind on top of
@@ -70,6 +179,22 @@ fmt --check, clippy -D warnings (default AND --all-features), 95 rewind unit
 tests + full workspace all pass. E2E smoke-tested the binary (show/-v, diff
 capture/clean/vs-live, JSON, exit 0/1/3, latest marker). Planned via a
 multi-angle design workflow + adversarial critique before coding.
+
+---
+
+## rex-check: itemize umbrella crates into the totals table (incl. rewind)
+
+2026-06-19. `crates/rex-check/src/main.rs`. The crates inside the umbrella
+(`linux-ops-suite/crates/*`) are auto-discovered at runtime (`discover_crates`,
+any subdir with a `Cargo.toml`, sorted) and itemized as indented `·` sub-rows
+under the `linux-ops-suite` row in the SINGLE totals table. The umbrella's own
+row is shown net of the crates (`linux-ops-suite (root)`), so the grand TOTAL is
+identical to a plain whole-repo tokei (no double-count) but every crate —
+rewind, pulse, portman, tripwire, … — is now a visible line item. Footer total
+reads `TOTAL (7 repos + N crates)`. `count_rs_files()` is the no-tokei fallback.
+No hardcoded crate list; new crates appear automatically. Widened the name
+column to 24 for alignment. 12 tests pass (added discover_crates ×2 +
+count_rs_files), clippy clean, fmt applied.
 
 ---
 

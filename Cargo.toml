@@ -11,6 +11,7 @@ members = [
     "crates/pulse",
     "crates/tripwire",
     "crates/rewind",
+    "crates/conductor",
 ]
 
 [workspace.package]
