@@ -170,6 +170,60 @@ impl Store {
     pub fn store_bytes(&self) -> u64 {
         dir_size(&self.objects_dir())
     }
+
+    /// Delete one capture's manifest file (its blobs are left to a later `--gc`,
+    /// since they may be shared with surviving captures). The filename is derived
+    /// from the manifest exactly as [`save_manifest`](Self::save_manifest) wrote
+    /// it, so this removes the right file. A missing file is not an error — prune
+    /// is idempotent. Used by `prune`.
+    pub fn delete_manifest(&self, manifest: &Manifest) -> Result<(), RewindError> {
+        let path = self.captures_dir().join(manifest_filename(manifest));
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(RewindError::SaveFailed { path, source: e }),
+        }
+    }
+
+    /// Every object hash present on disk under `objects/<aa>/<hash>`. Used by the
+    /// `--gc` mark-and-sweep to find candidates; entries whose name isn't a plain
+    /// hash file are ignored. An absent `objects/` dir yields an empty list.
+    pub fn iter_object_hashes(&self) -> Vec<String> {
+        let mut hashes = Vec::new();
+        let shards = match fs::read_dir(self.objects_dir()) {
+            Ok(rd) => rd,
+            Err(_) => return hashes,
+        };
+        for shard in shards.flatten() {
+            if !shard.path().is_dir() {
+                continue;
+            }
+            let Ok(objs) = fs::read_dir(shard.path()) else {
+                continue;
+            };
+            for obj in objs.flatten() {
+                if obj.path().is_file() {
+                    if let Some(name) = obj.file_name().to_str() {
+                        hashes.push(name.to_string());
+                    }
+                }
+            }
+        }
+        hashes
+    }
+
+    /// Remove one object blob by hash, returning the bytes it freed (0 if it was
+    /// already gone). Used by `--gc` after the live hash set is computed. Best-
+    /// effort: a missing object is not an error.
+    pub fn remove_object(&self, hash: &str) -> Result<u64, RewindError> {
+        let path = self.object_path(hash);
+        let freed = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(freed),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0),
+            Err(e) => Err(RewindError::SaveFailed { path, source: e }),
+        }
+    }
 }
 
 /// Build a manifest's on-disk filename: a filesystem-safe timestamp plus a short
@@ -373,5 +427,47 @@ mod tests {
         let store = Store::open(dir.path().join("nope"));
         assert!(!store.exists());
         assert!(store.load_manifests().unwrap().is_empty());
+    }
+
+    // ---- Phase 3: prune / gc primitives -----------------------------------
+
+    #[test]
+    fn delete_manifest_removes_the_file_and_is_idempotent() {
+        let dir = tempdir().unwrap();
+        let store = Store::open(dir.path().to_path_buf());
+        let m = sample_manifest("aaa1", "2026-06-19T00:00:00Z");
+        store.save_manifest(&m).unwrap();
+        assert_eq!(store.load_manifests().unwrap().len(), 1);
+
+        store.delete_manifest(&m).unwrap();
+        assert!(store.load_manifests().unwrap().is_empty());
+        // Deleting again is a no-op, not an error.
+        store.delete_manifest(&m).unwrap();
+    }
+
+    #[test]
+    fn iter_object_hashes_lists_every_stored_blob() {
+        let dir = tempdir().unwrap();
+        let store = Store::open(dir.path().to_path_buf());
+        store.ensure_dirs().unwrap();
+        let h1 = store.put_bytes(b"one").unwrap();
+        let h2 = store.put_bytes(b"two").unwrap();
+        let mut got = store.iter_object_hashes();
+        got.sort();
+        let mut want = vec![h1, h2];
+        want.sort();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn remove_object_frees_bytes_and_is_idempotent() {
+        let dir = tempdir().unwrap();
+        let store = Store::open(dir.path().to_path_buf());
+        store.ensure_dirs().unwrap();
+        let h = store.put_bytes(b"abcde").unwrap(); // 5 bytes
+        assert_eq!(store.remove_object(&h).unwrap(), 5);
+        assert!(!store.has_object(&h));
+        // Removing again frees nothing, no error.
+        assert_eq!(store.remove_object(&h).unwrap(), 0);
     }
 }

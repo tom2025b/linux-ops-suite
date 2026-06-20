@@ -1,11 +1,12 @@
 //! rewind CLI. Thin shell: parse flags, dispatch to a subcommand, render human
-//! or JSON, exit with a structured code (0 ok / 1 diff found a difference / 3
-//! rewind itself could not run). All the work lives in the library; `main` only
-//! chooses what to run and how to print it — the same shape as tripwire's and
-//! portman's main. The exit-code *policy* lives here, never in the library.
+//! or JSON, exit with a structured code (0 ok / 1 diff found a difference / 2
+//! restore --apply partially failed / 3 rewind itself could not run). All the
+//! work lives in the library; `main` only chooses what to run and how to print it
+//! — the same shape as tripwire's and portman's main. The exit-code *policy*
+//! lives here, never in the library.
 //!
 //! Surface: the timeline view (default / `log`), `capture`, `sources`, `show`,
-//! and `diff`. The guarded `restore` and `prune` arrive in a later phase.
+//! `diff`, the guarded `restore`, and `prune`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -84,6 +85,36 @@ enum Cmd {
         #[arg(value_name = "B")]
         b: Option<String>,
     },
+    /// Restore a capture's files. DRY-RUN by default (prints the plan, writes
+    /// nothing); `--apply` performs the writes after taking a safety capture.
+    Restore {
+        /// Which capture to restore (id / prefix / `latest` / `~N`). Required
+        /// unless `--latest-good` is given.
+        #[arg(value_name = "CAPTURE", required_unless_present = "latest_good")]
+        capture: Option<String>,
+        /// Actually perform the restore (without it, restore is a dry run).
+        #[arg(long)]
+        apply: bool,
+        /// Skip the automatic pre-restore safety capture (default: take it).
+        #[arg(long = "no-safety-capture")]
+        no_safety_capture: bool,
+        /// Restore the most recent capture whose snapshot is a valid envelope.
+        #[arg(long = "latest-good")]
+        latest_good: bool,
+    },
+    /// Remove old captures by count/age, and optionally garbage-collect objects.
+    /// Nothing is auto-pruned; deletion is immediate (no dry run).
+    Prune {
+        /// Keep only the newest N captures; remove the rest.
+        #[arg(long = "keep-last", value_name = "N")]
+        keep_last: Option<usize>,
+        /// Remove captures older than this duration, e.g. `30d`, `12h`.
+        #[arg(long = "older-than", value_name = "DUR")]
+        older_than: Option<String>,
+        /// Also delete objects no surviving capture references (mark-and-sweep).
+        #[arg(long)]
+        gc: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -96,6 +127,24 @@ fn main() -> ExitCode {
         Some(Cmd::Sources) => run_sources(&cli, &style),
         Some(Cmd::Show { capture }) => run_show(&cli, capture, &style),
         Some(Cmd::Diff { a, b }) => run_diff(&cli, a, b.as_deref(), &style),
+        Some(Cmd::Restore {
+            capture,
+            apply,
+            no_safety_capture,
+            latest_good,
+        }) => run_restore(
+            &cli,
+            capture.as_deref(),
+            *apply,
+            *no_safety_capture,
+            *latest_good,
+            &style,
+        ),
+        Some(Cmd::Prune {
+            keep_last,
+            older_than,
+            gc,
+        }) => run_prune(&cli, *keep_last, older_than.as_deref(), *gc, &style),
     };
 
     match result {
@@ -206,4 +255,68 @@ fn run_diff(cli: &Cli, a: &str, b: Option<&str>, style: &Style) -> Result<ExitCo
     } else {
         ExitCode::from(1)
     })
+}
+
+/// `rewind restore <capture>`: dry-run by default; `--apply` writes. Exit 2 on a
+/// partial restore (some paths failed) — exit policy lives here, not the library.
+fn run_restore(
+    cli: &Cli,
+    capture: Option<&str>,
+    apply: bool,
+    no_safety_capture: bool,
+    latest_good: bool,
+    style: &Style,
+) -> Result<ExitCode, RewindError> {
+    // clap guarantees `capture` is present unless `--latest-good` was given.
+    let selector = if latest_good {
+        "latest-good"
+    } else {
+        capture.expect("clap requires a capture unless --latest-good")
+    };
+
+    if !apply {
+        let plan = rewind::plan_restore(cli.store.clone(), selector)?;
+        if cli.json {
+            println!("{}", report::restore_plan_json(&plan));
+        } else {
+            report::print_restore_plan(&plan, style);
+        }
+        return Ok(ExitCode::SUCCESS); // dry-run rendered = success
+    }
+
+    let captured_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let outcome = rewind::apply_restore(
+        cli.store.clone(),
+        selector,
+        !no_safety_capture,
+        &captured_at,
+    )?;
+    if cli.json {
+        println!("{}", report::restore_outcome_json(&outcome));
+    } else {
+        report::print_restore_outcome(&outcome, style);
+    }
+    Ok(if outcome.has_failure() {
+        ExitCode::from(2)
+    } else {
+        ExitCode::SUCCESS
+    })
+}
+
+/// `rewind prune`: remove captures by count/age; `--gc` reclaims objects.
+fn run_prune(
+    cli: &Cli,
+    keep_last: Option<usize>,
+    older_than: Option<&str>,
+    gc: bool,
+    style: &Style,
+) -> Result<ExitCode, RewindError> {
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let outcome = rewind::prune(cli.store.clone(), keep_last, older_than, gc, &now)?;
+    if cli.json {
+        println!("{}", report::prune_json(&outcome));
+    } else {
+        report::print_prune(&outcome, style);
+    }
+    Ok(ExitCode::SUCCESS)
 }

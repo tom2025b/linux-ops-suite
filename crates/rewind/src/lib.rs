@@ -4,23 +4,28 @@
 //! *filesystem* surface, rewind is the suite's *time axis*: it records the
 //! suite's own state files (the compiled Workstate snapshot, the producer feeds,
 //! tripwire's baseline) into a content-addressed [`store`], lists the timeline,
-//! and — in later phases — diffs any two points and restores under a hard safety
-//! gate. It is read-only by default; the only write to a live path is a guarded
+//! diffs any two points, and restores under a hard safety gate. It is read-only
+//! by default; the only write to a live path is a guarded, dry-run-by-default
 //! `restore`, and the only thing it writes routinely is its own store.
 //!
 //! **Phase 1** shipped the storage layer plus `capture`, `list` (the timeline),
-//! and `sources`. **Phase 2** adds `show` (one capture's manifest), `diff` (two
+//! and `sources`. **Phase 2** added `show` (one capture's manifest), `diff` (two
 //! captures, or a capture against the live files), and the `<capture>` selector
 //! grammar (`latest` / `latest-good` / `~N` / id / unique prefix) those two
-//! share. The guarded restore lands in a later phase. The library does the work
-//! and returns values; the binary only parses flags and renders.
+//! share. **Phase 3** adds the guarded [`restore`] (dry-run by default; `--apply`
+//! takes a pre-restore safety capture, then atomic-writes each file back under
+//! the R1–R6 safety contract) and [`prune`] (store maintenance by count/age,
+//! with `--gc` mark-and-sweep). The library does the work and returns values;
+//! the binary only parses flags, renders, and owns the exit-code policy.
 
 pub mod capture;
 pub mod diff;
 pub mod error;
 pub mod hash;
 pub mod model;
+pub mod prune;
 pub mod report;
+pub mod restore;
 pub mod scan;
 pub mod set;
 pub mod store;
@@ -228,6 +233,52 @@ pub fn diff_capture_vs_live(
         &short(&from.id),
         "live",
     ))
+}
+
+/// Build the restore plan for a capture selector against the current live files.
+/// Read-only (R2): reads the manifest, re-scans live, and classifies each path;
+/// writes nothing. The CLI renders the plan; `--apply` is a separate call.
+pub fn plan_restore(
+    store_override: Option<PathBuf>,
+    selector: &str,
+) -> Result<restore::RestorePlan, RewindError> {
+    let (target, _, store_dir) = load_selected(store_override, selector)?;
+    let store = Store::open(store_dir);
+    Ok(restore::plan(&target, &store))
+}
+
+/// Execute a restore: take the `pre-restore` safety capture first (unless
+/// `safety_capture` is false), then atomic-write each restorable entry back to
+/// its captured path. `captured_at` (RFC3339 UTC) stamps the safety capture.
+/// Returns the per-path outcome; `RestoreOutcome::has_failure()` drives exit 2.
+pub fn apply_restore(
+    store_override: Option<PathBuf>,
+    selector: &str,
+    safety_capture: bool,
+    captured_at: &str,
+) -> Result<restore::RestoreOutcome, RewindError> {
+    let (target, _, store_dir) = load_selected(store_override, selector)?;
+    let store = Store::open(store_dir);
+    restore::apply(&target, &store, safety_capture, captured_at)
+}
+
+/// Remove captures by count (`keep_last`) and/or age (`older_than`, e.g. `30d`),
+/// and optionally garbage-collect unreferenced objects (`gc`). `now` (RFC3339
+/// UTC) is the age reference. A bad `older_than` errors (exit 3); nothing is ever
+/// auto-pruned. Returns what was removed.
+pub fn prune(
+    store_override: Option<PathBuf>,
+    keep_last: Option<usize>,
+    older_than: Option<&str>,
+    gc: bool,
+    now: &str,
+) -> Result<prune::PruneOutcome, RewindError> {
+    let store_dir = resolve_store_dir(store_override)?;
+    let store = Store::open(store_dir.clone());
+    if !store.exists() {
+        return Err(RewindError::NoStore { path: store_dir });
+    }
+    prune::run(&store, keep_last, older_than, gc, now)
 }
 
 /// A capture id's short prefix, the form the timeline and diff headers show.
@@ -650,5 +701,181 @@ mod tests {
             resolve_selector(&ms, "~1").unwrap().id,
             "~01 is base-10, same as ~1"
         );
+    }
+
+    // ---- Phase 3: restore / prune roundtrips through the public surface ----
+
+    #[test]
+    fn restore_roundtrip_brings_live_back_to_a_capture() {
+        // Capture, edit the live file, plan (dry-run), then apply: the live file
+        // is restored byte-for-byte and a re-diff against the capture is clean.
+        let dir = tempdir().unwrap();
+        let store = dir.path().join("store");
+        let f = write_snap(dir.path(), "snap.json", b"original-content");
+        record_capture(
+            std::slice::from_ref(&f),
+            None,
+            Some(store.clone()),
+            "2026-06-19T00:00:00Z",
+            None,
+        )
+        .unwrap();
+
+        // Drift the live file away from the capture.
+        std::fs::write(&f, b"tampered").unwrap();
+
+        // Plan is write-free: it reports work but the file is still tampered.
+        let plan = plan_restore(Some(store.clone()), "latest").unwrap();
+        assert!(plan.has_work(), "an edited file should show as restorable");
+        assert_eq!(plan.would_change, 1);
+        assert_eq!(
+            std::fs::read(&f).unwrap(),
+            b"tampered",
+            "plan wrote nothing"
+        );
+
+        // Apply restores the captured bytes; no failures.
+        let out =
+            apply_restore(Some(store.clone()), "latest", true, "2026-06-19T01:00:00Z").unwrap();
+        assert!(out.applied);
+        assert!(!out.has_failure());
+        assert_eq!(out.restored, 1);
+        assert_eq!(std::fs::read(&f).unwrap(), b"original-content");
+
+        // A re-diff of the original capture against live is now clean.
+        let d = diff_capture_vs_live(Some(store), std::slice::from_ref(&f), None, "~1").unwrap();
+        assert!(
+            d.is_clean(),
+            "after restore the live file matches the capture"
+        );
+    }
+
+    #[test]
+    fn restore_takes_a_pre_restore_safety_capture_unless_disabled() {
+        let dir = tempdir().unwrap();
+        let store = dir.path().join("store");
+        let f = write_snap(dir.path(), "snap.json", b"v1");
+        record_capture(
+            std::slice::from_ref(&f),
+            None,
+            Some(store.clone()),
+            "2026-06-19T00:00:00Z",
+            None,
+        )
+        .unwrap();
+        std::fs::write(&f, b"v2-drifted").unwrap();
+
+        // With safety capture on, applying records a second (pre-restore) capture.
+        let out =
+            apply_restore(Some(store.clone()), "latest", true, "2026-06-19T01:00:00Z").unwrap();
+        assert!(
+            out.safety_capture.is_some(),
+            "a safety capture id is returned"
+        );
+        let (list, _) = list_captures(Some(store.clone())).unwrap();
+        assert_eq!(
+            list.len(),
+            2,
+            "the pre-restore capture is now in the timeline"
+        );
+        assert!(list.iter().any(|m| m
+            .label
+            .as_deref()
+            .is_some_and(|l| l.starts_with("pre-restore"))));
+
+        // Drift again and restore with the safety capture disabled: no new capture.
+        std::fs::write(&f, b"v3-drifted").unwrap();
+        let out = apply_restore(Some(store.clone()), "~1", false, "2026-06-19T02:00:00Z").unwrap();
+        assert!(
+            out.safety_capture.is_none(),
+            "no safety capture when disabled"
+        );
+        let (list, _) = list_captures(Some(store)).unwrap();
+        assert_eq!(list.len(), 2, "no extra capture was recorded");
+    }
+
+    #[test]
+    fn prune_keep_last_and_gc_reclaims_only_orphans() {
+        let dir = tempdir().unwrap();
+        let store = dir.path().join("store");
+        let f = write_snap(dir.path(), "snap.json", b"oldest-unique-content");
+
+        // Three captures, oldest first. The OLDEST holds unique content; the two
+        // newest share content. Keeping the newest 2 orphans only the oldest's
+        // object, so GC must reclaim exactly that and leave the shared one alone.
+        record_capture(
+            std::slice::from_ref(&f),
+            None,
+            Some(store.clone()),
+            "2026-06-17T00:00:00Z",
+            None,
+        )
+        .unwrap();
+        std::fs::write(&f, b"shared-content").unwrap();
+        record_capture(
+            std::slice::from_ref(&f),
+            None,
+            Some(store.clone()),
+            "2026-06-18T00:00:00Z",
+            None,
+        )
+        .unwrap();
+        record_capture(
+            std::slice::from_ref(&f),
+            None,
+            Some(store.clone()),
+            "2026-06-19T00:00:00Z",
+            None,
+        )
+        .unwrap();
+
+        let bytes_before = store_stats(Some(store.clone())).unwrap().0;
+
+        // Keep only the newest 2 (drops the oldest, unique-content capture) + GC.
+        let out = prune(
+            Some(store.clone()),
+            Some(2),
+            None,
+            true,
+            "2026-06-19T12:00:00Z",
+        )
+        .unwrap();
+        assert_eq!(out.removed_count, 1, "one capture removed");
+        assert_eq!(out.remaining_captures, 2);
+        assert!(out.gc);
+        assert_eq!(
+            out.objects_removed, 1,
+            "exactly the orphaned object is swept"
+        );
+        assert!(out.bytes_reclaimed > 0);
+
+        let (bytes_after, count, _) = store_stats(Some(store)).unwrap();
+        assert_eq!(count, 2);
+        assert!(bytes_after < bytes_before, "GC reclaimed disk");
+    }
+
+    #[test]
+    fn prune_bad_older_than_is_an_error_not_a_silent_noop() {
+        let dir = tempdir().unwrap();
+        let store = dir.path().join("store");
+        let f = write_snap(dir.path(), "s.json", b"x");
+        record_capture(
+            std::slice::from_ref(&f),
+            None,
+            Some(store.clone()),
+            "2026-06-19T00:00:00Z",
+            None,
+        )
+        .unwrap();
+        let err = prune(Some(store), None, Some("3y"), false, "2026-06-19T12:00:00Z").unwrap_err();
+        assert!(matches!(err, RewindError::BadDuration { .. }));
+    }
+
+    #[test]
+    fn prune_on_empty_store_is_no_store_error() {
+        let dir = tempdir().unwrap();
+        let store = dir.path().join("nonexistent-store");
+        let err = prune(Some(store), Some(1), None, false, "2026-06-19T12:00:00Z").unwrap_err();
+        assert!(matches!(err, RewindError::NoStore { .. }));
     }
 }

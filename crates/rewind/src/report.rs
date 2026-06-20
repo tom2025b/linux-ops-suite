@@ -9,6 +9,10 @@ use serde::Serialize;
 
 use crate::diff::{Change, ChangeKind, Diff};
 use crate::model::{CaptureEntry, EntryKind, Manifest, SnapshotState};
+use crate::prune::PruneOutcome;
+use crate::restore::{
+    RestoreAction, RestoreItem, RestoreOutcome, RestoreOutcomeKind, RestorePlan, RestoreResult,
+};
 use crate::set::CaptureSet;
 use crate::util;
 
@@ -571,6 +575,294 @@ fn diff_footer(d: &Diff) -> String {
     }
 }
 
+// ---- Restore view (`rewind restore`) --------------------------------------
+
+/// Print the restore dry-run plan: the amber DRY RUN banner, a row per path
+/// (what *would* happen), any schema-downgrade warnings, the safety-capture
+/// notice, and a zero-suppressed footer. Writes nothing — this is R2's screen.
+pub fn print_restore_plan(p: &RestorePlan, style: &Style) {
+    println!(
+        "{}{}rewind restore{} {}{}(DRY RUN){} {}— would restore from {} ({}){}",
+        style.bold,
+        style.cyn,
+        style.rst,
+        style.bold,
+        style.ylw,
+        style.rst,
+        style.dim,
+        p.from,
+        short_when(&p.captured_at),
+        style.rst
+    );
+    println!(
+        "{}nothing has been written. re-run with --apply to perform the restore.{}",
+        style.dim, style.rst
+    );
+    println!();
+
+    if p.items.is_empty() {
+        println!("{}(this capture has no paths){}", style.dim, style.rst);
+        return;
+    }
+
+    for item in &p.items {
+        let (verb, col) = plan_verb(item.action, style);
+        let detail = plan_detail(item, style);
+        println!(
+            "  {}{}{} {}{:<15}{} {}{}",
+            col,
+            restore_marker(item.action),
+            style.rst,
+            col,
+            verb,
+            style.rst,
+            item.path,
+            detail,
+        );
+    }
+
+    // R5: a loud per-path schema-downgrade warning, carried by the word.
+    for item in p.items.iter().filter(|i| i.schema_downgrade) {
+        println!(
+            "{}! schema downgrade: {} — an older schema would go under a newer live consumer{}",
+            style.ylw, item.path, style.rst
+        );
+    }
+
+    if p.has_work() {
+        println!(
+            "{}a safety capture of the current state will be taken before any write.{}",
+            style.ylw, style.rst
+        );
+    }
+
+    println!();
+    println!("{}", plan_footer(p));
+}
+
+/// Print the apply outcome: the safety-capture id first (R3), a row per path with
+/// its past-tense verb, then a zero-suppressed footer that always names failures.
+pub fn print_restore_outcome(o: &RestoreOutcome, style: &Style) {
+    match &o.safety_capture {
+        Some(id) => println!(
+            "{}{}rewind restore{} {}— safety capture taken: {}{}",
+            style.bold,
+            style.cyn,
+            style.rst,
+            style.dim,
+            short_id(id),
+            style.rst
+        ),
+        None => {
+            println!("{}{}rewind restore{}", style.bold, style.cyn, style.rst);
+            println!(
+                "{}! no safety capture taken (--no-safety-capture){}",
+                style.ylw, style.rst
+            );
+        }
+    }
+    println!();
+
+    for r in &o.results {
+        let (verb, col) = outcome_verb(r.outcome, style);
+        let detail = outcome_detail(r, style);
+        println!(
+            "  {}{}{} {}{:<9}{} {}{}",
+            col,
+            outcome_marker(r.outcome),
+            style.rst,
+            col,
+            verb,
+            style.rst,
+            r.path,
+            detail,
+        );
+    }
+
+    println!();
+    println!("{}", outcome_footer(o, style));
+}
+
+/// Marker glyph for a planned action — suite vocabulary plus `!` for a skip.
+fn restore_marker(a: RestoreAction) -> char {
+    match a {
+        RestoreAction::WouldOverwrite => '~',
+        RestoreAction::WouldCreate => '+',
+        RestoreAction::Unchanged => '=',
+        RestoreAction::Skipped => '!',
+    }
+}
+
+/// Verb word + color for a planned action.
+fn plan_verb(a: RestoreAction, style: &Style) -> (&'static str, &str) {
+    match a {
+        RestoreAction::WouldOverwrite => ("would OVERWRITE", style.ylw),
+        RestoreAction::WouldCreate => ("would CREATE", style.grn),
+        RestoreAction::Unchanged => ("unchanged", style.dim),
+        RestoreAction::Skipped => ("SKIPPED", style.ylw),
+    }
+}
+
+/// Trailing detail for a plan row: size transition, or the skip reason.
+fn plan_detail(item: &RestoreItem, style: &Style) -> String {
+    match item.action {
+        RestoreAction::WouldOverwrite => size_transition(item.was_bytes, item.now_bytes),
+        RestoreAction::WouldCreate => match item.now_bytes {
+            Some(n) => format!("  ({})", human_size(n)),
+            None => String::new(),
+        },
+        RestoreAction::Unchanged => String::new(),
+        RestoreAction::Skipped => match item.reason {
+            Some(r) => format!("  {}({}){}", style.dim, r.word(), style.rst),
+            None => String::new(),
+        },
+    }
+}
+
+/// `live X → captured Y` size transition for an overwrite. Empty when neither
+/// side has a size (a dir).
+fn size_transition(was: Option<u64>, now: Option<u64>) -> String {
+    match (was, now) {
+        (Some(a), Some(b)) => format!("  live {} → captured {}", human_size(a), human_size(b)),
+        _ => String::new(),
+    }
+}
+
+/// Zero-suppressed plan footer.
+fn plan_footer(p: &RestorePlan) -> String {
+    let mut parts = Vec::new();
+    if p.would_change > 0 {
+        parts.push(format!("{} would change", p.would_change));
+    }
+    if p.unchanged > 0 {
+        parts.push(format!("{} unchanged", p.unchanged));
+    }
+    if p.skipped > 0 {
+        parts.push(format!("{} skipped", p.skipped));
+    }
+    if p.schema_downgrades > 0 {
+        parts.push(format!("{} schema downgrade(s)", p.schema_downgrades));
+    }
+    if parts.is_empty() {
+        "nothing to restore".to_string()
+    } else {
+        parts.join(" · ")
+    }
+}
+
+/// Marker glyph for an apply outcome.
+fn outcome_marker(k: RestoreOutcomeKind) -> char {
+    match k {
+        RestoreOutcomeKind::Restored => '~',
+        RestoreOutcomeKind::Created => '+',
+        RestoreOutcomeKind::Unchanged => '=',
+        RestoreOutcomeKind::Skipped => '!',
+        RestoreOutcomeKind::Failed => '!',
+    }
+}
+
+/// Verb word + color for an apply outcome.
+fn outcome_verb(k: RestoreOutcomeKind, style: &Style) -> (&'static str, &str) {
+    match k {
+        RestoreOutcomeKind::Restored => ("RESTORED", style.grn),
+        RestoreOutcomeKind::Created => ("CREATED", style.grn),
+        RestoreOutcomeKind::Unchanged => ("unchanged", style.dim),
+        RestoreOutcomeKind::Skipped => ("SKIPPED", style.ylw),
+        RestoreOutcomeKind::Failed => ("FAILED", style.red),
+    }
+}
+
+/// Trailing detail for an outcome row: size transition, failure reason, skip
+/// reason, plus an owner-not-set note.
+fn outcome_detail(r: &RestoreResult, style: &Style) -> String {
+    let mut s = match r.outcome {
+        RestoreOutcomeKind::Restored => size_transition(r.was_bytes, r.now_bytes),
+        RestoreOutcomeKind::Created => match r.now_bytes {
+            Some(n) => format!("  ({})", human_size(n)),
+            None => String::new(),
+        },
+        RestoreOutcomeKind::Failed | RestoreOutcomeKind::Skipped => match &r.reason {
+            Some(reason) => format!("  ({reason})"),
+            None => String::new(),
+        },
+        RestoreOutcomeKind::Unchanged => String::new(),
+    };
+    if r.owner_unset {
+        s.push_str(&format!("  {}(owner not set){}", style.dim, style.rst));
+    }
+    s
+}
+
+/// Apply footer: zero-suppressed, but `failed` is ALWAYS shown (it's a write
+/// path — honesty about failures, R6), and the safety id trails when present.
+fn outcome_footer(o: &RestoreOutcome, style: &Style) -> String {
+    let mut parts = Vec::new();
+    if o.restored > 0 {
+        parts.push(format!("{} restored", o.restored));
+    }
+    parts.push(format!("{} failed", o.failed));
+    if o.unchanged > 0 {
+        parts.push(format!("{} unchanged", o.unchanged));
+    }
+    if o.skipped > 0 {
+        parts.push(format!("{} skipped", o.skipped));
+    }
+    let mut line = parts.join(" · ");
+    if let Some(id) = &o.safety_capture {
+        line.push_str(&format!(
+            " · {}safety capture {}{}",
+            style.dim,
+            short_id(id),
+            style.rst
+        ));
+    }
+    line
+}
+
+// ---- Prune view (`rewind prune`) ------------------------------------------
+
+/// Print what a prune removed: the removed captures, then a zero-suppressed
+/// footer (object/byte reclaim shown only when `--gc` ran).
+pub fn print_prune(o: &PruneOutcome, style: &Style) {
+    println!("{}{}rewind prune{}", style.bold, style.cyn, style.rst);
+    println!();
+
+    if o.removed.is_empty() && o.objects_removed == 0 {
+        println!(
+            "{}no captures matched — nothing removed.{}",
+            style.dim, style.rst
+        );
+        return;
+    }
+
+    for c in &o.removed {
+        println!(
+            "  {}- {}  {}{}",
+            style.dim,
+            short_id(&c.id),
+            short_when(&c.captured_at),
+            style.rst
+        );
+    }
+
+    println!();
+    let mut parts = vec![format!(
+        "{} {} removed",
+        o.removed_count,
+        plural(o.removed_count, "capture", "captures")
+    )];
+    if o.gc {
+        parts.push(format!(
+            "{} {} reclaimed",
+            o.objects_removed,
+            plural(o.objects_removed, "object", "objects")
+        ));
+        parts.push(format!("{} freed", human_size(o.bytes_reclaimed)));
+    }
+    parts.push(format!("{} remaining", o.remaining_captures));
+    println!("{}{}{}", style.dim, parts.join(" · "), style.rst);
+}
+
 // ---- JSON envelopes -------------------------------------------------------
 
 /// One timeline entry in the JSON envelope.
@@ -782,10 +1074,195 @@ pub fn diff_json(d: &Diff) -> String {
     serde_json::to_string_pretty(&env).unwrap_or_else(|_| "{}".to_string())
 }
 
+/// One restore-plan path in the JSON envelope. `outcome` is the dry-run verb
+/// (`would_overwrite`/`would_create`/`unchanged`/`skipped`).
+#[derive(Serialize)]
+struct PlanResultOut<'a> {
+    path: &'a str,
+    outcome: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    was_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    now_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "is_false")]
+    schema_downgrade: bool,
+}
+
+#[derive(Serialize)]
+struct RestorePlanEnvelope<'a> {
+    schema_version: u32,
+    source_tool: &'static str,
+    action: &'static str,
+    from: &'a str,
+    applied: bool,
+    dry_run: bool,
+    would_change: usize,
+    unchanged: usize,
+    skipped: usize,
+    schema_downgrades: usize,
+    results: Vec<PlanResultOut<'a>>,
+}
+
+/// The `rewind restore` dry-run JSON envelope.
+pub fn restore_plan_json(p: &RestorePlan) -> String {
+    let results = p
+        .items
+        .iter()
+        .map(|i| PlanResultOut {
+            path: &i.path,
+            outcome: plan_action_tag(i.action),
+            reason: i.reason.map(skip_reason_tag),
+            was_bytes: i.was_bytes,
+            now_bytes: i.now_bytes,
+            schema_downgrade: i.schema_downgrade,
+        })
+        .collect();
+    let env = RestorePlanEnvelope {
+        schema_version: 1,
+        source_tool: "rewind",
+        action: "restore",
+        from: &p.from,
+        applied: false,
+        dry_run: true,
+        would_change: p.would_change,
+        unchanged: p.unchanged,
+        skipped: p.skipped,
+        schema_downgrades: p.schema_downgrades,
+        results,
+    };
+    serde_json::to_string_pretty(&env).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// One restore-apply path in the JSON envelope.
+#[derive(Serialize)]
+struct OutcomeResultOut<'a> {
+    path: &'a str,
+    outcome: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: &'a Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    was_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    now_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "is_false")]
+    owner_unset: bool,
+}
+
+#[derive(Serialize)]
+struct RestoreOutcomeEnvelope<'a> {
+    schema_version: u32,
+    source_tool: &'static str,
+    action: &'static str,
+    from: &'a str,
+    applied: bool,
+    dry_run: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    safety_capture: &'a Option<String>,
+    restored: usize,
+    failed: usize,
+    unchanged: usize,
+    skipped: usize,
+    results: Vec<OutcomeResultOut<'a>>,
+}
+
+/// The `rewind restore --apply` JSON envelope.
+pub fn restore_outcome_json(o: &RestoreOutcome) -> String {
+    let results = o
+        .results
+        .iter()
+        .map(|r| OutcomeResultOut {
+            path: &r.path,
+            outcome: outcome_tag(r.outcome),
+            reason: &r.reason,
+            was_bytes: r.was_bytes,
+            now_bytes: r.now_bytes,
+            owner_unset: r.owner_unset,
+        })
+        .collect();
+    let env = RestoreOutcomeEnvelope {
+        schema_version: 1,
+        source_tool: "rewind",
+        action: "restore",
+        from: &o.from,
+        applied: true,
+        dry_run: false,
+        safety_capture: &o.safety_capture,
+        restored: o.restored,
+        failed: o.failed,
+        unchanged: o.unchanged,
+        skipped: o.skipped,
+        results,
+    };
+    serde_json::to_string_pretty(&env).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// The `rewind prune` JSON envelope. `PruneOutcome` already serializes cleanly;
+/// wrap it with the suite header fields.
+#[derive(Serialize)]
+struct PruneEnvelope<'a> {
+    schema_version: u32,
+    source_tool: &'static str,
+    action: &'static str,
+    removed: &'a [crate::prune::PrunedCapture],
+    removed_count: usize,
+    gc: bool,
+    objects_removed: usize,
+    bytes_reclaimed: u64,
+    remaining_captures: usize,
+}
+
+/// Render a prune outcome as the suite JSON envelope.
+pub fn prune_json(o: &PruneOutcome) -> String {
+    let env = PruneEnvelope {
+        schema_version: 1,
+        source_tool: "rewind",
+        action: "prune",
+        removed: &o.removed,
+        removed_count: o.removed_count,
+        gc: o.gc,
+        objects_removed: o.objects_removed,
+        bytes_reclaimed: o.bytes_reclaimed,
+        remaining_captures: o.remaining_captures,
+    };
+    serde_json::to_string_pretty(&env).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// JSON tag for a plan action (dry-run verbs).
+fn plan_action_tag(a: RestoreAction) -> &'static str {
+    match a {
+        RestoreAction::WouldOverwrite => "would_overwrite",
+        RestoreAction::WouldCreate => "would_create",
+        RestoreAction::Unchanged => "unchanged",
+        RestoreAction::Skipped => "skipped",
+    }
+}
+
+/// JSON tag for an apply outcome.
+fn outcome_tag(k: RestoreOutcomeKind) -> &'static str {
+    match k {
+        RestoreOutcomeKind::Restored => "restored",
+        RestoreOutcomeKind::Created => "created",
+        RestoreOutcomeKind::Unchanged => "unchanged",
+        RestoreOutcomeKind::Skipped => "skipped",
+        RestoreOutcomeKind::Failed => "failed",
+    }
+}
+
+/// JSON tag for a skip reason.
+fn skip_reason_tag(r: crate::restore::SkipReason) -> &'static str {
+    match r {
+        crate::restore::SkipReason::UnreadableInCapture => "unreadable_in_capture",
+        crate::restore::SkipReason::MissingObject => "missing_object",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::{CaptureEntry, EntryKind, MANIFEST_SCHEMA_VERSION};
+    use crate::restore::SkipReason;
 
     fn manifest(id: &str, at: &str, tool: Option<&str>) -> Manifest {
         Manifest {
@@ -1059,5 +1536,220 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&diff_json(&d)).unwrap();
         assert_eq!(v["to"], "live");
         assert_eq!(v["clean"], true);
+    }
+
+    // ---- Phase 3: restore / prune renderers -------------------------------
+
+    fn plan_with(items: Vec<RestoreItem>) -> RestorePlan {
+        let would_change = items
+            .iter()
+            .filter(|i| {
+                matches!(
+                    i.action,
+                    RestoreAction::WouldOverwrite | RestoreAction::WouldCreate
+                )
+            })
+            .count();
+        let unchanged = items
+            .iter()
+            .filter(|i| i.action == RestoreAction::Unchanged)
+            .count();
+        let skipped = items
+            .iter()
+            .filter(|i| i.action == RestoreAction::Skipped)
+            .count();
+        let schema_downgrades = items.iter().filter(|i| i.schema_downgrade).count();
+        RestorePlan {
+            from: "a17b2222".into(),
+            captured_at: "2026-06-19T14:22:05Z".into(),
+            items,
+            would_change,
+            unchanged,
+            skipped,
+            schema_downgrades,
+        }
+    }
+
+    fn plan_item(path: &str, action: RestoreAction, reason: Option<SkipReason>) -> RestoreItem {
+        RestoreItem {
+            path: path.into(),
+            action,
+            reason,
+            was_bytes: Some(100),
+            now_bytes: Some(200),
+            schema_downgrade: false,
+        }
+    }
+
+    #[test]
+    fn restore_plan_json_is_a_dry_run_envelope_with_action_tags() {
+        let p = plan_with(vec![
+            plan_item("/etc/a", RestoreAction::WouldOverwrite, None),
+            plan_item("/etc/b", RestoreAction::WouldCreate, None),
+            plan_item("/etc/c", RestoreAction::Unchanged, None),
+            plan_item(
+                "/etc/d",
+                RestoreAction::Skipped,
+                Some(SkipReason::MissingObject),
+            ),
+        ]);
+        let v: serde_json::Value = serde_json::from_str(&restore_plan_json(&p)).unwrap();
+        assert_eq!(v["source_tool"], "rewind");
+        assert_eq!(v["action"], "restore");
+        assert_eq!(v["dry_run"], true);
+        assert_eq!(v["applied"], false);
+        assert_eq!(v["would_change"], 2);
+        assert_eq!(v["unchanged"], 1);
+        assert_eq!(v["skipped"], 1);
+        assert_eq!(v["results"][0]["outcome"], "would_overwrite");
+        assert_eq!(v["results"][1]["outcome"], "would_create");
+        assert_eq!(v["results"][2]["outcome"], "unchanged");
+        assert_eq!(v["results"][3]["outcome"], "skipped");
+        assert_eq!(v["results"][3]["reason"], "missing_object");
+    }
+
+    #[test]
+    fn restore_plan_json_omits_false_schema_downgrade() {
+        // "absence is the signal": a non-downgrade item carries no key.
+        let p = plan_with(vec![plan_item(
+            "/etc/a",
+            RestoreAction::WouldOverwrite,
+            None,
+        )]);
+        let v: serde_json::Value = serde_json::from_str(&restore_plan_json(&p)).unwrap();
+        assert!(v["results"][0].get("schema_downgrade").is_none());
+        assert!(v["results"][0].get("reason").is_none());
+    }
+
+    #[test]
+    fn restore_outcome_json_carries_safety_capture_failed_and_owner_unset() {
+        let o = RestoreOutcome {
+            from: "a17b2222".into(),
+            applied: true,
+            safety_capture: Some("ffff0000".into()),
+            results: vec![
+                RestoreResult {
+                    path: "/etc/a".into(),
+                    outcome: RestoreOutcomeKind::Restored,
+                    reason: None,
+                    was_bytes: Some(10),
+                    now_bytes: Some(20),
+                    owner_unset: true,
+                },
+                RestoreResult {
+                    path: "/etc/b".into(),
+                    outcome: RestoreOutcomeKind::Failed,
+                    reason: Some("permission denied".into()),
+                    was_bytes: None,
+                    now_bytes: None,
+                    owner_unset: false,
+                },
+            ],
+            restored: 1,
+            failed: 1,
+            unchanged: 0,
+            skipped: 0,
+        };
+        let v: serde_json::Value = serde_json::from_str(&restore_outcome_json(&o)).unwrap();
+        assert_eq!(v["action"], "restore");
+        assert_eq!(v["dry_run"], false);
+        assert_eq!(v["applied"], true);
+        assert_eq!(v["safety_capture"], "ffff0000");
+        assert_eq!(v["restored"], 1);
+        assert_eq!(v["failed"], 1);
+        assert_eq!(v["results"][0]["outcome"], "restored");
+        assert_eq!(v["results"][0]["owner_unset"], true);
+        assert_eq!(v["results"][1]["outcome"], "failed");
+        assert_eq!(v["results"][1]["reason"], "permission denied");
+        // The owner_unset false on the second result is omitted, not null.
+        assert!(v["results"][1].get("owner_unset").is_none());
+    }
+
+    #[test]
+    fn restore_outcome_json_omits_absent_safety_capture() {
+        let o = RestoreOutcome {
+            from: "a17b2222".into(),
+            applied: true,
+            safety_capture: None,
+            results: vec![],
+            restored: 0,
+            failed: 0,
+            unchanged: 1,
+            skipped: 0,
+        };
+        let v: serde_json::Value = serde_json::from_str(&restore_outcome_json(&o)).unwrap();
+        assert!(
+            v.get("safety_capture").is_none(),
+            "a skipped safety capture is omitted, not null"
+        );
+    }
+
+    #[test]
+    fn prune_json_is_a_prune_envelope() {
+        let o = PruneOutcome {
+            removed: vec![crate::prune::PrunedCapture {
+                id: "old11111".into(),
+                captured_at: "2026-06-01T00:00:00Z".into(),
+            }],
+            removed_count: 1,
+            gc: true,
+            objects_removed: 2,
+            bytes_reclaimed: 4096,
+            remaining_captures: 3,
+        };
+        let v: serde_json::Value = serde_json::from_str(&prune_json(&o)).unwrap();
+        assert_eq!(v["source_tool"], "rewind");
+        assert_eq!(v["action"], "prune");
+        assert_eq!(v["removed_count"], 1);
+        assert_eq!(v["gc"], true);
+        assert_eq!(v["objects_removed"], 2);
+        assert_eq!(v["bytes_reclaimed"], 4096);
+        assert_eq!(v["remaining_captures"], 3);
+        assert_eq!(v["removed"][0]["id"], "old11111");
+    }
+
+    #[test]
+    fn human_renderers_do_not_panic_monochrome() {
+        // Smoke: the human printers run clean over representative inputs. Color
+        // off so the assertions below can match the plain text.
+        let style = Style::resolve(true);
+        let p = plan_with(vec![
+            plan_item("/etc/a", RestoreAction::WouldOverwrite, None),
+            plan_item(
+                "/etc/b",
+                RestoreAction::Skipped,
+                Some(SkipReason::UnreadableInCapture),
+            ),
+        ]);
+        print_restore_plan(&p, &style);
+
+        let o = RestoreOutcome {
+            from: "a17b2222".into(),
+            applied: true,
+            safety_capture: Some("ffff0000".into()),
+            results: vec![RestoreResult {
+                path: "/etc/a".into(),
+                outcome: RestoreOutcomeKind::Restored,
+                reason: None,
+                was_bytes: Some(10),
+                now_bytes: Some(20),
+                owner_unset: false,
+            }],
+            restored: 1,
+            failed: 0,
+            unchanged: 0,
+            skipped: 0,
+        };
+        print_restore_outcome(&o, &style);
+
+        let pr = PruneOutcome {
+            removed: vec![],
+            removed_count: 0,
+            gc: false,
+            objects_removed: 0,
+            bytes_reclaimed: 0,
+            remaining_captures: 2,
+        };
+        print_prune(&pr, &style);
     }
 }

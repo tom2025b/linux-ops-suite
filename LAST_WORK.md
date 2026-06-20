@@ -1,5 +1,42 @@
 # Last Work
 
+## Rewind Phase 3 — guarded `restore` + `prune` (store maintenance)
+
+2026-06-19. `crates/rewind/`. Completed Rewind's write half on top of Phase 2,
+under a hard safety contract. Branch `feat/rewind-phase3` (not yet merged).
+
+- **`rewind restore <capture>`** — the one guarded write. Dry-run by default
+  (`restore.rs::plan`, write-free, reuses `diff::diff_entries` as its classifier,
+  then overrides the cases a diff can't see — unreadable-in-capture, missing
+  object). `--apply` (`restore.rs::apply`) first takes a `pre-restore:<id>` safety
+  capture of the live state, then atomic-writes each file (temp-in-parent +
+  rename), restoring captured mode and — best-effort — uid/gid via a hand-rolled
+  `extern lchown` (`util::set_owner`; can't-set-owner warns, continues). Schema
+  *downgrade* (older envelope under a newer live consumer) is flagged. R1–R6
+  contract documented at the top of `restore.rs`.
+- **`rewind restore --latest-good`** — restores the newest valid-snapshot capture
+  (clap `required_unless_present`, so `<capture>` is then optional).
+- **`rewind prune`** — `--keep-last N` / `--older-than <Ns|m|h|d>` (hand-parsed) /
+  `--gc` mark-and-sweep. Immediate (no dry-run), nothing auto-pruned. Removing a
+  capture deletes only its manifest; `--gc` then removes objects no surviving
+  capture references (`prune.rs::sweep`). Bad `--older-than` → new
+  `RewindError::BadDuration` (exit 3).
+- **Exit-code policy** (in `main.rs` only): restore dry-run → 0; `--apply` with a
+  per-path failure → **2** (R6, never partial-silent); prune → 0.
+
+Store gained `delete_manifest` (idempotent) + `iter_object_hashes` +
+`remove_object` (returns freed bytes). JSON: typed envelopes for restore-plan,
+restore-outcome, prune (`skip_serializing_if` so absent label/safety-capture/
+false flags are omitted, never null). No new deps. Gate green: fmt --check,
+clippy -D warnings (default AND --all-features), 132 rewind unit tests + full
+workspace. E2E smoke-tested the binary: capture → drift → dry-run (writes
+nothing, exit 0) → `--apply` (writes + pre-restore safety capture in timeline) →
+re-diff clean → `prune --keep-last 1 --gc` (reclaims orphan) → bad-duration exit
+3 → missing-arg clap exit 2 → JSON envelopes. Fixed a renderer spacing bug
+(path/size-transition collision) found during the smoke test.
+
+---
+
 ## Rewind Phase 2 — `show`, `diff`, capture selectors + timeline marker
 
 2026-06-19. `crates/rewind/`. Added the read/compare half of Rewind on top of
