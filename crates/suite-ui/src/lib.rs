@@ -28,6 +28,17 @@
 //! - a RAII [`Tui`] terminal scope guard (setup + panic-safe teardown +
 //!   ordered post-exit stdout) every tool adopts;
 //!
+//! ## Two layers: `thomas-tui` and `suite-ui`
+//!
+//! `suite-ui` is the suite-flavoured shim over [`thomas_tui`], the domain-free
+//! toolkit: it re-exports the whole toolkit (so consumers import everything as
+//! `suite_ui::*`) and adds only the widgets welded to suite semantics — job status
+//! ([`StatusBar`]/[`JobState`]/[`Outcome`]), [`Severity`] risk
+//! ([`SeverityBadge`]), [`Health`] ([`HealthStrip`]), and the
+//! [`AttentionFlag`]/job-[`Toast`] markers. Everything domain-free — the theme,
+//! panes, layout, truncation, the [`Tui`] guard, the one-line widgets — lives in
+//! `thomas-tui` and could be reused by any ratatui app.
+//!
 //! ## Scope: chrome, not logic
 //!
 //! Every visual component takes a [`Theme`], a borrowed data slice, and a
@@ -35,7 +46,9 @@
 //! domain types. Command dispatch, filtering, and effects stay in the consuming
 //! application — `suite-ui` draws the box; the app owns the behaviour. This is
 //! what lets two otherwise-decoupled tools share presentation without coupling
-//! their internals.
+//! their internals. suite-ui's widgets follow the same Widget API contract as
+//! `thomas-tui` (see its crate docs): borrowed values only, `span`/`line`/`render`
+//! by shape, and `.themed(theme)` for the `ratatui::Widget` surface.
 //!
 //! ## The terminal guard
 //!
