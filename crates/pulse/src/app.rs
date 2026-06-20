@@ -49,12 +49,9 @@ pub struct App {
     /// A transient one-line status shown on the next repaint (e.g. "rexops not
     /// found"). Cleared by the next keypress so it never lingers.
     status: Option<String>,
-    /// The resolved suite-ui palette (accent + the `NO_COLOR` gate). Carried on
-    /// the app so the per-view ratatui draws (T5–T8) style through it; the legacy
-    /// string renderer still uses the bespoke `Style` until each view is ported.
-    // Wired up but not yet drawn through — the first consumer is the T5 verdict
-    // draw. Allowed (not used) only for this in-between step.
-    #[allow(dead_code)]
+    /// The resolved suite-ui palette (accent + the `NO_COLOR` gate). The ratatui
+    /// draw layer ([`crate::view`]) styles the ported views through it; the legacy
+    /// string renderer still uses the bespoke `Style` for views not yet ported.
     theme: Theme,
 }
 
@@ -73,11 +70,32 @@ impl App {
         }
     }
 
-    /// The resolved theme this app draws through. First used by the T5 verdict
-    /// draw; allowed-unused until then.
-    #[allow(dead_code)]
+    /// The resolved theme this app draws through.
     pub fn theme(&self) -> Theme {
         self.theme
+    }
+
+    /// The current view — the draw layer dispatches on it.
+    pub(crate) fn view(&self) -> View {
+        self.view
+    }
+
+    /// The derived verdict the default screen renders.
+    pub(crate) fn verdict(&self) -> &Verdict {
+        &self.verdict
+    }
+
+    /// The transient status line, if any (e.g. "rexops not found").
+    pub(crate) fn status(&self) -> Option<&str> {
+        self.status.as_deref()
+    }
+
+    /// Build the legacy string frame for a view the ratatui draw layer hasn't
+    /// ported yet. The migration bridge: rendered monochrome (the string carries
+    /// no ANSI under a plain style) and blitted as one `Paragraph`. Removed view
+    /// by view as T6–T8 land real draws, and entirely in T10.
+    pub(crate) fn legacy_frame(&self, size: TermSize) -> String {
+        self.frame(&Style::plain_for_bridge(), size)
     }
 
     /// Run the interactive loop until the user quits. Owns the terminal via the
@@ -104,19 +122,10 @@ impl App {
         })
         .map_err(io::Error::other)?;
 
-        // The bridge renders the legacy frame monochrome (see above).
-        let bridge_style = Style::plain_for_bridge();
-
         loop {
-            // ratatui owns terminal size now; build the legacy frame to match the
-            // current draw area, then blit it as one Paragraph.
-            let area = tui.terminal().size()?;
-            let size = TermSize::from_area(area.width, area.height);
-            let frame = self.frame(&bridge_style, size);
-            tui.terminal().draw(|f| {
-                let text = ratatui::text::Text::raw(frame.clone());
-                f.render_widget(ratatui::widgets::Paragraph::new(text), f.area());
-            })?;
+            // The ratatui draw layer paints the current view (suite-ui chrome for
+            // ported views, the legacy string frame for the rest — see crate::view).
+            tui.terminal().draw(|f| crate::view::draw(f, &self))?;
             if self.quit {
                 break;
             }

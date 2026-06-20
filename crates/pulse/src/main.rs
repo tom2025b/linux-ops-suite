@@ -57,8 +57,8 @@ use suite_ui::{ColorChoice, Theme, ThemeChoice};
 /// Below this width or height we stop trying to center and fall back to a plain
 /// top-left render, so a tiny / odd terminal never clips the verdict. 80x24 is
 /// the compact target the suite's prior TUI work calls out.
-const MIN_CENTER_WIDTH: u16 = 24;
-const MIN_CENTER_HEIGHT: u16 = 8;
+pub(crate) const MIN_CENTER_WIDTH: u16 = 24;
+pub(crate) const MIN_CENTER_HEIGHT: u16 = 8;
 
 /// Default assumed size when no TTY and no COLUMNS/LINES — a classic terminal.
 const FALLBACK_WIDTH: u16 = 80;
@@ -249,6 +249,7 @@ mod cockpit;
 mod sources;
 mod tui;
 mod verdict;
+mod view;
 
 use verdict::{Source, State, Verdict};
 
@@ -504,7 +505,7 @@ pub(crate) fn verdict_text(state: State) -> String {
 /// "2 critical · 4 high", collapsed onto one calm line. Drops a zero side so a
 /// high-only verdict doesn't read "0 critical". This is the *visible* text;
 /// `count_line` adds color.
-fn count_summary(v: &Verdict) -> String {
+pub(crate) fn count_summary(v: &Verdict) -> String {
     match (v.critical, v.high) {
         (0, 0) => String::new(),
         (c, 0) => format!("{c} critical"),
@@ -521,7 +522,7 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     }
 }
 
-fn incomplete_summary(v: &Verdict) -> String {
+pub(crate) fn incomplete_summary(v: &Verdict) -> String {
     match (v.unavailable, v.stale) {
         (0, 0) => "suite view unavailable".to_string(),
         (0, stale) => plural(stale, "source stale", "sources stale"),
