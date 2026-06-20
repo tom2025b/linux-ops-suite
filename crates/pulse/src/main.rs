@@ -26,9 +26,9 @@
 //!   - Elements appear and vanish between states but never change position; the
 //!     vertical anchor is constant. That stability is the premium feel.
 //!
-//! Like rex-check, pulse is intentionally dependency-free: it renders its own
-//! ANSI and reads terminal size / TTY state via tiny `libc` calls behind a
-//! hand-rolled `extern "C"` block, so std is all it needs. Color follows the
+//! Pulse stays lean: it renders its own ANSI and reads terminal size via a tiny
+//! `libc` call behind a hand-rolled `extern "C"` block; its TTY check comes from
+//! the shared `suite-core` crate. Color follows the
 //! suite rule — on only when stdout is a TTY and `NO_COLOR` is unset — and the
 //! screen stays fully legible with color off, because state is always also
 //! carried by the verdict word and by marker shape, never by color alone.
@@ -50,6 +50,8 @@
 
 use std::env;
 use std::process::ExitCode;
+
+use suite_core::env::stdout_is_tty;
 
 /// Below this width or height we stop trying to center and fall back to a plain
 /// top-left render, so a tiny / odd terminal never clips the verdict. 80x24 is
@@ -856,15 +858,6 @@ fn ioctl_winsize() -> Option<(u16, u16)> {
     } else {
         None
     }
-}
-
-/// Whether fd 1 (stdout) is a TTY, via `isatty(3)`. Mirrors rex-check.
-fn stdout_is_tty() -> bool {
-    // SAFETY: isatty merely queries a file descriptor and has no preconditions.
-    extern "C" {
-        fn isatty(fd: i32) -> i32;
-    }
-    unsafe { isatty(1) == 1 }
 }
 
 #[cfg(test)]
