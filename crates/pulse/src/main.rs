@@ -52,6 +52,7 @@ use std::env;
 use std::process::ExitCode;
 
 use suite_core::env::stdout_is_tty;
+use suite_ui::{ColorChoice, Theme, ThemeChoice};
 
 /// Below this width or height we stop trying to center and fall back to a plain
 /// top-left render, so a tiny / odd terminal never clips the verdict. 80x24 is
@@ -73,6 +74,10 @@ fn main() -> ExitCode {
     // Some((view, query)) => render one interactive view once and exit. A
     // deterministic preview/snapshot path (no event loop, no PTY).
     let mut dump_view: Option<(String, String)> = None;
+    // suite-ui theme/colour choices. Default: cyan accent, Auto colour (honours
+    // NO_COLOR). Parsed from --theme / --color below.
+    let mut theme_choice = ThemeChoice::Cyan;
+    let mut color_choice = ColorChoice::Auto;
 
     let mut i = 0;
     while i < args.len() {
@@ -105,6 +110,39 @@ fn main() -> ExitCode {
                 std::env::set_var("PULSE_DATA_DIR", path);
                 i += 1;
             }
+            "--theme" => {
+                let Some(name) = args.get(i + 1) else {
+                    eprintln!("pulse: --theme needs a value (cyan | amber)");
+                    return ExitCode::from(2);
+                };
+                theme_choice = match name.as_str() {
+                    "cyan" => ThemeChoice::Cyan,
+                    "amber" => ThemeChoice::Amber,
+                    other => {
+                        eprintln!("pulse: unknown theme '{other}' (expected: cyan | amber)");
+                        return ExitCode::from(2);
+                    }
+                };
+                i += 1;
+            }
+            "--color" => {
+                let Some(name) = args.get(i + 1) else {
+                    eprintln!("pulse: --color needs a value (auto | always | never)");
+                    return ExitCode::from(2);
+                };
+                color_choice = match name.as_str() {
+                    "auto" => ColorChoice::Auto,
+                    "always" => ColorChoice::Always,
+                    "never" => ColorChoice::Never,
+                    other => {
+                        eprintln!(
+                            "pulse: unknown color '{other}' (expected: auto | always | never)"
+                        );
+                        return ExitCode::from(2);
+                    }
+                };
+                i += 1;
+            }
             "--dump-view" => {
                 let Some(name) = args.get(i + 1) else {
                     eprintln!("pulse: --dump-view needs a view (default|attention|feeds|details|help|search)");
@@ -125,11 +163,15 @@ fn main() -> ExitCode {
     }
 
     let style = Style::resolve();
+    // The resolved suite-ui palette (accent + NO_COLOR gate), carried on the app
+    // for the per-view ratatui draws. The legacy `Style` above still feeds the
+    // string renderer until each view is ported off it.
+    let theme = Theme::resolve(color_choice, theme_choice);
 
     // Deterministic single-view render (preview / snapshot), no event loop.
     if let Some((view, query)) = dump_view {
         let readings = verdict::Readings::load(&sources::DataDir::resolve());
-        let mut app = app::App::new(readings);
+        let mut app = app::App::new(readings, theme);
         return match app.dump(&view, &query, &style, TermSize::resolve()) {
             Some(frame) => {
                 println!("{frame}");
@@ -153,7 +195,7 @@ fn main() -> ExitCode {
 
     if interactive {
         let readings = verdict::Readings::load(&sources::DataDir::resolve());
-        return match app::App::new(readings).run(&style) {
+        return match app::App::new(readings, theme).run() {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("pulse: {e}");
@@ -192,6 +234,9 @@ OPTIONS:
     --dump-view <V>   render one view once and exit (no event loop):
                       default | attention | feeds | details | help | search
                       (append a query for search: --dump-view search aws)
+    --theme <THEME>   accent colour: cyan (default) | amber
+    --color <WHEN>    colour output: auto (default, honours NO_COLOR) |
+                      always | never
     --no-clear        don't clear the screen first (useful when piping)
     -h, --help        print this help
 
@@ -892,6 +937,29 @@ mod tests {
             width: w,
             height: h,
         }
+    }
+
+    #[test]
+    fn theme_resolution_honours_the_suite_ui_colour_gate() {
+        // --color=never forces colour off: no accent fg survives, mirroring
+        // suite-ui's own gate (the single place NO_COLOR is enforced now).
+        let off = Theme::resolve(ColorChoice::Never, ThemeChoice::Cyan);
+        assert!(!off.color_enabled(), "never disables colour");
+        assert_eq!(off.title().fg, None, "no accent fg under colour-off");
+        // --color=always forces it on regardless of the runner's NO_COLOR.
+        let on = Theme::resolve(ColorChoice::Always, ThemeChoice::Cyan);
+        assert!(on.color_enabled(), "always forces colour on");
+        assert!(on.title().fg.is_some(), "accent fg present with colour on");
+        // The accent swaps with the theme choice (only when colour is on).
+        assert_ne!(
+            Theme::resolve(ColorChoice::Always, ThemeChoice::Cyan)
+                .title()
+                .fg,
+            Theme::resolve(ColorChoice::Always, ThemeChoice::Amber)
+                .title()
+                .fg,
+            "cyan vs amber accent differ when colour is on"
+        );
     }
 
     #[test]

@@ -15,7 +15,7 @@
 
 use std::io;
 
-use suite_ui::{Tui, TuiOptions};
+use suite_ui::{Theme, Tui, TuiOptions};
 
 use crate::tui::{self, Key};
 use crate::verdict::{Readings, Source, Verdict};
@@ -49,10 +49,17 @@ pub struct App {
     /// A transient one-line status shown on the next repaint (e.g. "rexops not
     /// found"). Cleared by the next keypress so it never lingers.
     status: Option<String>,
+    /// The resolved suite-ui palette (accent + the `NO_COLOR` gate). Carried on
+    /// the app so the per-view ratatui draws (T5–T8) style through it; the legacy
+    /// string renderer still uses the bespoke `Style` until each view is ported.
+    // Wired up but not yet drawn through — the first consumer is the T5 verdict
+    // draw. Allowed (not used) only for this in-between step.
+    #[allow(dead_code)]
+    theme: Theme,
 }
 
 impl App {
-    pub fn new(readings: Readings) -> Self {
+    pub fn new(readings: Readings, theme: Theme) -> Self {
         let verdict = Verdict::from_readings(&readings);
         App {
             readings,
@@ -62,7 +69,15 @@ impl App {
             quit: false,
             launch_cockpit: false,
             status: None,
+            theme,
         }
+    }
+
+    /// The resolved theme this app draws through. First used by the T5 verdict
+    /// draw; allowed-unused until then.
+    #[allow(dead_code)]
+    pub fn theme(&self) -> Theme {
+        self.theme
     }
 
     /// Run the interactive loop until the user quits. Owns the terminal via the
@@ -77,8 +92,9 @@ impl App {
     /// escapes literally, the bridge renders the frame with a **plain** (no-code)
     /// style — so this step is intentionally monochrome. Real suite-ui theming
     /// and per-view widgets replace this `frame()`/`Paragraph` path in later
-    /// steps (T4–T8); the loop shape here is the final one.
-    pub fn run(mut self, _style: &Style) -> io::Result<()> {
+    /// steps (T5–T8); the loop shape here is the final one. The resolved theme
+    /// lives on `self` ([`App::theme`]) ready for those draws.
+    pub fn run(mut self) -> io::Result<()> {
         // Read-only dashboard: hide the cursor; require a real tty so we fail
         // with a friendly message rather than entering raw mode on a pipe.
         let mut tui = Tui::new(TuiOptions {
@@ -543,7 +559,9 @@ mod tests {
     }
 
     fn app() -> App {
-        App::new(sample_readings())
+        // Colour forced off so navigation tests are deterministic regardless of
+        // the runner's NO_COLOR; these tests assert on view/query state, not hue.
+        App::new(sample_readings(), Theme::with_color(false))
     }
 
     #[test]
