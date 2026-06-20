@@ -187,11 +187,13 @@ fn parse_config_file(path: &Path) -> Result<Vec<WatchEntry>, TripwireError> {
 pub fn parse_config(text: &str) -> Vec<WatchEntry> {
     let mut entries = Vec::new();
     for raw in text.lines() {
-        let line = match raw.split('#').next() {
-            Some(l) => l.trim(),
-            None => continue,
-        };
-        if line.is_empty() {
+        let line = raw.trim();
+        // A `#` is only a comment when it starts the line — `#` is a legal
+        // character in a filesystem path (e.g. `/var/data#v2.log`), so stripping
+        // from the first `#` anywhere on the line would silently truncate such a
+        // path and watch the wrong file. Full-line comments and blanks are
+        // skipped; everything else is taken verbatim.
+        if line.is_empty() || line.starts_with('#') {
             continue;
         }
 
@@ -310,6 +312,24 @@ mod tests {
         assert!(has("/etc/shadow"));
         assert!(has("/etc/ssh/sshd_config"));
         assert!(has("/etc/cron.d"));
+    }
+
+    #[test]
+    fn hash_in_path_is_kept_but_leading_hash_is_a_comment() {
+        // L3 regression: `#` is legal in a filesystem path. Only a line whose
+        // first non-space char is `#` is a comment; an inline `#` must not
+        // truncate the path (which would silently watch the wrong file).
+        let text = "\
+# a real comment
+/var/data#v2.log       content=false
+    # indented comment
+/srv/cache#tmp
+";
+        let entries = parse_config(text);
+        assert_eq!(entries.len(), 2, "two paths, two comments");
+        assert_eq!(entries[0].path, PathBuf::from("/var/data#v2.log"));
+        assert!(!entries[0].content);
+        assert_eq!(entries[1].path, PathBuf::from("/srv/cache#tmp"));
     }
 
     #[test]

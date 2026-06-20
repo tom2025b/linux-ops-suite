@@ -252,11 +252,14 @@ fn changed_fields(was: &Entry, now: &Entry) -> Vec<Field> {
             (Some(_), Some(_)) => {} // identical content
             // Symlink target acts as content.
             _ if was.target != now.target => fields.push(Field::Content),
-            // Neither hashed (content=false, or both unreadable and same state):
-            // fall back to size as the only visible content signal.
-            _ if was.hash.is_none() && now.hash.is_none() && was.size != now.size => {
-                fields.push(Field::Size)
-            }
+            // Not both hashed — either neither side tracks content (content=false
+            // on both runs), or content-tracking was toggled between runs so one
+            // side has a hash and the other doesn't. In every such case the hash
+            // is not a usable comparison, so fall back to size as the only
+            // visible content signal we can still trust. (Without this, a
+            // hash↔no-hash transition with an unchanged size+mode silently
+            // reported nothing — a real-but-invisible content change.)
+            _ if was.size != now.size => fields.push(Field::Size),
             _ => {}
         }
     }
@@ -381,6 +384,29 @@ mod tests {
                 assert!(fields.contains(&Field::Mode));
                 assert!(fields.contains(&Field::Owner));
                 assert!(fields.iter().any(|f| f.is_security()));
+            }
+            other => panic!("expected modified, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn content_toggle_with_size_change_is_not_silent() {
+        // L2 regression: baseline tracked content (has a hash); a later run has
+        // content tracking off (no hash) and the file actually grew. Readability
+        // did not flip. Previously the (Some, None) hash pair hit `_ => {}` and
+        // reported NOTHING — an invisible content change. Now it falls back to
+        // Size, so the drift surfaces.
+        let base = vec![file("/etc/motd", "aa", "0644")]; // size = 2 (len of "aa")
+        let mut now = file("/etc/motd", "aa", "0644");
+        now.hash = None; // content tracking toggled off
+        now.size = Some(9999); // and the file changed size
+        let d = diff(&base, &[now]);
+        match &d.changes[0] {
+            Change::Modified { fields, .. } => {
+                assert!(
+                    fields.contains(&Field::Size),
+                    "size drift must be reported, got {fields:?}"
+                );
             }
             other => panic!("expected modified, got {other:?}"),
         }

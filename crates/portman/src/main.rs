@@ -120,9 +120,38 @@ fn json_string(s: &str) -> String {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{08}' => out.push_str("\\b"),
+            '\u{0c}' => out.push_str("\\f"),
+            // RFC 8259 requires every control char (U+0000–U+001F) to be
+            // escaped; a raw one here would make the envelope invalid JSON.
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
             _ => out.push(c),
         }
     }
     out.push('"');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::json_string;
+
+    #[test]
+    fn json_string_escapes_control_chars_to_valid_json() {
+        // L4 regression: a path with control bytes (tab, CR — both legal in a
+        // Linux filename) must produce valid JSON, not a raw control char that
+        // breaks a strict parser.
+        let raw = "a\tb\r\n\u{01}c";
+        let encoded = json_string(raw);
+        // No raw control char survives in the output.
+        assert!(
+            !encoded.chars().any(|c| (c as u32) < 0x20),
+            "raw control char leaked: {encoded:?}"
+        );
+        // And it round-trips through a strict JSON parser back to the original.
+        let parsed: String = serde_json::from_str(&encoded).expect("valid JSON string");
+        assert_eq!(parsed, raw);
+    }
 }
