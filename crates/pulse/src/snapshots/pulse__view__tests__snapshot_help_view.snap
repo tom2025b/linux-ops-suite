@@ -1,0 +1,26 @@
+---
+source: crates/pulse/src/view.rs
+expression: "view_grid(View::Help, \"\", 80, 24)"
+---
+                                                                                
+                                                                                
+              ╭────────────────── pulse · keys ──────────────────╮              
+              │                                                  │              
+              │ Enter  details for the current verdict           │              
+              │     a  attention — everything that needs action  │              
+              │     f  feeds — source freshness & confidence     │              
+              │     /  search across visible status              │              
+              │     r  open the full RexOps cockpit              │              
+              │     ?  toggle this help                          │              
+              │     q  quit                                      │              
+              │   Esc  back to the verdict                       │              
+              │                                                  │              
+              │                                                  │              
+              │                                                  │              
+              │                                                  │              
+              │                                                  │              
+              │                                                  │              
+              │                                                  │              
+              │                                                  │              
+              │                                                  │              
+              ╰──────────────────────────────────────────────────╯

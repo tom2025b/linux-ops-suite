@@ -1,0 +1,22 @@
+---
+source: crates/pulse/src/view.rs
+expression: "view_grid(View::Details, \"\", 80, 18)"
+---
+╭ pulse · DETAILS ─────────────────────────────────────────────────────────────╮
+│ verdict   NEEDS ATTENTION                                                    │
+│ data age  just now                                                           │
+│ findings  1 critical, 0 high                                                 │
+│                                                                              │
+│ press a for the full attention list, f for feeds.                            │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│ Enter back  •  Esc back  •  q quit                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯

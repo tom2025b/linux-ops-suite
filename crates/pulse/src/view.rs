@@ -2,21 +2,40 @@
 //! paints the current view using suite-ui chrome. No state, no I/O — the event
 //! loop in [`crate::app`] owns those; this file only describes pixels.
 //!
-//! MIGRATION STATE: [`View::Default`] (the calm verdict screen) is drawn here in
-//! real ratatui through the [`Theme`]. The other views still fall back to the
-//! legacy string renderer blitted as one `Paragraph` (see [`draw_legacy`]) until
-//! T6–T8 port them; the transient status line is overlaid on the bottom row the
-//! same way the string renderer did, regardless of which path drew the view.
+//! Every interactive view is drawn here in real ratatui through the [`Theme`]:
+//! the calm verdict screen ([`draw_verdict`]) and the drill-downs — Attention
+//! ([`SeverityBadge`] rows / [`EmptyState`]), Feeds ([`HealthStrip`]), Details,
+//! Help ([`HelpSheet`] overlay), and Search ([`SearchBar`]). The transient status
+//! line is overlaid on the bottom row whichever view drew. The legacy string
+//! renderer in `main.rs`/`app.rs` now serves only `--dump-view`/`--state` and the
+//! navigation tests, and is removed in T9/T10.
 
 use ratatui::layout::Rect;
+use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
-use suite_ui::{truncate_desc, KeyHints, Theme};
+use suite_ui::{
+    pane_titled, truncate_desc, EmptyState, Health, HealthStrip, HelpSheet, KeyHints, SearchBar,
+    Severity, SeverityBadge, Theme,
+};
 
 use crate::app::{App, View};
 use crate::verdict::{State, Verdict};
-use crate::{count_summary, incomplete_summary, verdict_text, TermSize, MIN_CENTER_HEIGHT};
+use crate::{count_summary, incomplete_summary, verdict_text, MIN_CENTER_HEIGHT};
+
+/// Map Pulse's domain severity onto the suite's [`Severity`] axis, so the
+/// drill-down rows can use [`SeverityBadge`] / [`Theme::severity`]. Kept here at
+/// the draw boundary — the domain enum stays domain-side.
+fn suite_severity(s: crate::sources::Severity) -> Severity {
+    use crate::sources::Severity as PulseSeverity;
+    match s {
+        PulseSeverity::Critical => Severity::Critical,
+        PulseSeverity::High => Severity::High,
+        PulseSeverity::Medium => Severity::Medium,
+        PulseSeverity::Low => Severity::Low,
+    }
+}
 
 /// The footer hint pairs for the default screen — the suite-ui [`KeyHints`]
 /// version of the old `hint_strip`. `q quit` is omitted to keep it narrow (quit
@@ -33,15 +52,19 @@ const DEFAULT_HINTS: &[(&str, &str)] = &[
 /// Paint the current view into `f`. The single entry point the event loop calls.
 pub fn draw(f: &mut Frame, app: &App) {
     let area = f.area();
+    let theme = app.theme();
     match app.view() {
-        View::Default => draw_verdict(f, area, app.verdict(), app.theme()),
-        // Not yet ported — fall back to the legacy string frame (monochrome).
-        _ => draw_legacy(f, area, app),
+        View::Default => draw_verdict(f, area, app.verdict(), theme),
+        View::Attention => draw_attention(f, area, app, theme),
+        View::Feeds => draw_feeds(f, area, app, theme),
+        View::Details => draw_details(f, area, app.verdict(), theme),
+        View::Help => draw_help(f, area, theme),
+        View::Search => draw_search(f, area, app, theme),
     }
     // The transient status line overlays the bottom row whatever drew the view,
     // exactly as the string renderer's `overlay_status` did.
     if let Some(msg) = app.status() {
-        draw_status_overlay(f, area, msg, app.theme());
+        draw_status_overlay(f, area, msg, theme);
     }
 }
 
@@ -284,12 +307,224 @@ fn verdict_style(state: State, theme: Theme) -> ratatui::style::Style {
     }
 }
 
-/// Fall back to the legacy string frame for an unported view, blitted as one
-/// monochrome `Paragraph`. Removed view by view in T6–T8.
-fn draw_legacy(f: &mut Frame, area: Rect, app: &App) {
-    let size = TermSize::from_area(area.width, area.height);
-    let text = ratatui::text::Text::raw(app.legacy_frame(size));
-    f.render_widget(Paragraph::new(text), area);
+// ── drill-down views ────────────────────────────────────────────────────────
+// Each is a titled pane with a footer hint row inside it; the body fills the gap.
+// The footer key advertises the view's own non-Esc close path (the design rule:
+// every view closes without Esc), plus the shared Esc/q.
+
+/// Draw a titled pane (`pulse · TITLE`) with the given footer `hints` pinned to
+/// its bottom inner row, and return the remaining inner `Rect` for the caller to
+/// fill with the view body.
+fn framed_view<'a>(
+    f: &mut Frame,
+    area: Rect,
+    title: &str,
+    theme: Theme,
+    hints: &'a [(&'a str, &'a str)],
+) -> Rect {
+    let block = pane_titled(
+        Line::from(Span::styled(format!(" pulse · {title} "), theme.title())),
+        theme,
+    );
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if inner.height == 0 {
+        return inner;
+    }
+    // Footer hint row pinned to the bottom of the inner area; body is the rest.
+    let footer = Rect {
+        x: inner.x,
+        y: inner.y + inner.height - 1,
+        width: inner.width,
+        height: 1,
+    };
+    KeyHints { hints }.render(f, footer, theme);
+    Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: inner.height - 1,
+    }
+}
+
+/// `a` — everything that needs action, one row per item: a [`SeverityBadge`], the
+/// `what`, and a dim `— why (source)`. [`EmptyState`] when nothing needs action.
+fn draw_attention(f: &mut Frame, area: Rect, app: &App, theme: Theme) {
+    let hints = &[("a", "back"), ("Esc", "back"), ("q", "quit")];
+    let body = framed_view(f, area, "ATTENTION", theme, hints);
+    let items = app.attention_items();
+    if items.is_empty() {
+        EmptyState {
+            message: "Nothing needs attention.",
+            hint: Some("The suite is clear."),
+        }
+        .render(f, body, theme);
+        return;
+    }
+    let why_budget = (body.width as usize).saturating_sub(28);
+    let lines: Vec<Line> = items
+        .iter()
+        .map(|a| {
+            Line::from(vec![
+                SeverityBadge {
+                    severity: suite_severity(a.severity),
+                }
+                .span(theme),
+                Span::styled(
+                    format!("  {}", a.what),
+                    theme.dim().add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("  — {} ({})", truncate_desc(&a.why, why_budget), a.source),
+                    theme.dim(),
+                ),
+            ])
+        })
+        .collect();
+    f.render_widget(Paragraph::new(lines), body);
+}
+
+/// `f` — source freshness as a [`HealthStrip`] (●/◐/○ per source) plus a dim
+/// provenance line for when the snapshot was built.
+fn draw_feeds(f: &mut Frame, area: Rect, app: &App, theme: Theme) {
+    let hints = &[("f", "back"), ("Esc", "back"), ("q", "quit")];
+    let body = framed_view(f, area, "FEEDS", theme, hints);
+    let marks = app.source_marks();
+    // HealthStrip borrows (&str, Health); build owned strings then borrow them.
+    let segs: Vec<(Health, String)> = marks
+        .iter()
+        .map(|m| (source_health(m.freshness), m.name.clone()))
+        .collect();
+    let seg_refs: Vec<(Health, &str)> = segs.iter().map(|(h, n)| (*h, n.as_str())).collect();
+    let provenance = match app.snapshot_built_at() {
+        Some(b) => format!("snapshot built {b}"),
+        None => "no snapshot found".to_string(),
+    };
+    let mut lines = vec![HealthStrip {
+        segments: &seg_refs,
+    }
+    .line(theme)];
+    lines.push(Line::default());
+    lines.push(Line::from(Span::styled(provenance, theme.dim())));
+    f.render_widget(Paragraph::new(lines), body);
+}
+
+/// `Enter` — the verdict's particulars: state word, data age, and finding counts.
+fn draw_details(f: &mut Frame, area: Rect, v: &Verdict, theme: Theme) {
+    let hints = &[("Enter", "back"), ("Esc", "back"), ("q", "quit")];
+    let body = framed_view(f, area, "DETAILS", theme, hints);
+    let mut lines = vec![
+        kv_line("verdict", &verdict_text(v.state), theme),
+        kv_line("data age", &v.age, theme),
+    ];
+    if v.critical + v.high > 0 {
+        lines.push(kv_line(
+            "findings",
+            &format!("{} critical, {} high", v.critical, v.high),
+            theme,
+        ));
+    }
+    lines.push(Line::default());
+    lines.push(Line::from(Span::styled(
+        "press a for the full attention list, f for feeds.",
+        theme.dim(),
+    )));
+    f.render_widget(Paragraph::new(lines), body);
+}
+
+/// `?` — the keybinding reference, as the suite-ui [`HelpSheet`] overlay (a
+/// centered modal over whatever was on screen).
+fn draw_help(f: &mut Frame, area: Rect, theme: Theme) {
+    let rows = &[
+        ("Enter", "details for the current verdict"),
+        ("a", "attention — everything that needs action"),
+        ("f", "feeds — source freshness & confidence"),
+        ("/", "search across visible status"),
+        ("r", "open the full RexOps cockpit"),
+        ("?", "toggle this help"),
+        ("q", "quit"),
+        ("Esc", "back to the verdict"),
+    ];
+    HelpSheet {
+        title: "pulse · keys",
+        rows,
+    }
+    .render(f, area, theme);
+}
+
+/// `/` — the live filter: a [`SearchBar`] over the matches, with [`EmptyState`]
+/// for the empty-query prompt and the no-matches case.
+fn draw_search(f: &mut Frame, area: Rect, app: &App, theme: Theme) {
+    let hints = &[("Enter", "close"), ("Esc", "close"), ("q", "quit")];
+    let body = framed_view(f, area, "SEARCH", theme, hints);
+    if body.height == 0 {
+        return;
+    }
+    let q = app.query();
+    let hits = if q.is_empty() {
+        Vec::new()
+    } else {
+        app.search_hit_lines(q)
+    };
+    // The search bar occupies the first body row; the results fill the rest.
+    let bar_row = Rect {
+        x: body.x,
+        y: body.y,
+        width: body.width,
+        height: 1,
+    };
+    SearchBar {
+        query: q,
+        placeholder: "type to filter; Enter or Esc to close",
+        match_count: if q.is_empty() { None } else { Some(hits.len()) },
+    }
+    .render(f, bar_row, theme);
+
+    let results = Rect {
+        x: body.x,
+        y: body.y + 1,
+        width: body.width,
+        height: body.height.saturating_sub(1),
+    };
+    if q.is_empty() {
+        return;
+    }
+    if hits.is_empty() {
+        EmptyState {
+            message: "No matches.",
+            hint: None,
+        }
+        .render(f, results, theme);
+        return;
+    }
+    let lines: Vec<Line> = hits
+        .iter()
+        .map(|h| {
+            Line::from(Span::styled(
+                truncate_desc(h, results.width as usize),
+                theme.dim(),
+            ))
+        })
+        .collect();
+    f.render_widget(Paragraph::new(lines), results);
+}
+
+/// A `key   value` detail row: dim key in a fixed column, plain value.
+fn kv_line(key: &str, value: &str, theme: Theme) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(format!("{key:<10}"), theme.dim()),
+        Span::styled(value.to_string(), theme.dim().add_modifier(Modifier::BOLD)),
+    ])
+}
+
+/// Pulse's source freshness mapped onto the suite [`Health`] axis for the strip.
+fn source_health(s: crate::verdict::Source) -> Health {
+    use crate::verdict::Source;
+    match s {
+        Source::Current => Health::Healthy,
+        Source::Stale => Health::Degraded,
+        Source::Missing => Health::Unknown,
+    }
 }
 
 /// Overlay the transient status line on the bottom row (dim, one column in),
@@ -459,6 +694,146 @@ mod tests {
         for state in ["healthy", "attention", "incomplete"] {
             for (w, h) in [(1u16, 1u16), (10, 3), (24, 8)] {
                 let _ = render(state, w, h);
+            }
+        }
+    }
+
+    // ── drill-down views (full view::draw over sample readings) ──────────────
+
+    /// Render a full `draw(app)` for a sample app in `view` (with `query`) into a
+    /// `w`×`h` TestBackend buffer.
+    fn render_view(view: View, query: &str, w: u16, h: u16) -> Buffer {
+        let app = App::sample_with(view, query);
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| super::draw(f, &app)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    /// The view buffer flattened to a glyph grid, for snapshots.
+    fn view_grid(view: View, query: &str, w: u16, h: u16) -> String {
+        let buf = render_view(view, query, w, h);
+        (0..h).map(|y| row(&buf, y)).collect::<Vec<_>>().join("\n")
+    }
+
+    /// The whole view buffer as one string, for content assertions.
+    fn view_text(view: View, query: &str, w: u16, h: u16) -> String {
+        let buf = render_view(view, query, w, h);
+        (0..h).map(|y| row(&buf, y)).collect()
+    }
+
+    #[test]
+    fn snapshot_attention_view() {
+        insta::assert_snapshot!(view_grid(View::Attention, "", 80, 18));
+    }
+
+    #[test]
+    fn snapshot_feeds_view() {
+        insta::assert_snapshot!(view_grid(View::Feeds, "", 80, 18));
+    }
+
+    #[test]
+    fn snapshot_details_view() {
+        insta::assert_snapshot!(view_grid(View::Details, "", 80, 18));
+    }
+
+    #[test]
+    fn snapshot_help_view() {
+        insta::assert_snapshot!(view_grid(View::Help, "", 80, 24));
+    }
+
+    #[test]
+    fn snapshot_search_view_with_a_match() {
+        insta::assert_snapshot!(view_grid(View::Search, "aws", 80, 18));
+    }
+
+    #[test]
+    fn attention_view_badges_the_finding_and_frames_a_pane() {
+        let t = view_text(View::Attention, "", 80, 18);
+        assert!(t.contains("pulse · ATTENTION"), "titled pane");
+        assert!(
+            t.contains("[CRIT]"),
+            "SeverityBadge for the critical finding"
+        );
+        assert!(t.contains("deploy-prod.sh"), "the finding's subject");
+        assert!(t.contains("Esc back"), "the footer back hint");
+    }
+
+    #[test]
+    fn feeds_view_shows_a_health_strip_and_provenance() {
+        let t = view_text(View::Feeds, "", 80, 18);
+        assert!(t.contains("pulse · FEEDS"));
+        assert!(t.contains("● workstate"), "HealthStrip healthy segment");
+        assert!(t.contains("snapshot built"), "provenance line");
+    }
+
+    #[test]
+    fn details_view_lists_the_verdict_particulars() {
+        let t = view_text(View::Details, "", 80, 18);
+        assert!(t.contains("pulse · DETAILS"));
+        assert!(t.contains("verdict"));
+        assert!(t.contains("data age"));
+    }
+
+    #[test]
+    fn help_view_is_an_overlay_listing_the_keys() {
+        let t = view_text(View::Help, "", 80, 24);
+        assert!(t.contains("pulse · keys"), "HelpSheet title");
+        assert!(t.contains("attention"), "a key is described");
+        assert!(t.contains("cockpit"), "r key is described");
+    }
+
+    #[test]
+    fn search_view_shows_the_bar_and_a_hit() {
+        let t = view_text(View::Search, "aws", 80, 18);
+        assert!(t.contains("pulse · SEARCH"));
+        assert!(t.contains("/ aws"), "SearchBar with the query");
+        assert!(t.contains("deploy-prod.sh"), "the matching item is listed");
+    }
+
+    #[test]
+    fn search_view_empty_query_prompts_without_a_count() {
+        let t = view_text(View::Search, "", 80, 18);
+        assert!(t.contains("type to filter"), "placeholder shown");
+        assert!(!t.contains("match"), "no count for an empty query");
+    }
+
+    #[test]
+    fn search_with_no_match_shows_the_empty_state() {
+        // A query nothing matches exercises the EmptyState path in the Search view
+        // (the sample readings have findings, so this is the cleanest empty case).
+        let t = view_text(View::Search, "zzzznomatch", 80, 18);
+        assert!(t.contains("No matches."), "EmptyState for no search hits");
+    }
+
+    #[test]
+    fn drill_down_rows_never_exceed_the_viewport_width() {
+        for (view, q) in [
+            (View::Attention, ""),
+            (View::Feeds, ""),
+            (View::Details, ""),
+            (View::Search, "aws"),
+        ] {
+            for (w, h) in [(80u16, 18u16), (30, 8)] {
+                let buf = render_view(view, q, w, h);
+                for y in 0..h {
+                    let cols = row(&buf, y).chars().count();
+                    assert!(cols <= w as usize, "{view:?} row {y} at {w}x{h}: {cols}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn drill_down_tiny_sizes_do_not_panic() {
+        for view in [
+            View::Attention,
+            View::Feeds,
+            View::Details,
+            View::Help,
+            View::Search,
+        ] {
+            for (w, h) in [(1u16, 1u16), (10, 3), (24, 6)] {
+                let _ = render_view(view, "", w, h);
             }
         }
     }

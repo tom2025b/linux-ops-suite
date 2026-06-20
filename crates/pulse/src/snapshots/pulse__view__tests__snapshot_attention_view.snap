@@ -1,0 +1,22 @@
+---
+source: crates/pulse/src/view.rs
+expression: "view_grid(View::Attention, \"\", 80, 18)"
+---
+╭ pulse · ATTENTION ───────────────────────────────────────────────────────────╮
+│ [CRIT]  deploy-prod.sh  — AWS access key ID detected (bulwark)               │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│ a back  •  Esc back  •  q quit                                               │
+╰──────────────────────────────────────────────────────────────────────────────╯

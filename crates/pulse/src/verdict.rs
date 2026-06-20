@@ -152,6 +152,46 @@ impl Readings {
     }
 }
 
+/// Test-only representative readings: a built snapshot, one critical bulwark
+/// finding, a mix of present/absent rexops sources, and all binaries present.
+/// Shared so both the app navigation tests and the `crate::view` draw snapshots
+/// exercise the same non-trivial data without touching disk.
+#[cfg(test)]
+pub(crate) fn sample_readings() -> Readings {
+    Readings {
+        freshness: SnapshotFreshness {
+            built_at: Some("2026-06-14T12:00:00Z".to_string()),
+            sections: vec![("scripts", Freshness::Current)],
+        },
+        rexops: Some(RexopsView {
+            generated_at: Some("2026-06-14T12:00:00Z".to_string()),
+            sources: vec![
+                ("workstate".to_string(), true),
+                ("scriptvault".to_string(), false),
+            ],
+            attention: vec![Attention {
+                what: "deploy-prod.sh".to_string(),
+                why: "AWS access key ID detected".to_string(),
+                source: "bulwark".to_string(),
+                severity: Severity::Critical,
+            }],
+        }),
+        bulwark: BulwarkView {
+            attention: Vec::new(),
+            present: true,
+        },
+        jobs: Vec::new(),
+        binaries: ["workstate", "bulwark", "proto", "toolfoundry", "vault"]
+            .iter()
+            .map(|&name| BinaryCheck {
+                name,
+                present: true,
+            })
+            .collect(),
+        now: Some(0),
+    }
+}
+
 impl Verdict {
     /// Build the live verdict by reading every suite contract under `dir` and
     /// composing them. Never fails: missing data degrades to Incomplete, never

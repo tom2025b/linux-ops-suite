@@ -90,12 +90,44 @@ impl App {
         self.status.as_deref()
     }
 
-    /// Build the legacy string frame for a view the ratatui draw layer hasn't
-    /// ported yet. The migration bridge: rendered monochrome (the string carries
-    /// no ANSI under a plain style) and blitted as one `Paragraph`. Removed view
-    /// by view as T6–T8 land real draws, and entirely in T10.
-    pub(crate) fn legacy_frame(&self, size: TermSize) -> String {
-        self.frame(&Style::plain_for_bridge(), size)
+    /// The current search query buffer (what the user has typed in the box).
+    pub(crate) fn query(&self) -> &str {
+        &self.query
+    }
+
+    /// The attention items for the Attention/Search views (data the draw layer
+    /// renders; the verdict logic stays in [`crate::verdict`]).
+    pub(crate) fn attention_items(&self) -> Vec<crate::sources::Attention> {
+        self.readings.all_attention()
+    }
+
+    /// The per-source freshness marks for the Feeds view.
+    pub(crate) fn source_marks(&self) -> Vec<crate::verdict::SourceMark> {
+        self.readings.source_marks()
+    }
+
+    /// When the underlying suite snapshot was built, if known — the Feeds
+    /// view's provenance line.
+    pub(crate) fn snapshot_built_at(&self) -> Option<&str> {
+        self.readings.freshness.built_at.as_deref()
+    }
+
+    /// The search hit lines for the current query (delegates to the existing
+    /// pure search). Exposed so the Search draw renders them.
+    pub(crate) fn search_hit_lines(&self, q: &str) -> Vec<String> {
+        self.search_hits(q)
+    }
+
+    /// Test-only: an app on representative sample readings (one critical
+    /// attention item, mixed-freshness sources), set to `view` with `query`, so
+    /// `crate::view`'s draw snapshots can exercise each screen without disk I/O.
+    /// Colour is forced off so snapshots (glyphs/layout only) are deterministic.
+    #[cfg(test)]
+    pub(crate) fn sample_with(view: View, query: &str) -> Self {
+        let mut app = App::new(crate::verdict::sample_readings(), Theme::with_color(false));
+        app.view = view;
+        app.query = query.to_string();
+        app
     }
 
     /// Run the interactive loop until the user quits. Owns the terminal via the
@@ -527,45 +559,7 @@ fn severity_label(s: crate::verdict::Severity) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sources::{Attention, BinaryCheck, BulwarkView, Severity, SnapshotFreshness};
-    use crate::verdict::Readings;
-
-    /// A Readings with a couple of attention items and a missing source, enough
-    /// to exercise the views and search without touching disk.
-    fn sample_readings() -> Readings {
-        Readings {
-            freshness: SnapshotFreshness {
-                built_at: Some("2026-06-14T12:00:00Z".to_string()),
-                sections: vec![("scripts", crate::sources::Freshness::Current)],
-            },
-            rexops: Some(crate::sources::RexopsView {
-                generated_at: Some("2026-06-14T12:00:00Z".to_string()),
-                sources: vec![
-                    ("workstate".to_string(), true),
-                    ("scriptvault".to_string(), false),
-                ],
-                attention: vec![Attention {
-                    what: "deploy-prod.sh".to_string(),
-                    why: "AWS access key ID detected".to_string(),
-                    source: "bulwark".to_string(),
-                    severity: Severity::Critical,
-                }],
-            }),
-            bulwark: BulwarkView {
-                attention: Vec::new(),
-                present: true,
-            },
-            jobs: Vec::new(),
-            binaries: ["workstate", "bulwark", "proto", "toolfoundry", "vault"]
-                .iter()
-                .map(|&name| BinaryCheck {
-                    name,
-                    present: true,
-                })
-                .collect(),
-            now: Some(0),
-        }
-    }
+    use crate::verdict::sample_readings;
 
     fn app() -> App {
         // Colour forced off so navigation tests are deterministic regardless of

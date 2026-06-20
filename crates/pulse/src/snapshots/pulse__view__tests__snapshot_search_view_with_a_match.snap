@@ -1,0 +1,22 @@
+---
+source: crates/pulse/src/view.rs
+expression: "view_grid(View::Search, \"aws\", 80, 18)"
+---
+╭ pulse · SEARCH ──────────────────────────────────────────────────────────────╮
+│ / aws   (1 match)                                                            │
+│ deploy-prod.sh  — AWS access key ID detected (bulwark)                       │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│ Enter close  •  Esc close  •  q quit                                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
