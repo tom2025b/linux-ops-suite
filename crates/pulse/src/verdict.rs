@@ -417,11 +417,16 @@ fn source_freshness(
         };
     }
 
+    // RexOps and the installed-binary roster both name this tool "scriptvault";
+    // only Pulse's own roster says "vault". Map once, up front, so BOTH the
+    // rexops lookup and the binary fallback below use the real name — otherwise
+    // the fallback's `b.name == name` never matches and an installed scriptvault
+    // with rexops absent is misreported as Missing instead of Stale.
+    let key = if name == "vault" { "scriptvault" } else { name };
+
     // 2. RexOps's aggregated presence map is the best available signal for
     // sources Pulse does not read directly.
     if let Some(rx) = rexops {
-        // RexOps uses "scriptvault" where the Pulse roster says "vault".
-        let key = if name == "vault" { "scriptvault" } else { name };
         if let Some((_, present)) = rx.sources.iter().find(|(n, _)| n == key) {
             return if *present {
                 Source::Current
@@ -431,7 +436,7 @@ fn source_freshness(
         }
     }
 
-    match binaries.iter().find(|b| b.name == name) {
+    match binaries.iter().find(|b| b.name == key) {
         Some(b) if b.present => Source::Stale,
         _ => Source::Missing,
     }
@@ -549,7 +554,9 @@ mod tests {
         }
     }
     fn all_binaries_present() -> Vec<BinaryCheck> {
-        ["workstate", "bulwark", "proto", "toolfoundry", "vault"]
+        // The installed binary is named "scriptvault" (matching rexops and PATH);
+        // only Pulse's display roster says "vault".
+        ["workstate", "bulwark", "proto", "toolfoundry", "scriptvault"]
             .iter()
             .map(|&name| BinaryCheck {
                 name,
@@ -567,6 +574,37 @@ mod tests {
                 ("findings", Freshness::Current),
             ],
         }
+    }
+
+    #[test]
+    fn vault_binary_present_without_rexops_is_stale_not_missing() {
+        // M4 regression: "vault" is Pulse's roster name; the installed binary
+        // and rexops both call it "scriptvault". With rexops absent, the binary
+        // fallback must map the name and find the installed scriptvault, yielding
+        // Stale (producer on PATH, no fresh feed) — not Missing.
+        let binaries = vec![BinaryCheck {
+            name: "scriptvault",
+            present: true,
+        }];
+        let got = source_freshness(
+            "vault",
+            &fresh_snapshot(),
+            None, // rexops down
+            &empty_bulwark(),
+            &binaries,
+        );
+        assert_eq!(got, Source::Stale, "installed scriptvault must read as Stale");
+
+        // And when it is genuinely not installed, it is Missing.
+        let none_installed: Vec<BinaryCheck> = Vec::new();
+        let got = source_freshness(
+            "vault",
+            &fresh_snapshot(),
+            None,
+            &empty_bulwark(),
+            &none_installed,
+        );
+        assert_eq!(got, Source::Missing);
     }
 
     #[test]
