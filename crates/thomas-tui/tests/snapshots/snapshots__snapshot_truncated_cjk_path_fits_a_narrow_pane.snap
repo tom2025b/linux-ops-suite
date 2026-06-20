@@ -1,0 +1,7 @@
+---
+source: crates/thomas-tui/tests/snapshots.rs
+expression: grid
+---
+╭ p ───────────╮
+│ …/script.sh  │
+╰──────────────╯
