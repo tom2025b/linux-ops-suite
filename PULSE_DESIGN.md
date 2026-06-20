@@ -414,3 +414,27 @@ path.
 - Source freshness signals confidence, and is silent when confidence is full.
 - Elements may appear or vanish, but never move. Position is constant.
 - Pulse opens as an instrument at rest, not an information dump.
+
+## Implementation note — suite-ui adoption (2026-06-20)
+
+The design above is unchanged; this records *how* it is now built. Pulse's TUI
+was rewritten from its original hand-rolled ANSI-string renderer + libc `termios`
+driver to the shared **suite-ui** chrome (over ratatui + crossterm):
+
+- Terminal lifecycle: `suite_ui::Tui` (raw mode, alt screen, restoring panic
+  hook); the `r` cockpit hand-off uses `Tui::suspended`.
+- Drawing lives in `crate::view` — a pure `draw(frame, &App)` per view, styled
+  through one `suite_ui::Theme` (the single `NO_COLOR` gate). The verdict screen
+  keeps its exact geometry (≈40% anchor, bottom-pinned furniture); the
+  drill-downs use suite-ui widgets: `KeyHints` footer, `SeverityBadge`
+  (Attention), `HealthStrip` (Feeds), `HelpSheet` overlay (Help), `SearchBar`
+  (Search), `EmptyState`, and display-width `truncate_*`.
+- Truncation is now display-width-correct (CJK/emoji safe) via suite-ui.
+- `--theme cyan|amber` and `--color auto|always|never` wire to suite-ui's
+  `ThemeChoice`/`ColorChoice`; `--dump-view`/`--state` render the same chrome
+  headlessly (via a ratatui `TestBackend`).
+
+Deliberate visual refinements from the move: severity now reads as a `[CRIT]`
+badge, Feeds as a glyph health strip, and Help as a centered overlay rather than
+a plain panel. All other design rules (calm healthy screen, non-Esc close paths,
+stable positions) are preserved and snapshot-tested.
