@@ -130,6 +130,14 @@ impl App {
         app
     }
 
+    /// Test-only: set the transient status line, so `crate::view`'s draw can be
+    /// exercised with an overlay present.
+    #[cfg(test)]
+    pub(crate) fn with_status(mut self, msg: &str) -> Self {
+        self.status = Some(msg.to_string());
+        self
+    }
+
     /// Run the interactive loop until the user quits. Owns the terminal via the
     /// shared [`suite_ui::Tui`] guard for its duration; the terminal is restored
     /// when `tui` drops (and by ratatui's restoring panic hook, installed by

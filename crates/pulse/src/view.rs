@@ -837,4 +837,51 @@ mod tests {
             }
         }
     }
+
+    // ── transient status overlay ─────────────────────────────────────────────
+
+    /// Render a sample app (in `view`) with a status line set, into a buffer.
+    fn render_view_with_status(view: View, status: &str, w: u16, h: u16) -> Buffer {
+        let app = App::sample_with(view, "").with_status(status);
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| super::draw(f, &app)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    #[test]
+    fn status_line_overlays_the_bottom_row() {
+        // The transient aside lands on the last row, whatever view is showing.
+        for view in [View::Default, View::Attention, View::Feeds] {
+            let buf = render_view_with_status(view, "rexops not found", 80, 18);
+            let last = row(&buf, buf.area.height - 1);
+            assert!(
+                last.contains("rexops not found"),
+                "{view:?} must overlay the status on the bottom row, got {last:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn status_line_is_truncated_to_the_viewport_width() {
+        let long =
+            "rexops not found on PATH — install it to open the cockpit (or run `rexops tui`).";
+        let buf = render_view_with_status(View::Default, long, 40, 10);
+        let last = row(&buf, buf.area.height - 1);
+        assert!(
+            last.chars().count() <= 40,
+            "status must not overflow the width, got {} cols",
+            last.chars().count()
+        );
+    }
+
+    #[test]
+    fn no_status_means_no_overlay() {
+        // Without a status set, the bottom row is whatever the view drew (for the
+        // default healthy screen that's the timestamp), never a stray status.
+        let app = App::sample_with(View::Default, "");
+        assert!(
+            app.status().is_none(),
+            "sample app has no status by default"
+        );
+    }
 }
