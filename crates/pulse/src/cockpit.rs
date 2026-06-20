@@ -2,10 +2,10 @@
 //!
 //! Pulse is the suite's default status screen (a bare `rexops` opens it); the
 //! `r` key is the way back out to the full cockpit — the launcher/jobs interface
-//! — via `rexops tui`. Pulse stays dependency-free, so resolving `rexops` is a
-//! tiny hand-rolled PATH walk (the same approach rex-check/portman use instead of
-//! a `which` crate), and the actual foreground hand-off (suspend Pulse's raw
-//! mode, run the child, restore) is owned by [`crate::tui::RawMode::suspend`].
+//! — via `rexops tui`. Resolving `rexops` is a tiny hand-rolled PATH walk (the
+//! same approach rex-check/portman use instead of a `which` crate), and the
+//! actual foreground hand-off (leave Pulse's alt screen, run the child, re-enter)
+//! is owned by [`suite_ui::Tui::suspended`].
 //!
 //! Nothing here is an error in the "Pulse failed" sense: a missing `rexops` is
 //! reported back to the UI as a short status line, never a crash or a non-zero
@@ -14,7 +14,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::tui::RawMode;
+use suite_ui::Tui;
 
 /// The id of the cockpit binary and the subcommand that opens it. `rexops tui`
 /// is the explicit cockpit entry point added in the RexOps side of this change
@@ -49,20 +49,31 @@ impl LaunchOutcome {
 }
 
 /// Resolve `rexops` on PATH and, if found, foreground-launch `rexops tui` using
-/// `raw` to suspend/restore Pulse's terminal around the child. Returns a
-/// [`LaunchOutcome`] describing what to tell the user; it never returns `Err`
-/// for "rexops isn't installed" — that's `NotFound`, a normal state.
-pub fn open(raw: &mut RawMode) -> LaunchOutcome {
+/// the shared [`suite_ui::Tui`] guard to suspend/restore Pulse's terminal around
+/// the child. Returns a [`LaunchOutcome`] describing what to tell the user; it
+/// never returns `Err` for "rexops isn't installed" — that's `NotFound`, a normal
+/// state.
+///
+/// `Tui::suspended` gives the same guarantee the old `RawMode::suspend` did —
+/// Pulse's terminal is re-entered even if the child errors, so we are never left
+/// half-suspended — and additionally drains any input the child left buffered.
+pub fn open(tui: &mut Tui) -> LaunchOutcome {
     let Some(program) = resolve_on_path(REXOPS_BIN) else {
         return LaunchOutcome::NotFound;
     };
 
-    let run = raw.suspend(|| {
-        Command::new(&program)
-            .args(COCKPIT_ARGS)
-            .status()
-            .map(|_| ())
-    });
+    // `suspended` runs the child closure on the real terminal and returns
+    // io::Result<closure-return>. The closure itself runs the command and yields
+    // io::Result<()>, so flatten the two error layers: a failed leave/re-enter
+    // (outer) and a failed spawn (inner) both become `Failed`.
+    let run = tui
+        .suspended(|| {
+            Command::new(&program)
+                .args(COCKPIT_ARGS)
+                .status()
+                .map(|_| ())
+        })
+        .and_then(|inner| inner);
 
     match run {
         Ok(()) => LaunchOutcome::Returned,

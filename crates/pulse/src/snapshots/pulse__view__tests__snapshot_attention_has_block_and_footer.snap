@@ -1,0 +1,28 @@
+---
+source: crates/pulse/src/view.rs
+expression: "grid(\"attention\", 80, 24)"
+---
+ pulse                                                                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                NEEDS ATTENTION                                 
+                                                                                
+                              2 critical · 4 high                               
+                                                                                
+                       confidence reduced by stale feeds                        
+                                                                                
+                                                                                
+                deploy-prod.sh    token-like secret         bulwark             
+               findings          unsupported feed version  workstate            
+                                                                                
+                                                                                
+            sources  ● workstate  ● bulwark  ◐ toolfoundry  ○ vault             
+ ────────────────────────────────────────────────────────────────────────────── 
+ enter details  •  a attention  •  f feeds  •  / search  •  r cockpit  •  ? help
+                                                                 updated 2m ago

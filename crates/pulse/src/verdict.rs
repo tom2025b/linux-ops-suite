@@ -105,6 +105,26 @@ impl Readings {
         }
     }
 
+    /// Empty readings — no snapshot, no feeds. Backs a one-shot render driven by a
+    /// pre-built verdict (e.g. a `--state` demo), where the default screen shows
+    /// the verdict directly and there are no drill-down lists to populate.
+    pub fn empty() -> Self {
+        Readings {
+            freshness: SnapshotFreshness {
+                built_at: None,
+                sections: Vec::new(),
+            },
+            rexops: None,
+            bulwark: BulwarkView {
+                attention: Vec::new(),
+                present: false,
+            },
+            jobs: Vec::new(),
+            binaries: Vec::new(),
+            now: None,
+        }
+    }
+
     /// Every attention item across producers, most-severe first — the full list
     /// the Attention view shows (the verdict only surfaces the top few). Mirrors
     /// the merge rules in `compose`.
@@ -152,16 +172,51 @@ impl Readings {
     }
 }
 
-impl Verdict {
-    /// Build the live verdict by reading every suite contract under `dir` and
-    /// composing them. Never fails: missing data degrades to Incomplete, never
-    /// a panic or an error screen.
-    pub fn build(dir: &DataDir) -> Self {
-        Self::from_readings(&Readings::load(dir))
+/// Test-only representative readings: a built snapshot, one critical bulwark
+/// finding, a mix of present/absent rexops sources, and all binaries present.
+/// Shared so both the app navigation tests and the `crate::view` draw snapshots
+/// exercise the same non-trivial data without touching disk.
+#[cfg(test)]
+pub(crate) fn sample_readings() -> Readings {
+    Readings {
+        freshness: SnapshotFreshness {
+            built_at: Some("2026-06-14T12:00:00Z".to_string()),
+            sections: vec![("scripts", Freshness::Current)],
+        },
+        rexops: Some(RexopsView {
+            generated_at: Some("2026-06-14T12:00:00Z".to_string()),
+            sources: vec![
+                ("workstate".to_string(), true),
+                ("scriptvault".to_string(), false),
+            ],
+            attention: vec![Attention {
+                what: "deploy-prod.sh".to_string(),
+                why: "AWS access key ID detected".to_string(),
+                source: "bulwark".to_string(),
+                severity: Severity::Critical,
+            }],
+        }),
+        bulwark: BulwarkView {
+            attention: Vec::new(),
+            present: true,
+        },
+        jobs: Vec::new(),
+        binaries: ["workstate", "bulwark", "proto", "toolfoundry", "vault"]
+            .iter()
+            .map(|&name| BinaryCheck {
+                name,
+                present: true,
+            })
+            .collect(),
+        now: Some(0),
     }
+}
 
-    /// Compose the verdict from already-gathered [`Readings`]. Lets the
-    /// interactive app reuse one read for both the verdict and the detail views.
+impl Verdict {
+    /// Compose the verdict from already-gathered [`Readings`] — the single read
+    /// the interactive app reuses for both the verdict and the detail views.
+    /// Never fails: missing data degrades to Incomplete, never a panic or an
+    /// error screen.
     pub fn from_readings(r: &Readings) -> Self {
         Self::compose(
             r.freshness.clone(),

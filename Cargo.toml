@@ -25,6 +25,7 @@ repository = "https://github.com/tom2025b/linux-ops-suite"
 
 [workspace.dependencies]
 suite-core = { path = "crates/suite-core" }
+suite-ui = { path = "crates/suite-ui" }
 ratatui = "0.29"
 crossterm = "0.28"
 unicode-width = "0.2"

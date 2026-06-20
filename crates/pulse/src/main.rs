@@ -26,25 +26,26 @@
 //!   - Elements appear and vanish between states but never change position; the
 //!     vertical anchor is constant. That stability is the premium feel.
 //!
-//! Pulse stays lean: it renders its own ANSI and reads terminal size via a tiny
-//! `libc` call behind a hand-rolled `extern "C"` block; its TTY check comes from
-//! the shared `suite-core` crate. Color follows the
-//! suite rule — on only when stdout is a TTY and `NO_COLOR` is unset — and the
-//! screen stays fully legible with color off, because state is always also
-//! carried by the verdict word and by marker shape, never by color alone.
-//!
-//! This pass renders from a demo verdict so all three layouts can be seen and
-//! tested; wiring real producer contracts (Workstate snapshot, Bulwark / Proto
-//! / ToolFoundry feeds) into the verdict model is a later step.
+//! Rendering is the shared suite chrome: the interactive UI and the headless
+//! `--dump-view`/`--state` previews both draw through `suite_ui` (over ratatui),
+//! in `crate::view`. Colour follows the suite rule — on only when stdout is a TTY
+//! and `NO_COLOR` is unset, all gated by `suite_ui::Theme` — and the screen stays
+//! fully legible with colour off, because state is always also carried by the
+//! verdict word and by marker shape, never by colour alone. This module keeps the
+//! arg parsing, the verdict text/summary helpers, and the live/one-shot/dump
+//! dispatch; the drawing lives in `crate::view`.
 //!
 //! Usage:
-//!   pulse                 render the default (demo: healthy) screen once
-//!   pulse --state STATE   force a state: healthy | attention | incomplete
-//!   pulse --no-clear      don't clear the screen first (useful for piping)
+//!   pulse                 interactive verdict screen (when stdout is a TTY)
+//!   pulse --state STATE   force a demo state: healthy | attention | incomplete
+//!   pulse --theme THEME   accent: cyan | amber       (suite_ui::ThemeChoice)
+//!   pulse --color WHEN    auto | always | never      (suite_ui::ColorChoice)
+//!   pulse --dump-view V   render one view once and exit (headless)
+//!   pulse --no-clear      force the one-shot render instead of interactive mode
 //!   pulse -h | --help     this help
 //!
 //! Environment:
-//!   NO_COLOR   disable ANSI color (also auto-disabled when stdout isn't a TTY).
+//!   NO_COLOR   disable colour (also auto-disabled when stdout isn't a TTY).
 //!   COLUMNS / LINES   honored as a fallback terminal size when the ioctl can't
 //!                     read one (e.g. when stdout is a pipe).
 
@@ -52,12 +53,13 @@ use std::env;
 use std::process::ExitCode;
 
 use suite_core::env::stdout_is_tty;
+use suite_ui::{ColorChoice, Theme, ThemeChoice};
 
 /// Below this width or height we stop trying to center and fall back to a plain
 /// top-left render, so a tiny / odd terminal never clips the verdict. 80x24 is
 /// the compact target the suite's prior TUI work calls out.
-const MIN_CENTER_WIDTH: u16 = 24;
-const MIN_CENTER_HEIGHT: u16 = 8;
+pub(crate) const MIN_CENTER_WIDTH: u16 = 24;
+pub(crate) const MIN_CENTER_HEIGHT: u16 = 8;
 
 /// Default assumed size when no TTY and no COLUMNS/LINES — a classic terminal.
 const FALLBACK_WIDTH: u16 = 80;
@@ -73,6 +75,10 @@ fn main() -> ExitCode {
     // Some((view, query)) => render one interactive view once and exit. A
     // deterministic preview/snapshot path (no event loop, no PTY).
     let mut dump_view: Option<(String, String)> = None;
+    // suite-ui theme/colour choices. Default: cyan accent, Auto colour (honours
+    // NO_COLOR). Parsed from --theme / --color below.
+    let mut theme_choice = ThemeChoice::Cyan;
+    let mut color_choice = ColorChoice::Auto;
 
     let mut i = 0;
     while i < args.len() {
@@ -105,6 +111,39 @@ fn main() -> ExitCode {
                 std::env::set_var("PULSE_DATA_DIR", path);
                 i += 1;
             }
+            "--theme" => {
+                let Some(name) = args.get(i + 1) else {
+                    eprintln!("pulse: --theme needs a value (cyan | amber)");
+                    return ExitCode::from(2);
+                };
+                theme_choice = match name.as_str() {
+                    "cyan" => ThemeChoice::Cyan,
+                    "amber" => ThemeChoice::Amber,
+                    other => {
+                        eprintln!("pulse: unknown theme '{other}' (expected: cyan | amber)");
+                        return ExitCode::from(2);
+                    }
+                };
+                i += 1;
+            }
+            "--color" => {
+                let Some(name) = args.get(i + 1) else {
+                    eprintln!("pulse: --color needs a value (auto | always | never)");
+                    return ExitCode::from(2);
+                };
+                color_choice = match name.as_str() {
+                    "auto" => ColorChoice::Auto,
+                    "always" => ColorChoice::Always,
+                    "never" => ColorChoice::Never,
+                    other => {
+                        eprintln!(
+                            "pulse: unknown color '{other}' (expected: auto | always | never)"
+                        );
+                        return ExitCode::from(2);
+                    }
+                };
+                i += 1;
+            }
             "--dump-view" => {
                 let Some(name) = args.get(i + 1) else {
                     eprintln!("pulse: --dump-view needs a view (default|attention|feeds|details|help|search)");
@@ -124,13 +163,17 @@ fn main() -> ExitCode {
         i += 1;
     }
 
-    let style = Style::resolve();
+    // The resolved suite-ui palette (accent + NO_COLOR gate), carried on the app
+    // for the ratatui draws. `--color`/`--theme`/`NO_COLOR` all meet here.
+    let theme = Theme::resolve(color_choice, theme_choice);
 
-    // Deterministic single-view render (preview / snapshot), no event loop.
+    // Deterministic single-view render (preview / snapshot), no event loop. Goes
+    // through the same ratatui draw the live UI uses (headless via TestBackend),
+    // so the dump is the real screen — glyphs/layout (a text dump is monochrome).
     if let Some((view, query)) = dump_view {
         let readings = verdict::Readings::load(&sources::DataDir::resolve());
-        let mut app = app::App::new(readings);
-        return match app.dump(&view, &query, &style, TermSize::resolve()) {
+        let mut app = app::App::new(readings, theme);
+        return match app.dump(&view, &query, TermSize::resolve()) {
             Some(frame) => {
                 println!("{frame}");
                 ExitCode::SUCCESS
@@ -153,7 +196,7 @@ fn main() -> ExitCode {
 
     if interactive {
         let readings = verdict::Readings::load(&sources::DataDir::resolve());
-        return match app::App::new(readings).run(&style) {
+        return match app::App::new(readings, theme).run() {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("pulse: {e}");
@@ -162,18 +205,15 @@ fn main() -> ExitCode {
         };
     }
 
-    // Non-interactive: one frame to stdout.
-    let state = match demo {
-        Some(name) => Verdict::demo(&name).expect("validated above"),
-        None => Verdict::build(&sources::DataDir::resolve()),
+    // Non-interactive: render the default verdict screen once to stdout, through
+    // the same ratatui draw (headless). A forced `--state` is a static demo
+    // verdict; otherwise build the live verdict from the suite contracts.
+    let app = match demo {
+        Some(name) => app::App::from_verdict(Verdict::demo(&name).expect("validated above"), theme),
+        None => app::App::new(verdict::Readings::load(&sources::DataDir::resolve()), theme),
     };
-    let frame = render(&state, &style, TermSize::resolve());
-    let mut out = String::new();
-    if clear && style.color {
-        out.push_str("\u{1b}[2J\u{1b}[H");
-    }
-    out.push_str(&frame);
-    print!("{out}");
+    let size = TermSize::resolve();
+    print!("{}", view::render_to_string(&app, size.width, size.height));
 
     ExitCode::SUCCESS
 }
@@ -192,6 +232,9 @@ OPTIONS:
     --dump-view <V>   render one view once and exit (no event loop):
                       default | attention | feeds | details | help | search
                       (append a query for search: --dump-view search aws)
+    --theme <THEME>   accent colour: cyan (default) | amber
+    --color <WHEN>    colour output: auto (default, honours NO_COLOR) |
+                      always | never
     --no-clear        don't clear the screen first (useful when piping)
     -h, --help        print this help
 
@@ -204,246 +247,16 @@ mod cockpit;
 mod sources;
 mod tui;
 mod verdict;
+mod view;
 
-use verdict::{Source, State, Verdict};
+use verdict::{State, Verdict};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rendering
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Build the full frame for a verdict as a single string of lines. Pure: takes
-/// the resolved style and size, returns text, touches no I/O — so it can be
-/// snapshot-tested directly.
-pub(crate) fn render(v: &Verdict, style: &Style, size: TermSize) -> String {
-    // Too small to center safely: degrade to a plain, unpadded render that
-    // can't clip. Still honors color and the verdict word.
-    if size.width < MIN_CENTER_WIDTH || size.height < MIN_CENTER_HEIGHT {
-        return render_compact(v, style, size.width as usize);
-    }
-
-    let w = size.width as usize;
-    let h = size.height as usize;
-    let mut lines: Vec<String> = vec![String::new(); h];
-
-    // Wordmark: top-left, dim — but only on the busy states. The healthy screen
-    // stays free of it.
-    if v.state != State::Healthy {
-        lines[0] = format!(" {}pulse{}", style.dim, style.rst);
-    }
-
-    // Vertical anchor: the verdict sits slightly above true center (≈40% down),
-    // so the empty lower half of the healthy screen reads as intentional calm.
-    let anchor = (h * 2) / 5;
-
-    // The center block grows downward from the anchor. Each state contributes
-    // its own ordered lines; position is constant, content varies.
-    let mut block: Vec<Line> = Vec::new();
-    match v.state {
-        State::Healthy => {
-            block.push(Line::center(verdict_text(v.state), style.verdict(v.state)));
-        }
-        State::NeedsAttention => {
-            block.push(Line::center(verdict_text(v.state), style.verdict(v.state)));
-            block.push(Line::blank());
-            block.push(count_line(v, style));
-            if v.confidence_reduced {
-                block.push(Line::blank());
-                block.push(Line::center(
-                    "confidence reduced by stale feeds".to_string(),
-                    style.ylw,
-                ));
-            }
-            block.push(Line::blank());
-            block.push(Line::blank());
-            for c in cause_lines(v, w, style) {
-                block.push(c);
-            }
-        }
-        State::Incomplete => {
-            block.push(Line::center(verdict_text(v.state), style.verdict(v.state)));
-            block.push(Line::blank());
-            block.push(Line::center(incomplete_summary(v), style.bold));
-            block.push(Line::blank());
-            block.push(Line::blank());
-            block.push(Line::center(
-                "the suite view may be missing data".to_string(),
-                style.dim,
-            ));
-        }
-    }
-
-    // Bottom-anchored furniture (busy states only), placed at fixed rows from
-    // the bottom up so it can never be crowded out by the center block:
-    //   h-1 timestamp · h-2 hints · h-3 rule · h-4 sources.
-    // The source line is pinned here (not appended to the flowing block) so it
-    // always renders, even when cause rows are tall — that was the bug a live
-    // run with long reasons exposed.
-    let busy = v.state != State::Healthy && h >= 8;
-    let block_floor = if busy {
-        h.saturating_sub(5)
-    } else {
-        h.saturating_sub(2)
-    };
-
-    // Lay the center block down from the anchor, stopping before the floor so it
-    // never overruns the furniture (a tiny terminal just shows fewer rows).
-    for (off, line) in block.iter().enumerate() {
-        let row = anchor + off;
-        if row >= block_floor {
-            break;
-        }
-        lines[row] = line.render(w);
-    }
-
-    if busy {
-        lines[h - 4] = source_line(v, style).render(w);
-        lines[h - 3] = format!(
-            " {}{}{}",
-            style.dim,
-            "─".repeat(w.saturating_sub(2)),
-            style.rst
-        );
-        lines[h - 2] = hint_strip(style, w);
-    }
-
-    // Timestamp: always present, the dimmest mark on screen, in the lower-right
-    // corner. On healthy it is the only thing in the lower half.
-    let stamp_row = h - 1;
-    lines[stamp_row] = right_align(&timestamp(v, style), &timestamp_plain(v), w);
-
-    lines.join("\n")
-}
-
-/// Plain top-left render for terminals too small to center. No padding math, so
-/// nothing can clip; the verdict still leads.
-fn render_compact(v: &Verdict, style: &Style, width: usize) -> String {
-    let mut out = String::new();
-    push_compact_line(
-        &mut out,
-        &format!(
-            "{}{}{}",
-            style.verdict(v.state),
-            verdict_text(v.state),
-            style.rst
-        ),
-        width,
-        style.rst,
-    );
-    match v.state {
-        State::Healthy => {}
-        State::NeedsAttention => {
-            push_compact_line(&mut out, &count_summary(v), width, style.rst);
-            if v.confidence_reduced {
-                push_compact_line(
-                    &mut out,
-                    &format!(
-                        "{}confidence reduced by stale feeds{}",
-                        style.ylw, style.rst
-                    ),
-                    width,
-                    style.rst,
-                );
-            }
-        }
-        State::Incomplete => {
-            push_compact_line(&mut out, &compact_incomplete_summary(v), width, style.rst);
-        }
-    }
-    push_compact_line(
-        &mut out,
-        &format!("{}{}{}", style.dim, timestamp_plain(v), style.rst),
-        width,
-        style.rst,
-    );
-    out
-}
-
 fn should_run_interactive(clear: bool, stdout_tty: bool, live_data: bool) -> bool {
     clear && stdout_tty && live_data
-}
-
-fn push_compact_line(out: &mut String, line: &str, width: usize, reset: &str) {
-    out.push_str(&clip_ansi(line, width.max(1), reset));
-    out.push('\n');
-}
-
-/// One renderable line. `body` is already fully rendered (color codes embedded
-/// if any); `width` is its *visible* character count, kept separately so
-/// centering math is honest about padding even when `body` carries escape
-/// codes. A blank line has an empty body and zero width.
-struct Line {
-    body: String,
-    width: usize,
-    centered: bool,
-}
-
-impl Line {
-    /// A centered line of plain `text` styled with one `color` (color may be the
-    /// empty string under NO_COLOR). Width is the visible char count of `text`.
-    fn center(text: String, color: &'static str) -> Self {
-        let width = text.chars().count();
-        Line {
-            body: wrap(color, &text),
-            width,
-            centered: true,
-        }
-    }
-
-    /// A left-anchored (non-centered) line of plain `text` styled with `color`.
-    /// `width` is the visible char count; padding inside `text` is the caller's.
-    fn raw(text: String, color: &'static str) -> Self {
-        let width = text.chars().count();
-        Line {
-            body: wrap(color, &text),
-            width,
-            centered: false,
-        }
-    }
-
-    /// A line that is already rendered (e.g. mixes several colors). The caller
-    /// supplies the visible width because it can't be derived from the escaped
-    /// body.
-    fn prerendered(body: String, width: usize, centered: bool) -> Self {
-        Line {
-            body,
-            width,
-            centered,
-        }
-    }
-
-    fn blank() -> Self {
-        Line {
-            body: String::new(),
-            width: 0,
-            centered: true,
-        }
-    }
-
-    /// Render into a field `w` wide. Centered lines get left padding from the
-    /// visible width; non-centered lines render as-is (they carry their own
-    /// indentation).
-    fn render(&self, w: usize) -> String {
-        if self.body.is_empty() {
-            return String::new();
-        }
-        let rendered = if self.centered {
-            let pad = w.saturating_sub(self.width) / 2;
-            format!("{}{}", " ".repeat(pad), self.body)
-        } else {
-            self.body.clone()
-        };
-        clip_ansi(&rendered, w.max(1), "\u{1b}[0m")
-    }
-}
-
-/// Wrap `text` in `color` + reset, or return it bare when `color` is empty
-/// (NO_COLOR), so output never carries a stray reset code.
-fn wrap(color: &str, text: &str) -> String {
-    if color.is_empty() {
-        text.to_string()
-    } else {
-        format!("{color}{text}\u{1b}[0m")
-    }
 }
 
 /// The verdict word for a state. Healthy is intentionally lowercase ("all
@@ -459,7 +272,7 @@ pub(crate) fn verdict_text(state: State) -> String {
 /// "2 critical · 4 high", collapsed onto one calm line. Drops a zero side so a
 /// high-only verdict doesn't read "0 critical". This is the *visible* text;
 /// `count_line` adds color.
-fn count_summary(v: &Verdict) -> String {
+pub(crate) fn count_summary(v: &Verdict) -> String {
     match (v.critical, v.high) {
         (0, 0) => String::new(),
         (c, 0) => format!("{c} critical"),
@@ -476,7 +289,7 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     }
 }
 
-fn incomplete_summary(v: &Verdict) -> String {
+pub(crate) fn incomplete_summary(v: &Verdict) -> String {
     match (v.unavailable, v.stale) {
         (0, 0) => "suite view unavailable".to_string(),
         (0, stale) => plural(stale, "source stale", "sources stale"),
@@ -486,299 +299,6 @@ fn incomplete_summary(v: &Verdict) -> String {
             plural(unavailable, "unavailable", "unavailable"),
             plural(stale, "stale", "stale")
         ),
-    }
-}
-
-fn compact_incomplete_summary(v: &Verdict) -> String {
-    match (v.unavailable, v.stale) {
-        (0, 0) => "view unavailable".to_string(),
-        (0, stale) => plural(stale, "stale", "stale"),
-        (unavailable, 0) => plural(unavailable, "unavailable", "unavailable"),
-        (unavailable, stale) => format!("{unavailable} unavailable · {stale} stale"),
-    }
-}
-
-/// The centered count line, with the critical portion in red (the design's one
-/// licensed use of red on the default screen) and the high portion bold. Width
-/// tracks the visible `count_summary`, so centering stays correct under color.
-fn count_line(v: &Verdict, style: &Style) -> Line {
-    let visible = count_summary(v);
-    let width = visible.chars().count();
-    let body = match (v.critical, v.high) {
-        (0, 0) => String::new(),
-        (c, 0) => wrap(style.red, &format!("{c} critical")),
-        (0, h) => wrap(style.bold, &format!("{h} high")),
-        (c, h) => format!(
-            "{}{}{}",
-            wrap(style.red, &format!("{c} critical")),
-            " · ",
-            wrap(style.bold, &format!("{h} high")),
-        ),
-    };
-    Line::prerendered(body, width, true)
-}
-
-/// Build the (already-centered-as-a-block) cause rows. Each row is laid out in
-/// three soft columns separated by spaces — no borders — and the whole block is
-/// indented to sit under the verdict rather than truly centered, matching the
-/// design's left-aligned cause column.
-fn cause_lines(v: &Verdict, w: usize, style: &Style) -> Vec<Line> {
-    // Column widths sized to the demo content; clamped so we never exceed w.
-    let what_w = 18usize;
-    let why_w = 26usize;
-    // Indent the block to roughly a third in, so it reads as a column under the
-    // centered verdict instead of hugging the edge.
-    let indent = (w / 6).min(14);
-    v.causes
-        .iter()
-        .map(|c| {
-            // fit() pads *or truncates* to an exact width, so a long real-world
-            // reason can't overrun into the source column (the demo strings were
-            // short enough to hide this; live data is not).
-            let line = format!(
-                "{:indent$}{}{}{}",
-                "",
-                fit(&c.what, what_w),
-                fit(&c.why, why_w),
-                c.source,
-                indent = indent,
-            );
-            Line::raw(line, style.dim_text())
-        })
-        .collect()
-}
-
-/// Pad `s` with trailing spaces, or truncate it with a trailing `…`, so the
-/// result is exactly `width` visible columns (assuming single-width chars, which
-/// the suite's content is). One column of padding is always kept after a
-/// truncated value so adjacent columns never touch.
-fn fit(s: &str, width: usize) -> String {
-    let len = s.chars().count();
-    if len <= width.saturating_sub(1) {
-        // Fits with at least one trailing space.
-        format!("{s:width$}")
-    } else {
-        // Truncate to width-1 chars and add an ellipsis, then one trailing space.
-        let keep: String = s.chars().take(width.saturating_sub(2)).collect();
-        format!("{keep}… ")
-    }
-}
-
-/// The source-confidence line: `sources  ● workstate  ◐ toolfoundry  ○ vault`.
-/// Hidden on healthy (built but never pushed there). Markers carry state by
-/// shape; color is a bonus. Returns a centered, pre-rendered line and tracks
-/// its own visible width as it goes, so the colored body and the width stay in
-/// lockstep — no separate "strip the codes" pass to drift out of sync.
-fn source_line(v: &Verdict, style: &Style) -> Line {
-    let mut body = wrap(style.dim, "sources");
-    let mut width = "sources".chars().count();
-
-    body.push_str("  ");
-    width += 2;
-
-    for (n, m) in v.sources.iter().enumerate() {
-        if n > 0 {
-            body.push_str("  ");
-            width += 2;
-        }
-        let (glyph, color) = style.source(m.freshness);
-        // marker (1 col) + space + name
-        body.push_str(&wrap(color, &glyph.to_string()));
-        body.push(' ');
-        body.push_str(&m.name);
-        width += 2 + m.name.chars().count();
-    }
-
-    Line::prerendered(body, width, true)
-}
-
-/// The bottom hint strip for busy states. `q quit` is intentionally omitted to
-/// keep the strip narrow; quit still works.
-fn hint_strip(style: &Style, width: usize) -> String {
-    let body = if width >= 88 {
-        format!(
-            " {d}enter{r}  details      {d}a{r}  attention      {d}f{r}  feeds      {d}/{r}  search      {d}r{r}  cockpit      {d}?{r}  help",
-            d = style.dim,
-            r = style.rst,
-        )
-    } else if width >= 64 {
-        format!(
-            " {d}enter{r} details  {d}a{r} attention  {d}f{r} feeds  {d}/{r} search  {d}r{r} cockpit  {d}?{r} help",
-            d = style.dim,
-            r = style.rst,
-        )
-    } else if width >= 36 {
-        format!(
-            " {d}enter{r} details  {d}a/f/?{r} views  {d}/{r} search",
-            d = style.dim,
-            r = style.rst,
-        )
-    } else {
-        format!(
-            " {d}enter{r}  {d}a{r} {d}f{r} {d}/{r} {d}r{r} {d}?{r}",
-            d = style.dim,
-            r = style.rst,
-        )
-    };
-    clip_ansi(&body, width.max(1), style.rst)
-}
-
-/// Timestamp string with color. Healthy shows the bare relative value
-/// ("2m ago"); the busy states prefix "updated " so it isn't ambiguous next to
-/// other text. Dimmest mark on screen either way.
-fn timestamp(v: &Verdict, style: &Style) -> String {
-    format!("{}{}{}", style.dim, timestamp_plain(v), style.rst)
-}
-
-fn timestamp_plain(v: &Verdict) -> String {
-    match v.state {
-        State::Healthy => v.age.clone(),
-        _ => format!("updated {}", v.age),
-    }
-}
-
-/// Right-align `colored` (which embeds escape codes) using `plain` for width,
-/// leaving a one-column right margin.
-fn right_align(colored: &str, plain: &str, w: usize) -> String {
-    let pad = w.saturating_sub(plain.chars().count() + 1);
-    clip_ansi(
-        &format!("{}{}", " ".repeat(pad), colored),
-        w.max(1),
-        "\u{1b}[0m",
-    )
-}
-
-fn clip_ansi(input: &str, width: usize, reset: &str) -> String {
-    let mut out = String::new();
-    let mut visible = 0usize;
-    let mut chars = input.chars().peekable();
-    let mut clipped = false;
-
-    while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            out.push(ch);
-            for c in chars.by_ref() {
-                out.push(c);
-                if c.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-            continue;
-        }
-        if visible >= width {
-            clipped = true;
-            break;
-        }
-        out.push(ch);
-        visible += 1;
-    }
-
-    if !clipped && chars.peek().is_some() {
-        clipped = true;
-    }
-    if clipped && !reset.is_empty() && input.contains('\u{1b}') {
-        out.push_str(reset);
-    }
-    out
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Style
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// ANSI styling, resolved once. Empty strings when color is off so every call
-/// site interpolates unconditionally — same rule and shape as rex-check's
-/// `Style`. `color` records whether color is live (used to gate the screen
-/// clear).
-pub(crate) struct Style {
-    color: bool,
-    pub(crate) bold: &'static str,
-    pub(crate) dim: &'static str,
-    pub(crate) grn: &'static str,
-    pub(crate) ylw: &'static str,
-    pub(crate) red: &'static str,
-    pub(crate) cyn: &'static str,
-    pub(crate) rst: &'static str,
-}
-
-impl Style {
-    /// Color on only when stdout is a TTY and `NO_COLOR` is unset — the suite
-    /// rule.
-    fn resolve() -> Self {
-        let on = stdout_is_tty() && env::var_os("NO_COLOR").is_none();
-        if on {
-            Style {
-                color: true,
-                bold: "\u{1b}[1m",
-                dim: "\u{1b}[2m",
-                grn: "\u{1b}[32m",
-                ylw: "\u{1b}[33m",
-                red: "\u{1b}[31m",
-                cyn: "\u{1b}[36m",
-                rst: "\u{1b}[0m",
-            }
-        } else {
-            Self::plain()
-        }
-    }
-
-    /// A color-off style (all codes empty). Used under NO_COLOR / non-TTY.
-    fn plain() -> Self {
-        Style {
-            color: false,
-            bold: "",
-            dim: "",
-            grn: "",
-            ylw: "",
-            red: "",
-            cyn: "",
-            rst: "",
-        }
-    }
-
-    /// Color for an attention severity (Attention view). Critical red, high
-    /// amber, the rest dim — color is a bonus on top of the word label.
-    pub(crate) fn severity(&self, s: verdict::Severity) -> &'static str {
-        use verdict::Severity;
-        match s {
-            Severity::Critical => self.red,
-            Severity::High => self.ylw,
-            Severity::Medium => self.dim,
-            Severity::Low => self.dim,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn plain_for_test() -> Self {
-        Self::plain()
-    }
-
-    /// Color for a verdict word: healthy green, attention amber, incomplete
-    /// amber (it's a confidence problem, not a critical one). Bold-less; the
-    /// size and centering already make it the focal point.
-    fn verdict(&self, state: State) -> &'static str {
-        match state {
-            State::Healthy => self.grn,
-            State::NeedsAttention => self.ylw,
-            State::Incomplete => self.ylw,
-        }
-    }
-
-    /// Dim styling for secondary text (cause rows).
-    fn dim_text(&self) -> &'static str {
-        self.dim
-    }
-
-    /// (glyph, color) for a source marker. Shape carries state; color is the
-    /// bonus. ASCII fallback keeps it readable where the glyphs don't render —
-    /// here we keep the Unicode glyphs and rely on NO_COLOR for legibility, as
-    /// the design allows.
-    fn source(&self, f: Source) -> (char, &'static str) {
-        match f {
-            Source::Current => ('●', self.grn),
-            Source::Stale => ('◐', self.ylw),
-            Source::Missing => ('○', self.dim),
-        }
     }
 }
 
@@ -794,11 +314,6 @@ pub(crate) struct TermSize {
 }
 
 impl TermSize {
-    #[cfg(test)]
-    pub(crate) fn for_test(width: u16, height: u16) -> Self {
-        TermSize { width, height }
-    }
-
     /// Resolve the terminal size: ask the tty via `TIOCGWINSZ`; if that fails
     /// (e.g. stdout is a pipe), fall back to `$COLUMNS`/`$LINES`, then to a
     /// classic 80x24. Never returns zero in either dimension.
@@ -864,16 +379,27 @@ fn ioctl_winsize() -> Option<(u16, u16)> {
 mod tests {
     use super::*;
 
-    fn plain_style() -> Style {
-        // Force color off so assertions compare visible text only.
-        Style::plain_for_test()
-    }
-
-    fn size(w: u16, h: u16) -> TermSize {
-        TermSize {
-            width: w,
-            height: h,
-        }
+    #[test]
+    fn theme_resolution_honours_the_suite_ui_colour_gate() {
+        // --color=never forces colour off: no accent fg survives, mirroring
+        // suite-ui's own gate (the single place NO_COLOR is enforced now).
+        let off = Theme::resolve(ColorChoice::Never, ThemeChoice::Cyan);
+        assert!(!off.color_enabled(), "never disables colour");
+        assert_eq!(off.title().fg, None, "no accent fg under colour-off");
+        // --color=always forces it on regardless of the runner's NO_COLOR.
+        let on = Theme::resolve(ColorChoice::Always, ThemeChoice::Cyan);
+        assert!(on.color_enabled(), "always forces colour on");
+        assert!(on.title().fg.is_some(), "accent fg present with colour on");
+        // The accent swaps with the theme choice (only when colour is on).
+        assert_ne!(
+            Theme::resolve(ColorChoice::Always, ThemeChoice::Cyan)
+                .title()
+                .fg,
+            Theme::resolve(ColorChoice::Always, ThemeChoice::Amber)
+                .title()
+                .fg,
+            "cyan vs amber accent differ when colour is on"
+        );
     }
 
     #[test]
@@ -892,70 +418,6 @@ mod tests {
     }
 
     #[test]
-    fn healthy_screen_is_almost_empty() {
-        let v = Verdict::demo_healthy();
-        let frame = render(&v, &plain_style(), size(80, 24));
-        let non_empty: Vec<&str> = frame.lines().filter(|l| !l.trim().is_empty()).collect();
-        // Only two marks on the whole screen: the verdict and the timestamp.
-        assert_eq!(non_empty.len(), 2, "healthy screen had: {non_empty:?}");
-        assert!(frame.contains("all clear"));
-        assert!(frame.contains("2m ago"));
-        // No wordmark, no chrome, no source markers on healthy.
-        assert!(!frame.contains("pulse"));
-        assert!(!frame.contains("sources"));
-        assert!(!frame.contains("enter"));
-        assert!(!frame.contains('●'));
-    }
-
-    #[test]
-    fn healthy_timestamp_has_no_label() {
-        let v = Verdict::demo_healthy();
-        let frame = render(&v, &plain_style(), size(80, 24));
-        assert!(frame.contains("2m ago"));
-        assert!(!frame.contains("updated"));
-    }
-
-    #[test]
-    fn attention_screen_shows_detail_and_chrome() {
-        let v = Verdict::demo("attention").unwrap();
-        let frame = render(&v, &plain_style(), size(80, 24));
-        assert!(frame.contains("NEEDS ATTENTION"));
-        assert!(frame.contains("2 critical · 4 high"));
-        assert!(frame.contains("confidence reduced by stale feeds"));
-        assert!(frame.contains("deploy-prod.sh"));
-        assert!(frame.contains("token-like secret"));
-        assert!(frame.contains("bulwark"));
-        // Busy states regain the wordmark and the "updated" label.
-        assert!(frame.contains("pulse"));
-        assert!(frame.contains("updated 2m ago"));
-        // Source line + hint strip present.
-        assert!(frame.contains("sources"));
-        assert!(frame.contains("enter"));
-    }
-
-    #[test]
-    fn incomplete_has_sources_but_no_causes() {
-        let v = Verdict::demo("incomplete").unwrap();
-        let frame = render(&v, &plain_style(), size(80, 24));
-        assert!(frame.contains("INCOMPLETE"));
-        assert!(frame.contains("2 sources unavailable"));
-        assert!(frame.contains("the suite view may be missing data"));
-        assert!(frame.contains("sources"));
-        // No cause rows on incomplete.
-        assert!(!frame.contains("deploy-prod.sh"));
-    }
-
-    #[test]
-    fn stale_incomplete_summary_names_stale_sources() {
-        let mut v = Verdict::demo("incomplete").unwrap();
-        v.unavailable = 0;
-        v.stale = 1;
-        let frame = render(&v, &plain_style(), size(80, 24));
-        assert!(frame.contains("1 source stale"));
-        assert!(!frame.contains("0 sources unavailable"));
-    }
-
-    #[test]
     fn count_summary_drops_zero_sides() {
         let mut v = Verdict::demo("attention").unwrap();
         v.critical = 0;
@@ -970,52 +432,17 @@ mod tests {
     }
 
     #[test]
-    fn layout_position_is_stable_across_states() {
-        // The verdict should land on the same row in every state — elements
-        // appear/vanish but never move.
-        let row_of = |state: &str| -> usize {
-            let v = Verdict::demo(state).unwrap();
-            let frame = render(&v, &plain_style(), size(80, 24));
-            frame
-                .lines()
-                .position(|l| {
-                    l.contains("all clear")
-                        || l.contains("NEEDS ATTENTION")
-                        || l.contains("INCOMPLETE")
-                })
-                .unwrap()
-        };
-        let a = row_of("healthy");
-        let b = row_of("attention");
-        let c = row_of("incomplete");
-        assert_eq!(a, b);
-        assert_eq!(b, c);
+    fn incomplete_summary_names_stale_vs_unavailable_sources() {
+        let mut v = Verdict::demo("incomplete").unwrap();
+        v.unavailable = 0;
+        v.stale = 1;
+        assert_eq!(incomplete_summary(&v), "1 source stale");
+        v.unavailable = 2;
+        v.stale = 0;
+        assert_eq!(incomplete_summary(&v), "2 sources unavailable");
     }
 
-    #[test]
-    fn compact_terminal_does_not_panic_and_leads_with_verdict() {
-        let v = Verdict::demo_healthy();
-        let frame = render(&v, &plain_style(), size(10, 4));
-        assert!(frame.starts_with("all clear"));
-        assert!(frame.contains("2m ago"));
-    }
-
-    #[test]
-    fn rendered_lines_do_not_exceed_viewport_width() {
-        let style = plain_style();
-        for (state, w, h) in [
-            ("attention", 80usize, 24u16),
-            ("incomplete", 80, 24),
-            ("attention", 36, 12),
-            ("incomplete", 20, 6),
-        ] {
-            let v = Verdict::demo(state).unwrap();
-            let frame = render(&v, &style, size(w as u16, h));
-            let max = frame.lines().map(|l| l.chars().count()).max().unwrap_or(0);
-            assert!(
-                max <= w,
-                "{state} at {w}x{h} overflowed to {max} columns:\n{frame}"
-            );
-        }
-    }
+    // The rendered screens (healthy emptiness, busy chrome, layout stability,
+    // width safety, compact fallback) are now verified against the real ratatui
+    // draw in `crate::view`'s tests, not the retired string renderer.
 }

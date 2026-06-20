@@ -1,0 +1,28 @@
+---
+source: crates/pulse/src/view.rs
+expression: "grid(\"incomplete\", 80, 24)"
+---
+ pulse                                                                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                   INCOMPLETE                                   
+                                                                                
+                             2 sources unavailable                              
+                                                                                
+                                                                                
+                       the suite view may be missing data                       
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+            sources  ● workstate  ● bulwark  ○ toolfoundry  ○ vault             
+ ────────────────────────────────────────────────────────────────────────────── 
+ enter details  •  a attention  •  f feeds  •  / search  •  r cockpit  •  ? help
+                                                                 updated 2m ago

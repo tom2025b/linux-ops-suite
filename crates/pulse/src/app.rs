@@ -15,9 +15,11 @@
 
 use std::io;
 
-use crate::tui::{self, Key, RawMode};
-use crate::verdict::{Readings, Source, Verdict};
-use crate::{render, Style, TermSize};
+use suite_ui::{Theme, Tui, TuiOptions};
+
+use crate::tui::{self, Key};
+use crate::verdict::{Readings, Verdict};
+use crate::TermSize;
 
 /// Which screen is showing. `Default` is the verdict; the rest are the views the
 /// hint strip names.
@@ -47,11 +49,25 @@ pub struct App {
     /// A transient one-line status shown on the next repaint (e.g. "rexops not
     /// found"). Cleared by the next keypress so it never lingers.
     status: Option<String>,
+    /// The resolved suite-ui palette (accent + the `NO_COLOR` gate). The ratatui
+    /// draw layer ([`crate::view`]) styles every view through it.
+    theme: Theme,
 }
 
 impl App {
-    pub fn new(readings: Readings) -> Self {
+    pub fn new(readings: Readings, theme: Theme) -> Self {
         let verdict = Verdict::from_readings(&readings);
+        Self::with_verdict(readings, verdict, theme)
+    }
+
+    /// Build an app around a pre-computed `verdict` (e.g. a `--state` demo) with
+    /// empty readings — for the one-shot non-interactive render, which only shows
+    /// the default verdict screen and has no drill-down lists to populate.
+    pub fn from_verdict(verdict: Verdict, theme: Theme) -> Self {
+        Self::with_verdict(Readings::empty(), verdict, theme)
+    }
+
+    fn with_verdict(readings: Readings, verdict: Verdict, theme: Theme) -> Self {
         App {
             readings,
             verdict,
@@ -60,24 +76,106 @@ impl App {
             quit: false,
             launch_cockpit: false,
             status: None,
+            theme,
         }
     }
 
-    /// Run the interactive loop until the user quits. Owns raw mode for its
-    /// duration; the terminal is restored when `_raw` drops (and by the panic
-    /// hook installed here). `input` is stdin in production; tests drive it with
-    /// a byte cursor via [`App::handle`] instead of calling `run`.
-    pub fn run(mut self, style: &Style) -> io::Result<()> {
-        tui::install_panic_guard();
-        let mut raw = RawMode::enter()?;
-        let mut stdin = io::stdin();
+    /// The resolved theme this app draws through.
+    pub fn theme(&self) -> Theme {
+        self.theme
+    }
+
+    /// The current view — the draw layer dispatches on it.
+    pub(crate) fn view(&self) -> View {
+        self.view
+    }
+
+    /// The derived verdict the default screen renders.
+    pub(crate) fn verdict(&self) -> &Verdict {
+        &self.verdict
+    }
+
+    /// The transient status line, if any (e.g. "rexops not found").
+    pub(crate) fn status(&self) -> Option<&str> {
+        self.status.as_deref()
+    }
+
+    /// The current search query buffer (what the user has typed in the box).
+    pub(crate) fn query(&self) -> &str {
+        &self.query
+    }
+
+    /// The attention items for the Attention/Search views (data the draw layer
+    /// renders; the verdict logic stays in [`crate::verdict`]).
+    pub(crate) fn attention_items(&self) -> Vec<crate::sources::Attention> {
+        self.readings.all_attention()
+    }
+
+    /// The per-source freshness marks for the Feeds view.
+    pub(crate) fn source_marks(&self) -> Vec<crate::verdict::SourceMark> {
+        self.readings.source_marks()
+    }
+
+    /// When the underlying suite snapshot was built, if known — the Feeds
+    /// view's provenance line.
+    pub(crate) fn snapshot_built_at(&self) -> Option<&str> {
+        self.readings.freshness.built_at.as_deref()
+    }
+
+    /// The search hit lines for the current query (delegates to the existing
+    /// pure search). Exposed so the Search draw renders them.
+    pub(crate) fn search_hit_lines(&self, q: &str) -> Vec<String> {
+        self.search_hits(q)
+    }
+
+    /// Test-only: an app on representative sample readings (one critical
+    /// attention item, mixed-freshness sources), set to `view` with `query`, so
+    /// `crate::view`'s draw snapshots can exercise each screen without disk I/O.
+    /// Colour is forced off so snapshots (glyphs/layout only) are deterministic.
+    #[cfg(test)]
+    pub(crate) fn sample_with(view: View, query: &str) -> Self {
+        let mut app = App::new(crate::verdict::sample_readings(), Theme::with_color(false));
+        app.view = view;
+        app.query = query.to_string();
+        app
+    }
+
+    /// Test-only: set the transient status line, so `crate::view`'s draw can be
+    /// exercised with an overlay present.
+    #[cfg(test)]
+    pub(crate) fn with_status(mut self, msg: &str) -> Self {
+        self.status = Some(msg.to_string());
+        self
+    }
+
+    /// Run the interactive loop until the user quits. Owns the terminal via the
+    /// shared [`suite_ui::Tui`] guard for its duration; the terminal is restored
+    /// when `tui` drops (and by ratatui's restoring panic hook, installed by
+    /// `Tui::new`). Tests drive the pure state machine via [`App::handle`]
+    /// directly instead of calling `run`.
+    ///
+    /// Each frame is painted by the ratatui draw layer ([`crate::view::draw`])
+    /// through the resolved [`theme`](App::theme); input comes from crossterm via
+    /// [`crate::tui::read_event`]. The `r` cockpit hand-off uses [`Tui::suspended`]
+    /// so Pulse's terminal is restored even if the child errors.
+    pub fn run(mut self) -> io::Result<()> {
+        // Read-only dashboard: hide the cursor; require a real tty so we fail
+        // with a friendly message rather than entering raw mode on a pipe.
+        let mut tui = Tui::new(TuiOptions {
+            hide_cursor: true,
+            require_tty: true,
+            ..Default::default()
+        })
+        .map_err(io::Error::other)?;
+
         loop {
-            let size = TermSize::resolve();
-            tui::paint(&self.frame(style, size))?;
+            // The ratatui draw layer (crate::view) paints the current view in
+            // suite-ui chrome through the theme.
+            tui.terminal().draw(|f| crate::view::draw(f, &self))?;
             if self.quit {
                 break;
             }
-            let key = tui::read_key(&mut stdin)?;
+            let key = tui::read_event()?;
             self.handle(key);
             if self.quit {
                 // Repaint nothing more; just restore and leave.
@@ -85,26 +183,22 @@ impl App {
             }
             // `r` requested the cockpit: hand the terminal to `rexops tui` and
             // come back. The launch is here (not in `handle`) so `handle` stays
-            // pure; `RawMode::suspend` guarantees Pulse's terminal is restored
+            // pure; `Tui::suspended` guarantees Pulse's terminal is restored
             // afterwards. A missing/failed rexops becomes a transient status
             // line, never an error that ends the session.
             if std::mem::take(&mut self.launch_cockpit) {
-                self.status = crate::cockpit::open(&mut raw).status_line();
+                self.status = crate::cockpit::open(&mut tui).status_line();
             }
         }
         Ok(())
     }
 
-    /// Render a single named view to a frame, without the event loop. Used by
-    /// `--dump-view` to preview/snapshot a view deterministically (no PTY timing
-    /// games), and handy in tests. Unknown names return `None`.
-    pub fn dump(
-        &mut self,
-        view: &str,
-        query: &str,
-        style: &Style,
-        size: TermSize,
-    ) -> Option<String> {
+    /// Render a single named view headlessly, without the event loop — the
+    /// deterministic preview/snapshot path behind `--dump-view` (no PTY timing
+    /// games). Goes through the same [`crate::view::draw`] the live loop uses (via
+    /// a ratatui `TestBackend`), so a dump is the real UI. Unknown names return
+    /// `None`.
+    pub fn dump(&mut self, view: &str, query: &str, size: TermSize) -> Option<String> {
         self.view = match view {
             "default" => View::Default,
             "attention" => View::Attention,
@@ -115,7 +209,7 @@ impl App {
             _ => return None,
         };
         self.query = query.to_string();
-        Some(self.frame(style, size))
+        Some(crate::view::render_to_string(self, size.width, size.height))
     }
 
     /// Apply one key to the state. Pure (no I/O), so the whole navigation model
@@ -178,185 +272,6 @@ impl App {
         }
     }
 
-    /// Render the current view to a full frame for `size`, with any transient
-    /// status line overlaid on the bottom row.
-    fn frame(&self, style: &Style, size: TermSize) -> String {
-        let base = match self.view {
-            View::Default => render(&self.verdict, style, size),
-            View::Attention => self.view_attention(style, size),
-            View::Feeds => self.view_feeds(style, size),
-            View::Details => self.view_details(style, size),
-            View::Help => self.view_help(style, size),
-            View::Search => self.view_search(style, size),
-        };
-        self.overlay_status(base, style, size)
-    }
-
-    /// Replace the bottom row of `frame` with the transient status line when one
-    /// is set (e.g. "rexops not found"). Kept dim and on the last row so it reads
-    /// as an aside, never disturbing the verdict's position above it. No-op when
-    /// there's no status.
-    fn overlay_status(&self, frame: String, style: &Style, size: TermSize) -> String {
-        let Some(msg) = &self.status else {
-            return frame;
-        };
-        let h = size.height.max(1) as usize;
-        let mut lines: Vec<String> = frame.split('\n').map(str::to_string).collect();
-        // Ensure the frame is tall enough to address the last row.
-        if lines.len() < h {
-            lines.resize(h, String::new());
-        }
-        let last = lines.len().saturating_sub(1);
-        lines[last] = clip_ansi(
-            &format!(
-                " {dim}{msg}{rst}",
-                dim = style.dim,
-                msg = msg,
-                rst = style.rst
-            ),
-            size.width.max(1) as usize,
-            style.rst,
-        );
-        lines.join("\n")
-    }
-
-    // ── Views ────────────────────────────────────────────────────────────────
-    // Each view is a simple full-height panel: a dim title, the content, and a
-    // footer telling the operator how to get back. Deliberately plain — these
-    // are drill-downs, not the calm verdict, so density is acceptable here.
-
-    fn view_attention(&self, style: &Style, size: TermSize) -> String {
-        let items = self.readings.all_attention();
-        let mut body = Vec::new();
-        if items.is_empty() {
-            body.push("  nothing needs attention.".to_string());
-        } else {
-            for a in &items {
-                let sev = severity_label(a.severity);
-                let sev_c = style.severity(a.severity);
-                body.push(format!(
-                    "  {sev_c}{sev:>8}{rst}  {what}  {dim}— {why} ({source}){rst}",
-                    sev = sev,
-                    what = a.what,
-                    why = a.why,
-                    source = a.source,
-                    sev_c = sev_c,
-                    dim = style.dim,
-                    rst = style.rst,
-                ));
-            }
-        }
-        panel(
-            style,
-            size,
-            "ATTENTION",
-            &body,
-            "a / Esc  back      q  quit",
-        )
-    }
-
-    fn view_feeds(&self, style: &Style, size: TermSize) -> String {
-        let marks = self.readings.source_marks();
-        let mut body = Vec::new();
-        for m in &marks {
-            let (glyph, word, color) = match m.freshness {
-                Source::Current => ('●', "current", style.grn),
-                Source::Stale => ('◐', "stale", style.ylw),
-                Source::Missing => ('○', "missing", style.dim),
-            };
-            body.push(format!(
-                "  {color}{glyph}{rst}  {name:<14}{dim}{word}{rst}",
-                color = color,
-                glyph = glyph,
-                name = m.name,
-                word = word,
-                dim = style.dim,
-                rst = style.rst,
-            ));
-        }
-        let age = if let Some(b) = &self.readings.freshness.built_at {
-            format!("  snapshot built {b}")
-        } else {
-            "  no snapshot found".to_string()
-        };
-        body.push(String::new());
-        body.push(format!(
-            "{dim}{age}{rst}",
-            dim = style.dim,
-            age = age,
-            rst = style.rst
-        ));
-        panel(style, size, "FEEDS", &body, "f / Esc  back      q  quit")
-    }
-
-    fn view_details(&self, style: &Style, size: TermSize) -> String {
-        let v = &self.verdict;
-        let mut body = vec![
-            format!("  verdict   {}", crate::verdict_text(v.state)),
-            format!("  data age  {}", v.age),
-        ];
-        if v.critical + v.high > 0 {
-            body.push(format!(
-                "  findings  {} critical, {} high",
-                v.critical, v.high
-            ));
-        }
-        body.push(String::new());
-        body.push("  press a for the full attention list, f for feeds.".to_string());
-        panel(
-            style,
-            size,
-            "DETAILS",
-            &body,
-            "Enter / Esc  back      q  quit",
-        )
-    }
-
-    fn view_help(&self, style: &Style, size: TermSize) -> String {
-        let body = vec![
-            "  Enter   details for the current verdict".to_string(),
-            "  a       attention — everything that needs action".to_string(),
-            "  f       feeds — source freshness & confidence".to_string(),
-            "  /       search across visible status".to_string(),
-            "  r       open the full RexOps cockpit".to_string(),
-            "  ?       this help".to_string(),
-            "  q       quit".to_string(),
-            String::new(),
-            "  Esc or the view's own key returns to the verdict.".to_string(),
-        ];
-        panel(style, size, "HELP", &body, "? / Esc  back      q  quit")
-    }
-
-    fn view_search(&self, style: &Style, size: TermSize) -> String {
-        let q = &self.query;
-        let mut body = vec![
-            format!("  search: {}{}{}_", style.cyn, q, style.rst),
-            String::new(),
-        ];
-        if q.is_empty() {
-            body.push(format!(
-                "  {}type to filter; Enter or Esc to close.{}",
-                style.dim, style.rst
-            ));
-        } else {
-            let hits = self.search_hits(q);
-            if hits.is_empty() {
-                body.push(format!("  {}no matches.{}", style.dim, style.rst));
-            } else {
-                for h in hits {
-                    body.push(format!("  {h}"));
-                }
-            }
-        }
-        panel(
-            style,
-            size,
-            "SEARCH",
-            &body,
-            "Enter / Esc  close      type to filter",
-        )
-    }
-
     /// Case-insensitive substring search across the visible status surface:
     /// attention items and source names. Returns formatted match lines.
     fn search_hits(&self, q: &str) -> Vec<String> {
@@ -377,146 +292,15 @@ impl App {
     }
 }
 
-/// Lay out a simple view panel: `pulse · TITLE` top-left, the body lines from
-/// the top, and a dim footer on the last row telling the operator how to leave.
-fn panel(style: &Style, size: TermSize, title: &str, body: &[String], footer: &str) -> String {
-    let h = size.height.max(4) as usize;
-    let w = size.width.max(1) as usize;
-    let mut lines: Vec<String> = vec![String::new(); h];
-
-    lines[0] = clip_ansi(
-        &format!(
-            " {dim}pulse · {title}{rst}",
-            dim = style.dim,
-            title = title,
-            rst = style.rst
-        ),
-        w,
-        style.rst,
-    );
-
-    // Body starts two rows down, clipped to leave room for the footer.
-    let top = 2;
-    for (i, line) in body.iter().enumerate() {
-        let row = top + i;
-        if row >= h - 2 {
-            break;
-        }
-        lines[row] = clip_ansi(line, w, style.rst);
-    }
-
-    lines[h - 2] = clip_ansi(
-        &format!(
-            " {dim}{}{rst}",
-            "─".repeat(w.saturating_sub(2)),
-            dim = style.dim,
-            rst = style.rst
-        ),
-        w,
-        style.rst,
-    );
-    lines[h - 1] = clip_ansi(
-        &format!(
-            " {dim}{footer}{rst}",
-            dim = style.dim,
-            footer = footer,
-            rst = style.rst
-        ),
-        w,
-        style.rst,
-    );
-    lines.join("\n")
-}
-
-fn clip_ansi(input: &str, width: usize, reset: &str) -> String {
-    let mut out = String::new();
-    let mut visible = 0usize;
-    let mut chars = input.chars().peekable();
-    let mut clipped = false;
-
-    while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            out.push(ch);
-            for c in chars.by_ref() {
-                out.push(c);
-                if c.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-            continue;
-        }
-        if visible >= width {
-            clipped = true;
-            break;
-        }
-        out.push(ch);
-        visible += 1;
-    }
-
-    if !clipped && chars.peek().is_some() {
-        clipped = true;
-    }
-    if clipped && !reset.is_empty() && input.contains('\u{1b}') {
-        out.push_str(reset);
-    }
-    out
-}
-
-fn severity_label(s: crate::verdict::Severity) -> &'static str {
-    use crate::verdict::Severity;
-    match s {
-        Severity::Critical => "critical",
-        Severity::High => "high",
-        Severity::Medium => "medium",
-        Severity::Low => "low",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sources::{Attention, BinaryCheck, BulwarkView, Severity, SnapshotFreshness};
-    use crate::verdict::Readings;
-
-    /// A Readings with a couple of attention items and a missing source, enough
-    /// to exercise the views and search without touching disk.
-    fn sample_readings() -> Readings {
-        Readings {
-            freshness: SnapshotFreshness {
-                built_at: Some("2026-06-14T12:00:00Z".to_string()),
-                sections: vec![("scripts", crate::sources::Freshness::Current)],
-            },
-            rexops: Some(crate::sources::RexopsView {
-                generated_at: Some("2026-06-14T12:00:00Z".to_string()),
-                sources: vec![
-                    ("workstate".to_string(), true),
-                    ("scriptvault".to_string(), false),
-                ],
-                attention: vec![Attention {
-                    what: "deploy-prod.sh".to_string(),
-                    why: "AWS access key ID detected".to_string(),
-                    source: "bulwark".to_string(),
-                    severity: Severity::Critical,
-                }],
-            }),
-            bulwark: BulwarkView {
-                attention: Vec::new(),
-                present: true,
-            },
-            jobs: Vec::new(),
-            binaries: ["workstate", "bulwark", "proto", "toolfoundry", "vault"]
-                .iter()
-                .map(|&name| BinaryCheck {
-                    name,
-                    present: true,
-                })
-                .collect(),
-            now: Some(0),
-        }
-    }
+    use crate::verdict::sample_readings;
 
     fn app() -> App {
-        App::new(sample_readings())
+        // Colour forced off so navigation tests are deterministic regardless of
+        // the runner's NO_COLOR; these tests assert on view/query state, not hue.
+        App::new(sample_readings(), Theme::with_color(false))
     }
 
     #[test]
@@ -572,34 +356,31 @@ mod tests {
         assert!(a.quit);
     }
 
-    #[test]
-    fn plain_style_stays_fully_interactive() {
-        let style = Style::plain_for_test();
-        assert!(
-            !style.color,
-            "test must exercise the NO_COLOR-style renderer"
-        );
+    /// Render the app's current view through the real ratatui draw, headlessly,
+    /// and return the glyph grid — so navigation tests can assert on what each
+    /// view actually paints (the same path the live UI uses).
+    fn drawn(a: &App) -> String {
+        crate::view::render_to_string(a, 80, 24)
+    }
 
+    #[test]
+    fn navigation_drives_every_view_and_renders_it() {
+        // Colour-off so the assertions compare glyph content only; this walks the
+        // full navigation model and confirms each view renders through view::draw.
         let mut a = app();
         assert_eq!(a.view, View::Default);
-        assert!(a
-            .frame(&style, TermSize::for_test(80, 24))
-            .contains("NEEDS ATTENTION"));
+        assert!(drawn(&a).contains("NEEDS ATTENTION"));
 
         a.handle(Key::Enter);
         assert_eq!(a.view, View::Details);
-        assert!(a
-            .frame(&style, TermSize::for_test(80, 24))
-            .contains("pulse · DETAILS"));
+        assert!(drawn(&a).contains("pulse · DETAILS"));
 
         a.handle(Key::Enter);
         assert_eq!(a.view, View::Default);
 
         a.handle(Key::Char('f'));
         assert_eq!(a.view, View::Feeds);
-        assert!(a
-            .frame(&style, TermSize::for_test(80, 24))
-            .contains("pulse · FEEDS"));
+        assert!(drawn(&a).contains("pulse · FEEDS"));
 
         a.handle(Key::Char('/'));
         a.handle(Key::Char('a'));
@@ -607,6 +388,7 @@ mod tests {
         a.handle(Key::Char('s'));
         assert_eq!(a.view, View::Search);
         assert_eq!(a.query, "aws");
+        assert!(drawn(&a).contains("/ aws"), "search bar shows the query");
         assert!(!a.quit);
 
         a.handle(Key::Enter);
@@ -642,10 +424,9 @@ mod tests {
 
     #[test]
     fn a_status_line_overlays_the_bottom_row_then_clears_on_next_key() {
-        let style = Style::plain_for_test();
         let mut a = app();
         a.status = Some("rexops not found".to_string());
-        let frame = a.frame(&style, TermSize::for_test(80, 24));
+        let frame = drawn(&a);
         let last = frame.split('\n').next_back().unwrap_or("");
         assert!(
             last.contains("rexops not found"),
@@ -685,53 +466,7 @@ mod tests {
         assert!(a.search_hits("nothing-here").is_empty());
     }
 
-    #[test]
-    fn views_render_without_panicking_at_small_and_normal_sizes() {
-        let style = Style::plain_for_test();
-        for v in [
-            View::Attention,
-            View::Feeds,
-            View::Details,
-            View::Help,
-            View::Search,
-        ] {
-            let mut a = app();
-            a.view = v;
-            for (w, h) in [(80u16, 24u16), (20, 6), (200, 60)] {
-                let frame = a.frame(&style, TermSize::for_test(w, h));
-                assert!(!frame.is_empty());
-            }
-        }
-    }
-
-    #[test]
-    fn views_do_not_exceed_viewport_width() {
-        let style = Style::plain_for_test();
-        for v in [
-            View::Attention,
-            View::Feeds,
-            View::Details,
-            View::Help,
-            View::Search,
-        ] {
-            let mut a = app();
-            a.view = v;
-            let frame = a.frame(&style, TermSize::for_test(20, 6));
-            let max = frame.lines().map(|l| l.chars().count()).max().unwrap_or(0);
-            assert!(max <= 20, "{v:?} overflowed to {max} columns:\n{frame}");
-        }
-    }
-
-    #[test]
-    fn status_line_is_clipped_to_viewport_width() {
-        let style = Style::plain_for_test();
-        let mut a = app();
-        a.status = Some(
-            "rexops not found on PATH — install it to open the cockpit (or run `rexops tui`)."
-                .to_string(),
-        );
-        let frame = a.frame(&style, TermSize::for_test(40, 10));
-        let last = frame.split('\n').next_back().unwrap_or("");
-        assert!(last.chars().count() <= 40, "status overflowed: {last}");
-    }
+    // Render geometry (width-safety, tiny-size no-panic, status clipping) is now
+    // covered against the real ratatui draw in `crate::view`'s tests, not the
+    // retired string renderer.
 }

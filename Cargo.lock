@@ -669,9 +669,13 @@ dependencies = [
 name = "pulse"
 version = "0.1.2"
 dependencies = [
+ "crossterm",
+ "insta",
+ "ratatui",
  "serde",
  "serde_json",
  "suite-core",
+ "suite-ui",
 ]
 
 [[package]]

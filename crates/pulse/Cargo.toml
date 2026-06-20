@@ -11,13 +11,22 @@ description = "A calm, read-only TUI status instrument for the Linux Ops Suite: 
 name = "pulse"
 path = "src/main.rs"
 
-# Rendering stays lean (own ANSI, a tiny libc call for terminal size). TTY and
-# $PATH helpers come from suite-core (the shared, dependency-free helper crate).
-# The one JSON concession: Pulse reads four suite contracts (Workstate snapshot,
-# RexOps snapshot, Proto sessions, Bulwark feed), so it uses the workspace's
-# serde/serde_json rather than hand-rolling a parser — serde also ignores unknown
-# fields by default, exactly what CONTRACT_RULES.md requires. No ratatui, no network.
+# Interactive rendering is the shared suite chrome: suite-ui (over ratatui +
+# crossterm) owns the theme, panes, overlays, the terminal guard, and
+# display-width truncation, so Pulse stops hand-rolling ANSI/termios. TTY and
+# $PATH helpers still come from suite-core (the shared, dependency-free helper
+# crate). The one JSON concession: Pulse reads four suite contracts (Workstate
+# snapshot, RexOps snapshot, Proto sessions, Bulwark feed), so it uses the
+# workspace's serde/serde_json rather than hand-rolling a parser — serde also
+# ignores unknown fields by default, exactly what CONTRACT_RULES.md requires. No
+# network.
 [dependencies]
 suite-core = { workspace = true }
+suite-ui = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

@@ -1,5 +1,53 @@
 # Last Work
 
+## Pulse TUI migration to suite-ui (T1–T10) — pulse
+
+2026-06-20. Worktree `.claude/worktrees/pulse-suite-ui-migration`, branch
+`worktree-pulse-suite-ui-migration`, off main. Committed on the branch, **NOT
+pushed, no PR** (awaiting Tom). Executed the rewrite plan
+`docs/superpowers/plans/2026-06-20-pulse-tui-rewrite.md` (PULSE TUI REWRITE
+PLAN). Pulse was a deliberately no-ratatui, hand-rolled ANSI-string renderer +
+libc `termios` driver; it now renders entirely through the shared **suite-ui**
+chrome (over ratatui + crossterm). Net ~1300 lines deleted.
+
+T1 (b1682a8) — deps: added suite-ui + ratatui + crossterm (+ insta dev) to
+pulse; suite-ui added to `[workspace.dependencies]`.
+T2 (1db66ea) — terminal driven by `suite_ui::Tui` (hide_cursor + require_tty),
+behind a temporary monochrome Paragraph bridge so the app kept running; input
+moved to crossterm (`tui::read_event` → unchanged `Key` enum); cockpit hand-off
+to `Tui::suspended` (flattening the io::Result<io::Result<()>>).
+T3 (9efb29a) — crossterm adapter confirmed as the sole production input; tested
+the KeyCode→Key mapping incl. search-box literal letters; `read_key` marked
+legacy/test-only.
+T4 (66e044d) — resolve `suite_ui::Theme`; `--theme cyan|amber` + `--color
+auto|always|never` parsed (invalid → exit 2); NO_COLOR now routes through
+suite-ui's gate.
+T5 (189d9de) — new `crate::view` draw layer; the default verdict screen drawn in
+real ratatui (KeyHints footer, Theme colour, display-width truncation), faithful
+geometry; 3 insta snapshots.
+T6 (79dfec4) — all drill-downs ported: Attention (`SeverityBadge`/`EmptyState`),
+Feeds (`HealthStrip`), Details, Help (`HelpSheet` overlay), Search (`SearchBar`);
+a `suite_severity` shim maps domain Severity → suite_ui::Severity at the draw
+boundary; sample fixture moved to `verdict::sample_readings`; 5 snapshots.
+T7 (e922533) — transient status overlay covered from the draw side (bottom-row
+placement across views, width truncation).
+T8–T10 (5c42874) — headless `--dump-view`/`--state` render through ratatui
+(`view::render_to_string` via TestBackend; `App::from_verdict`/`Readings::empty`
+back the one-shot); then DELETED the entire legacy renderer (main.rs
+render/Style/Line/clip_ansi/…; app.rs frame/view_*/panel) and the termios driver
+(tui.rs RawMode/paint/install_panic_guard/read_key + extern "C" block, 490→108
+lines). Docs refreshed.
+
+State: 66 pulse tests pass (navigation state machine intact + ~15 ratatui draw
+tests incl. 8 insta snapshots); `cargo test/clippy -D warnings/fmt --all` green
+across the workspace; no sibling crate regressed. PULSE_DESIGN.md gained an
+"Implementation note" (design intent unchanged). T11 (reusable loop template for
+the next tool) deliberately SKIPPED as YAGNI — tool #2 isn't being built. **Not
+yet done:** manual smoke in a real terminal (live resize, cockpit round-trip, 3
+themes/NO_COLOR) — can't be unit-tested; recommended before merge.
+Intentional restyles shipped: `[CRIT]` badge, glyph health strip, Help-as-overlay,
+`•`-separated KeyHints footer.
+
 ## suite-ui design review fixes (R1–R4) — thomas-tui + suite-ui
 
 2026-06-20. Worktree `.claude/worktrees/suite-ui-design-doc`, branch
