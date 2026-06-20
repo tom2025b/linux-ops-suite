@@ -20,6 +20,7 @@ path = "src/lib.rs"
 # hashes with a hand-rolled SHA-256 (no sha2/ring) so the only hard deps are
 # the CLI parser and serde for the JSON envelope + baseline. No network, no async.
 [dependencies]
+suite-core = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

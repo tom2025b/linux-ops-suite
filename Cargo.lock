@@ -974,6 +974,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "suite-core",
  "tempfile",
 ]
 
