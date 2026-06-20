@@ -186,7 +186,9 @@ pub enum Severity {
 
 impl Severity {
     fn parse(s: &str) -> Option<Self> {
-        match s {
+        // Case-insensitive so a producer emitting "Critical"/"CRITICAL" still
+        // maps correctly instead of falling through to the unknown path.
+        match s.trim().to_ascii_lowercase().as_str() {
             "low" => Some(Severity::Low),
             "medium" => Some(Severity::Medium),
             "high" => Some(Severity::High),
@@ -267,7 +269,11 @@ pub fn read_rexops(dir: &DataDir) -> Option<RexopsView> {
             },
             why: a.reason,
             source: a.tool,
-            severity: Severity::parse(&a.severity).unwrap_or(Severity::Low),
+            // An unrecognized severity escalates to High, not Low: on a security
+            // dashboard an unknown value (a new severity the producer added, a
+            // typo) must surface, never silently sink below the attention
+            // threshold.
+            severity: Severity::parse(&a.severity).unwrap_or(Severity::High),
         })
         .collect();
     Some(RexopsView {
@@ -318,7 +324,10 @@ pub fn read_bulwark(dir: &DataDir) -> BulwarkView {
         .items
         .into_iter()
         .filter_map(|it| {
-            let sev = Severity::parse(&it.severity)?;
+            // Unknown severity escalates to High (never silently dropped), so a
+            // new or misspelled value from bulwark still surfaces here rather
+            // than vanishing before the High threshold.
+            let sev = Severity::parse(&it.severity).unwrap_or(Severity::High);
             if sev < Severity::High {
                 return None;
             }
@@ -616,6 +625,50 @@ mod tests {
         assert!(v.present);
         assert_eq!(v.attention.len(), 2);
         assert!(v.attention.iter().all(|a| a.severity >= Severity::High));
+    }
+
+    #[test]
+    fn unknown_or_uppercase_severity_escalates_not_drops() {
+        // L6 regression: an unrecognized severity string must surface as High,
+        // never silently sink to Low (rexops path) or be dropped (bulwark path).
+        // Also covers case-insensitive parsing of a known value.
+        let t = TempData::new("sevquirk");
+        t.write(
+            "rexops/snapshot.json",
+            r#"{
+              "schema_version": 1, "source_tool": "rexops",
+              "generated_at": "2026-06-20T00:00:00Z",
+              "sources": {},
+              "attention": [
+                { "tool": "bulwark", "id": "weird.sh", "reason": "novel severity", "severity": "urgent" },
+                { "tool": "bulwark", "id": "caps.sh",  "reason": "shouted", "severity": "CRITICAL" }
+              ]
+            }"#,
+        );
+        let rx = read_rexops(&t.data()).expect("present");
+        let weird = rx.attention.iter().find(|a| a.what == "weird.sh").unwrap();
+        assert_eq!(weird.severity, Severity::High, "unknown -> High, not Low");
+        let caps = rx.attention.iter().find(|a| a.what == "caps.sh").unwrap();
+        assert_eq!(caps.severity, Severity::Critical, "CRITICAL parses");
+
+        // Bulwark path: an unknown severity must still pass the High filter.
+        t.write(
+            "workstate/feeds/bulwark.json",
+            r#"{
+              "schema_version": 1, "source_tool": "bulwark",
+              "generated_at": "2026-06-20T00:00:00Z", "item_count": 1,
+              "items": [
+                { "name": "mystery.sh", "severity": "weird-new-level", "description": "unknown sev" }
+              ]
+            }"#,
+        );
+        let bw = read_bulwark(&t.data());
+        assert_eq!(
+            bw.attention.len(),
+            1,
+            "unknown severity must not be dropped"
+        );
+        assert!(bw.attention[0].severity >= Severity::High);
     }
 
     #[test]
