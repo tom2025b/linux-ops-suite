@@ -68,6 +68,32 @@ pub fn draw(f: &mut Frame, app: &App) {
     }
 }
 
+/// Render `app`'s current view headlessly into a `w`×`h` ratatui `TestBackend`
+/// and return the glyph grid as a newline-joined string. The no-PTY path behind
+/// `--dump-view` and the non-interactive one-shot render: it goes through the
+/// exact same [`draw`] the live loop uses, so the previewed/snapshotted output is
+/// the real UI (glyphs/layout; colour is not part of a text dump). ratatui 0.29's
+/// `TestBackend` is infallible for a plain draw, so this never errors.
+pub fn render_to_string(app: &App, w: u16, h: u16) -> String {
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    let mut term = Terminal::new(TestBackend::new(w.max(1), h.max(1)))
+        .expect("TestBackend construction is infallible");
+    term.draw(|f| draw(f, app))
+        .expect("TestBackend draw is infallible");
+    let buf = term.backend().buffer();
+    (0..buf.area.height)
+        .map(|y| {
+            (0..buf.area.width)
+                .map(|x| buf.cell((x, y)).unwrap().symbol().to_string())
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// The calm default screen, in ratatui. Faithful to the string renderer's
 /// geometry: a vertical anchor at ~40%, the verdict centered there, bottom-pinned
 /// furniture on the busy states (sources · rule · hints · timestamp), and a

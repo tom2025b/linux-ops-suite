@@ -2,10 +2,10 @@
 //!
 //! Pulse is the suite's default status screen (a bare `rexops` opens it); the
 //! `r` key is the way back out to the full cockpit — the launcher/jobs interface
-//! — via `rexops tui`. Pulse stays dependency-free, so resolving `rexops` is a
-//! tiny hand-rolled PATH walk (the same approach rex-check/portman use instead of
-//! a `which` crate), and the actual foreground hand-off (suspend Pulse's raw
-//! mode, run the child, restore) is owned by [`crate::tui::RawMode::suspend`].
+//! — via `rexops tui`. Resolving `rexops` is a tiny hand-rolled PATH walk (the
+//! same approach rex-check/portman use instead of a `which` crate), and the
+//! actual foreground hand-off (leave Pulse's alt screen, run the child, re-enter)
+//! is owned by [`suite_ui::Tui::suspended`].
 //!
 //! Nothing here is an error in the "Pulse failed" sense: a missing `rexops` is
 //! reported back to the UI as a short status line, never a crash or a non-zero
