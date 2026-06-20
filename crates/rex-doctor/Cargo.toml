@@ -19,6 +19,7 @@ path = "src/lib.rs"
 # suite binaries and `git` rather than linking them, so the only deps are the
 # CLI parser and (for the JSON report envelope) serde. No network, no async.
 [dependencies]
+suite-core = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
