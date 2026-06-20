@@ -57,11 +57,26 @@ fn index_pid_fds(pid: u32, by_inode: &mut HashMap<u64, u32>) {
     for fd in fds.flatten() {
         if let Ok(target) = fs::read_link(fd.path()) {
             if let Some(inode) = socket_inode(&target.to_string_lossy()) {
-                // First writer wins; a socket has one owning pid in practice.
-                by_inode.entry(inode).or_insert(pid);
+                let slot = by_inode.entry(inode).or_insert(pid);
+                if should_replace_owner(*slot, pid) {
+                    *slot = pid;
+                }
             }
         }
     }
+}
+
+/// Which pid to keep when more than one holds the same socket inode open.
+///
+/// A listening socket is frequently held by *two* pids: systemd (pid 1) keeps
+/// socket-activated listeners (`ssh.socket`, `cups.socket`, …) open and passes
+/// the fd to the real service. `/proc` is walked in inode order, not pid order,
+/// so pid 1 often lands first — and reporting "systemd" as the owner of port 22
+/// instead of "sshd" is a misleading answer to portman's whole question. So the
+/// real service (any pid != 1) supersedes a recorded pid 1; otherwise the first
+/// writer stays, since a non-supervisor socket has one owner in practice.
+fn should_replace_owner(existing: u32, candidate: u32) -> bool {
+    existing == 1 && candidate != 1
 }
 
 /// Extract the inode from a `socket:[12345]` fd symlink target.
@@ -217,6 +232,23 @@ mod tests {
         assert_eq!(socket_inode("anon_inode:[eventfd]"), None);
         assert_eq!(socket_inode("/dev/null"), None);
         assert_eq!(socket_inode("socket:[notanumber]"), None);
+    }
+
+    #[test]
+    fn real_service_supersedes_systemd_for_shared_socket() {
+        // The live ssh.socket case: pid 1 (systemd) and the real daemon both
+        // hold the listening inode. Whichever /proc order surfaces, the daemon
+        // must win, never systemd.
+        assert!(should_replace_owner(1, 1305), "sshd must override systemd");
+        assert!(
+            !should_replace_owner(1305, 1),
+            "systemd must not override a real service already recorded"
+        );
+        // Two ordinary pids: first writer stays (no spurious churn).
+        assert!(!should_replace_owner(1305, 1306));
+        assert!(!should_replace_owner(1306, 1305));
+        // Pid 1 owning its own socket with no other holder is left as pid 1.
+        assert!(!should_replace_owner(1, 1));
     }
 
     #[test]

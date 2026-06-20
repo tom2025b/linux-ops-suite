@@ -145,9 +145,21 @@ fn entry_for(
             entry.target = meta::read_link_target(path);
         }
         EntryKind::File => {
+            // The capture set is small suite JSON by design, but a misconfigured
+            // path could point at a huge file. Reading the whole thing into one
+            // Vec to hash would let that OOM the process mid-capture. Guard it:
+            // anything past the cap is recorded as unreadable (with size noted by
+            // the entry's own `size`) rather than slurped into memory. We still
+            // read the whole file below — within the cap that is bounded and lets
+            // us both hash and sniff the envelope from the same bytes.
+            const MAX_CAPTURE_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB
+            if m.size.is_some_and(|sz| sz > MAX_CAPTURE_BYTES) {
+                entry.unreadable = true;
+                return Ok(Some(entry));
+            }
             // Read the whole file once: we need the bytes both to hash (store or
-            // in-memory) and to sniff the envelope. Files in the capture set are
-            // small suite JSON; if reading fails it's an unreadable entry.
+            // in-memory) and to sniff the envelope. If reading fails it's an
+            // unreadable entry.
             match std::fs::read(path) {
                 Ok(bytes) => {
                     // Persist into the object pool for a real capture; hash in
@@ -245,6 +257,27 @@ mod tests {
         let e = &scanned.entries[0];
         assert_eq!(e.envelope_tool.as_deref(), Some("workstate"));
         assert_eq!(e.envelope_schema_version, Some(4));
+    }
+
+    #[test]
+    fn oversize_file_is_marked_unreadable_not_slurped() {
+        // M6 regression: a path larger than the in-memory cap must be recorded
+        // as unreadable (size still noted) rather than read whole into a Vec,
+        // which would risk OOM. A sparse file via set_len gives us the size
+        // without writing 64 MiB of real bytes.
+        let dir = tempdir().unwrap();
+        let store = store_in(&dir.path().join("store"));
+        let f = dir.path().join("huge.bin");
+        let fh = fs::File::create(&f).unwrap();
+        fh.set_len(64 * 1024 * 1024 + 1).unwrap(); // one byte over the cap
+        drop(fh);
+
+        let scanned = scan_into(&set_of(vec![CaptureSpec::new(f)]), &store).unwrap();
+        let e = &scanned.entries[0];
+        assert_eq!(e.kind, EntryKind::File);
+        assert!(e.unreadable, "oversize file must be flagged unreadable");
+        assert!(e.hash.is_none(), "oversize file must not be hashed/stored");
+        assert_eq!(e.size, Some(64 * 1024 * 1024 + 1)); // size is still reported
     }
 
     #[test]

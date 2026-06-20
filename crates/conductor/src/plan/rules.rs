@@ -4,7 +4,7 @@
 //! function with its precondition; `super::build` runs them in order and
 //! assembles the `Plan`. See CONDUCTOR_DESIGN.md "How Conductor Builds the Plan".
 
-use super::{slug, Ring, Step};
+use super::{quote_arg, slug, Ring, Step};
 use crate::state::{Severity, SuiteState};
 
 /// Rule 1 — trust the data first. A stale/unavailable feed means every later
@@ -56,7 +56,7 @@ pub(super) fn investigate_findings(state: &SuiteState) -> Vec<Step> {
         let mut step = Step::new(
             format!("investigate-{}", slug(&f.what)),
             format!("investigate {}", f.what),
-            Some(format!("bulwark show {}", f.what)),
+            Some(format!("bulwark show {}", quote_arg(&f.what))),
             Ring::ReadOnly,
         );
         if drifted.iter().any(|p| *p == f.what) {
@@ -79,16 +79,19 @@ pub(super) fn review_failed_jobs(state: &SuiteState) -> Vec<Step> {
             Step::new(
                 format!("review-{}", slug(&j.title)),
                 format!("review failed job: {}", j.title),
-                Some(format!("proto show {}", j.title)),
+                Some(format!("proto show {}", quote_arg(&j.title))),
                 Ring::ReadOnly,
             )
         })
         .collect()
 }
 
-/// Rule 3 — capture before you change. Prepended only when the plan will guide
-/// real work (≥1 finding or failed job), so a pure refresh-only plan doesn't
-/// force a capture. Returns the safety-capture step.
+/// Rule 3 — capture before you change. Prepended whenever the plan guides real
+/// work — i.e. there is ≥1 finding to investigate or failed job to review — so a
+/// pure refresh-only (or wiring-only) plan doesn't force a capture. The capture
+/// is itself the Ring-2 step the operator confirms; it is gated on the presence
+/// of work, not on another Ring-2 step already being in the plan (the
+/// investigate/review steps it guards are read-only). Returns the step.
 pub(super) fn safety_capture() -> Step {
     Step::new(
         "safety-capture",
@@ -285,8 +288,11 @@ mod tests {
     }
 
     #[test]
-    fn ring2_step_present_forces_a_safety_capture() {
-        // A finding is the Ring-2 trigger for the capture (real work follows).
+    fn real_work_present_forces_a_safety_capture() {
+        // A finding means real investigative work follows, so the safety capture
+        // is prepended. The capture itself is the Ring-2 step; what *triggers* it
+        // is the presence of work (a finding or a failed job), not the ring of
+        // the investigate steps (which are read-only).
         let mut s = SuiteState::empty();
         s.findings.push(finding("x.sh", Severity::High));
         let plan = super::super::build(&s);

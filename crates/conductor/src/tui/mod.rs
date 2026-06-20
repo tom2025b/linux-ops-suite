@@ -137,9 +137,16 @@ pub fn step(app: &mut AppState, key: Key, spawner: &dyn Spawner) -> Action {
             Action::Redraw
         }
         Key::Char('r') => {
-            // Hand off to the rexops cockpit if present; else a dim note.
+            // Hand off to the rexops cockpit if present; else a dim note. A
+            // failure here (the suspend/re-enter around the child broke) must be
+            // shown, not swallowed — otherwise the terminal looks frozen with no
+            // explanation.
             if crate::sources::is_on_path("rexops") {
-                let _ = spawner.spawn(&["rexops".to_string(), "tui".to_string()]);
+                if let Err(e) = spawner.spawn(&["rexops".to_string(), "tui".to_string()]) {
+                    app.notice = Some(format!(
+                        "rexops handoff failed ({e}); press a key to redraw"
+                    ));
+                }
             } else {
                 app.notice = Some("rexops is not on PATH".to_string());
             }
@@ -215,6 +222,14 @@ fn run_current(app: &mut AppState, spawner: &dyn Spawner) {
         }
         RunOutcome::NotAvailable(bin) => {
             app.notice = Some(format!("{bin} is not on PATH — install it first"));
+        }
+        RunOutcome::SpawnError(e) => {
+            if let Some(s) = app.plan.steps.get_mut(app.cursor) {
+                s.status = StepStatus::Failed;
+            }
+            app.notice = Some(format!(
+                "could not run that step ({e}); the terminal may need a redraw — press a key"
+            ));
         }
         RunOutcome::NotRunnable => {
             if ring == Ring::Info {

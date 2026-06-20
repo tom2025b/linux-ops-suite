@@ -116,6 +116,23 @@ impl Plan {
     }
 }
 
+/// Quote one command argument so a value containing whitespace survives as a
+/// single token when [`crate::run::argv_of`] splits the command back apart. A
+/// value with no whitespace and no quote is returned unchanged (the common
+/// case — most ids and titles are single words); otherwise it is wrapped in
+/// single quotes. Any embedded single quote is dropped, since these values are
+/// display/identifier strings (finding ids, job titles), never shell payloads,
+/// and a literal `'` in one would otherwise make the quoting ambiguous — it is
+/// not a value we ever need to round-trip exactly, only safely.
+pub fn quote_arg(arg: &str) -> String {
+    let needs_quote = arg.is_empty() || arg.chars().any(|c| c.is_ascii_whitespace());
+    if !needs_quote && !arg.contains('\'') {
+        return arg.to_string();
+    }
+    let inner: String = arg.chars().filter(|&c| c != '\'').collect();
+    format!("'{inner}'")
+}
+
 /// Turn an arbitrary label into a stable kebab slug: lowercase, runs of
 /// non-alphanumeric collapse to a single `-`, trimmed. Dependency-free. Used to
 /// derive a step `id` from a finding name or a fixed role string.
@@ -164,7 +181,9 @@ pub fn build(state: &crate::state::SuiteState) -> Plan {
     let findings = rules::investigate_findings(state);
     let jobs = rules::review_failed_jobs(state);
 
-    // 3. capture before you change — only when the plan guides real work
+    // 3. capture before you change — only when the plan guides real work, i.e.
+    // there is something to investigate or review. The investigate/review steps
+    // are read-only; the capture is the Ring-2 step, gated on work existing.
     if !findings.is_empty() || !jobs.is_empty() {
         steps.push(rules::safety_capture());
     }

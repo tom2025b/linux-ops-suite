@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -42,7 +43,14 @@ impl Baseline {
                 source,
             })?;
         }
-        let json = serde_json::to_string_pretty(self).unwrap_or_default();
+        // Serialize BEFORE touching the file. A serde failure must abort with an
+        // error, never `unwrap_or_default()` an empty string into `fs::write` —
+        // that would truncate an existing, valid baseline to zero bytes and
+        // silently destroy the recorded listener set.
+        let json = serde_json::to_string_pretty(self).map_err(|e| PortmanError::SaveFailed {
+            path: path.to_path_buf(),
+            source: io::Error::other(e),
+        })?;
         fs::write(path, json).map_err(|source| PortmanError::SaveFailed {
             path: path.to_path_buf(),
             source,

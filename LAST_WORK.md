@@ -1,5 +1,105 @@
 # Last Work
 
+## new-tools review — M1–M6 MEDIUM fixes (conductor/tripwire/portman/pulse/rewind)
+
+2026-06-20. Same worktree `.claude/worktrees/fix-top2-portman-rexdoctor`
+(branch `worktree-fix-top2-portman-rexdoctor`). NOT committed yet. Continues the
+HIGH fixes below with the six MEDIUM findings:
+
+M1 — conductor confirm modal could advertise a different argv than it spawns
+(`plan/rules.rs`, `run.rs`, `plan/mod.rs`). A finding `what` / job `title` with
+a space was `format!`'d raw into the command string, then `argv_of` split it on
+whitespace → e.g. modal shows `proto show Nightly Backup` but spawns
+`[proto,show,Nightly,Backup]`. Fix: added `plan::quote_arg` (single-quotes a
+value with whitespace; no-op for the common single-word case) used at the two
+interpolation sites, and made `argv_of` a quote-aware splitter that is its exact
+inverse — the displayed string and the spawned argv are now provably the same
+list. Not shell injection (arg0 still validated vs SUITE_BINARIES, no shell).
+Kept `command: Option<String>` so the `--dump-view` JSON schema is unchanged.
+
+M2 — `Baseline::save` truncated a valid baseline to empty on a serialize error
+(`tripwire/baseline.rs:50`, `portman/baseline.rs:45`). Both did
+`to_string_pretty(self).unwrap_or_default()` → `""` → `fs::write`. Fix:
+serialize first and map a serde error to `SaveFailed{source: io::Error::other}`
+before touching the file. (rewind `store.rs` already used `.map_err`, no change.)
+
+M3 — conductor swallowed a terminal suspend/re-enter failure (`tui/mod.rs:142`
+`let _ = spawn`; `run.rs:85` `Err(_) => Ran(false)`). A broken terminal showed
+as "that step failed (exited non-zero)" or nothing. Fix: new
+`RunOutcome::SpawnError(String)`; `run_current` flags the step Failed with a
+"terminal may need a redraw" notice; the `r` rexops handoff now surfaces its
+Err. NOTE: the pulse half of this finding was already correct — `RawMode::suspend`
+returns Err and `cockpit::open` maps it to `LaunchOutcome::Failed` (visible
+status line), so pulse was left as-is.
+
+M4 — pulse misreported scriptvault as Missing when rexops is down
+(`verdict.rs`). The `vault`→`scriptvault` name map was applied to the rexops
+lookup but NOT the binary fallback (`find(|b| b.name == name)`), so an installed
+scriptvault read as Missing instead of Stale. Fix: compute `key` once up front
+and use it for both lookups; corrected the test fixtures that used the wrong
+`vault` binary name.
+
+M5 — docs/comment drift, NOT a behavior bug (`plan/rules.rs`, `plan/mod.rs`).
+Comments/test name implied capture fires only when a Ring-2 step follows, but
+investigate/review steps are Ring-1 and the real trigger is "work exists"
+(finding or failed job). Changing behavior to match the comment would disable
+capture entirely (worse), so aligned the docs to the actual, correct trigger and
+renamed the misleading test.
+
+M6 — rewind capture slurped whole files into one Vec (`scan/mod.rs:151`), OOM
+risk on a misconfigured huge path. No streaming `hash_file`/`put_file` actually
+exists (the doc that promised it was aspirational) and the capture set is small
+suite JSON by design, so the proportionate fix is a 64 MiB cap: a larger file is
+recorded `unreadable` (size still noted) instead of read into memory. A full
+streaming store rewrite was judged over-engineering for intentionally-small
+inputs.
+
+Verification: `cargo test --workspace` all green (conductor 88, rewind 98,
+pulse 55, portman 13, suite-core 37, tripwire 86+27, …) incl. 6 new regression
+tests confirmed by name (quoted_id_with_spaces…, argv_of_round_trips…,
+spawn_failure_is_its_own…, vault_binary_present…, oversize_file_is_marked…,
+real_work_present_forces…); `cargo clippy --workspace --all-targets` clean.
+Remaining: LOW findings only (to_string_lossy collisions, tripwire content-toggle
+edge, '#'-in-path config split, control-char JSON escaping, pulse Esc blocking
+read). See memory `suite-newtools-review-2026-06-20`.
+
+---
+
+## new-tools review — top-2 HIGH fixes (portman owner + rex-doctor is_readonly)
+
+2026-06-20. Worktree `.claude/worktrees/fix-top2-portman-rexdoctor`, branch
+`worktree-fix-top2-portman-rexdoctor`, off `main` at b8de4d7. NOT committed yet
+(awaiting Tom's review). From the 7-crate new-tools review, fixed the two HIGH
+findings:
+
+H1 — portman socket-owner misattribution (`crates/portman/src/scan/owner.rs`).
+`/proc` is walked in inode order, not pid order, so for a socket-activated
+listener (systemd pid 1 holds the fd and passes it to the real daemon) pid 1
+often landed first and `or_insert` froze it as the owner → port 22 showed
+`systemd(1)` instead of `sshd`. Added pure `should_replace_owner(existing,
+candidate)` = `existing==1 && candidate!=1`; a real service now supersedes a
+recorded pid 1, a recorded non-1 pid is never displaced, first-writer still
+wins for ordinary pids. Unit test covers all four cases. **Verified live**:
+`portman` now prints `0.0.0.0:22 … sshd(1305) ssh.service`.
+
+H2 — rex-doctor `env.writable` false PASS (`crates/rex-doctor/src/checks/
+env.rs`). `is_readonly` tested `mode & 0o200` (owner-write bit) ignoring *who*
+the owner is, so a root-owned `0755 ~/.local/bin` (the sudo-install case it
+claims to catch) reported as writable for a non-root user. Added
+`suite_core::path::is_writable_dir(dir)` — asks the kernel via `access(2)`
+W_OK (extern "C", no libc-crate dep, matching the existing isatty/geteuid
+pattern) — and rewrote `is_readonly` to `dir.exists() && !is_writable_dir(dir)`.
+Test in suite-core asserts /usr/bin is non-writable to a non-root user (skipped
+under root) and a tempdir is writable.
+
+Verification: `cargo test -p suite-core -p rex-doctor -p portman` → 37/27/15
+pass incl. both new tests by name; `cargo clippy … --all-targets` clean (0
+warnings). Remaining review findings (M1 conductor argv split, M2 baseline
+save-empties ×3, M3 TUI raw-mode err, M4 pulse vault name, M5/M6, LOWs) NOT
+touched — see memory `suite-newtools-review-2026-06-20`.
+
+---
+
 ## suite-core — new shared foundation crate + 7-crate migration
 
 2026-06-20. Branch `worktree-suite-core` (worktree
