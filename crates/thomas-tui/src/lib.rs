@@ -85,5 +85,5 @@ pub use status_strip::{StatusStrip, STATUS_SEP};
 pub use text::{truncate_desc, truncate_path};
 pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
 pub use tui::{Tui, TuiError, TuiOptions};
-pub use widget::{Themable, Themed};
+pub use widget::{Themable, Themed, ThemedLine};
 pub use widgets::{pane, pane_blank, pane_titled};

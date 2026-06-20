@@ -53,6 +53,7 @@ mod badge;
 mod health_strip;
 mod overlays;
 mod status_bar;
+mod widget;
 
 /// The theme types live in [`thomas_tui`]. This module is the single internal
 /// seam suite-ui's own widgets import them through (`use crate::theme::{…}` in
@@ -76,6 +77,6 @@ pub use thomas_tui::keys;
 // here so consumers keep importing them as `suite_ui::*` unchanged.
 pub use thomas_tui::{
     centered_fixed, centered_rect, pane, pane_blank, pane_titled, truncate_desc, truncate_path,
-    Counted, EmptyState, FilterChips, Freshness, KeyHints, SearchBar, StatusStrip, Tui, TuiError,
-    TuiOptions, STATUS_SEP,
+    Counted, EmptyState, FilterChips, Freshness, KeyHints, SearchBar, StatusStrip, Themable,
+    Themed, Tui, TuiError, TuiOptions, STATUS_SEP,
 };

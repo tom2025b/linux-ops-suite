@@ -5,6 +5,12 @@
 //! The fixed `Widget::render(self, Rect, &mut Buffer)` signature has no `theme`
 //! parameter, so the theme rides inside `Themed`. The wrapper borrows and owns no
 //! application state — the contract is unchanged.
+//!
+//! A widget opts in by implementing [`ThemedLine`] (one method: produce the themed
+//! `Line`). A single blanket `impl Widget for &Themed<W> where W: ThemedLine` then
+//! covers every such widget — including ones in *other* crates (e.g. `suite-ui`),
+//! which can implement the local trait [`ThemedLine`] on their own types without
+//! tripping the orphan rule.
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -19,11 +25,20 @@ use crate::{FilterChips, Freshness, KeyHints, SearchBar, StatusStrip};
 pub struct Themed<W> {
     /// The wrapped chrome widget.
     pub widget: W,
-    /// The theme its `line()` is rendered through.
+    /// The theme its line is rendered through.
     pub theme: Theme,
 }
 
-/// Bind any line-producing chrome widget to a theme with `.themed(theme)`, so
+/// A one-line chrome widget that can produce its themed [`Line`]. Implementing this
+/// is what lets a widget render through [`Themed`] as a `ratatui::Widget`. Widgets
+/// in other crates implement this on their own types (orphan-rule-safe) and get the
+/// `Widget` impl for free via the blanket below.
+pub trait ThemedLine {
+    /// The widget's content as a single themed [`Line`].
+    fn themed_line(&self, theme: Theme) -> Line<'static>;
+}
+
+/// Bind any [`ThemedLine`] widget to a theme with `.themed(theme)`, so
 /// `&Themed<Self>` can be handed to `frame.render_widget` and nested inside
 /// ecosystem `Widget` containers.
 pub trait Themable: Sized {
@@ -38,35 +53,39 @@ pub trait Themable: Sized {
 
 impl<W> Themable for W {}
 
-/// Render a theme-bound `Line` into `area` as a left-origin paragraph — the shared
-/// body of every one-line `Widget for &Themed<W>` impl below.
-fn render_line(line: Line<'static>, area: Rect, buf: &mut Buffer) {
-    Paragraph::new(line).render(area, buf);
+/// The single blanket bridge: any [`ThemedLine`] widget renders as a left-origin
+/// paragraph of its themed line. One impl covers every opt-in widget, in this crate
+/// or downstream.
+impl<W: ThemedLine> Widget for &Themed<W> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        Paragraph::new(self.widget.themed_line(self.theme)).render(area, buf);
+    }
 }
 
-impl Widget for &Themed<SearchBar<'_>> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        render_line(self.widget.line(self.theme), area, buf);
+// thomas-tui's own one-line widgets opt in by delegating to their existing `line()`.
+impl ThemedLine for SearchBar<'_> {
+    fn themed_line(&self, theme: Theme) -> Line<'static> {
+        self.line(theme)
     }
 }
-impl Widget for &Themed<StatusStrip<'_>> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        render_line(self.widget.line(self.theme), area, buf);
+impl ThemedLine for StatusStrip<'_> {
+    fn themed_line(&self, theme: Theme) -> Line<'static> {
+        self.line(theme)
     }
 }
-impl Widget for &Themed<FilterChips<'_>> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        render_line(self.widget.line(self.theme), area, buf);
+impl ThemedLine for FilterChips<'_> {
+    fn themed_line(&self, theme: Theme) -> Line<'static> {
+        self.line(theme)
     }
 }
-impl Widget for &Themed<KeyHints<'_>> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        render_line(self.widget.line(self.theme), area, buf);
+impl ThemedLine for KeyHints<'_> {
+    fn themed_line(&self, theme: Theme) -> Line<'static> {
+        self.line(theme)
     }
 }
-impl Widget for &Themed<Freshness> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        render_line(self.widget.line(self.theme), area, buf);
+impl ThemedLine for Freshness {
+    fn themed_line(&self, theme: Theme) -> Line<'static> {
+        self.line(theme)
     }
 }
 
