@@ -1,42 +1,30 @@
-//! Small, dependency-free helpers. The TTY rule mirrors rewind/tripwire/pulse
-//! (same `isatty(3)` call) so the suite agrees on what "a terminal" means. The
-//! data root follows the same XDG path the rest of the suite uses, but with NO
-//! per-tool suffix: conductor reads *other* tools' subtrees (rexops/…,
-//! workstate/…, proto/…) under this one root.
+//! Conductor's path/env helpers — thin wrappers over [`suite_core`].
+//!
+//! The TTY rule and `$HOME` resolution come from `suite-core` so the suite
+//! agrees on what "a terminal" means. What stays here is conductor's *data
+//! root*: the same XDG path the rest of the suite uses, but with NO per-tool
+//! suffix — conductor reads *other* tools' subtrees (rexops/…, workstate/…,
+//! proto/…) under this one root, so it can't use the per-tool `xdg::data_dir`.
 
-use std::env;
 use std::path::PathBuf;
 
-/// Whether stdout is a TTY — gates color.
-pub fn stdout_is_tty() -> bool {
-    // SAFETY: isatty merely queries a file descriptor and has no preconditions.
-    extern "C" {
-        fn isatty(fd: i32) -> i32;
-    }
-    unsafe { isatty(1) == 1 }
-}
+pub use suite_core::env::stdout_is_tty;
 
-/// The user's home directory; `None` when `$HOME` is unset/empty.
-pub fn home_dir() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-}
-
-/// The suite *data root*: `$XDG_DATA_HOME`, else `~/.local/share`. Unlike
-/// rewind's per-tool `data_dir`, this is the shared root the other tools write
-/// their subtrees under, so conductor can read them. `None` only when neither
-/// `$XDG_DATA_HOME` nor `$HOME` is usable.
+/// The suite *data root*: `$XDG_DATA_HOME`, else `~/.local/share`. Unlike the
+/// per-tool `suite_core::xdg::data_dir`, this is the shared root the other tools
+/// write their subtrees under, so conductor can read them. `None` only when
+/// neither `$XDG_DATA_HOME` nor `$HOME` is usable.
 pub fn data_root() -> Option<PathBuf> {
-    env::var_os("XDG_DATA_HOME")
+    std::env::var_os("XDG_DATA_HOME")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
-        .or_else(|| home_dir().map(|h| h.join(".local/share")))
+        .or_else(|| suite_core::env::home_dir().map(|h| h.join(".local/share")))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
 
     #[test]
     fn data_root_prefers_xdg_data_home() {

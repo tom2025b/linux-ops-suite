@@ -17,10 +17,11 @@ name = "conductor"
 path = "src/lib.rs"
 
 # Lean on purpose, same philosophy as rewind/tripwire/pulse: Conductor reads the
-# suite's contract files (serde_json), probes $PATH, and renders. It hand-rolls
-# its isatty/XDG helpers via tiny extern "C" calls (no libc dep) and uses chrono
-# only for the "checked Nm ago" stamp. No network, no async, no new 3rd-party dep.
+# suite's contract files (serde_json), probes $PATH, and renders. Its isatty/XDG/
+# $PATH helpers come from suite-core (the shared, dependency-free helper crate);
+# chrono supplies only the "checked Nm ago" stamp. No network, no async.
 [dependencies]
+suite-core = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
