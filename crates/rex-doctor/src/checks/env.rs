@@ -195,17 +195,14 @@ fn xdg_feeds_dir(home: &Path) -> PathBuf {
     base.join("rexops/feeds")
 }
 
-/// Whether a directory's permissions deny write to its owner. A coarse,
-/// no-extra-deps proxy for "I can't write here"; the common sudo-ownership case
-/// shows up as a non-owner-writable dir.
+/// Whether the current user cannot write into `dir`. Asks the kernel via
+/// `access(2)` (see [`suite_core::path::is_writable_dir`]) so it correctly
+/// catches the sudo-ownership case — a root-owned `0755` dir has the owner-write
+/// bit set yet is unwritable to a non-root user, which a bare `mode & 0o200`
+/// check reports as writable. A path that doesn't exist is not "read-only";
+/// env.install-dirs already reports the missing dir.
 fn is_readonly(dir: &std::path::Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    match std::fs::metadata(dir) {
-        Ok(md) => (md.permissions().mode() & 0o200) == 0,
-        // If we can't stat it, treat as not-readonly here; env.install-dirs and
-        // the actual write site will surface a real problem.
-        Err(_) => false,
-    }
+    dir.exists() && !suite_core::path::is_writable_dir(dir)
 }
 
 #[cfg(test)]

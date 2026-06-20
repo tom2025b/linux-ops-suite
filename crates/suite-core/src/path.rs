@@ -26,6 +26,37 @@ pub fn is_executable_file(path: &Path) -> bool {
     }
 }
 
+/// Whether the **current** user can write inside `dir`, asked of the kernel via
+/// `access(2)` with `W_OK`. This is the honest answer to "can I create files
+/// here": it accounts for ownership, group, and the sudo case where a root-owned
+/// `0755` directory has the owner-write bit set but is unwritable to everyone
+/// else. A plain `mode & 0o200` check cannot see that — it only inspects the
+/// owner bit, not who the owner is.
+pub fn is_writable_dir(dir: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        // W_OK == 2 on every Linux/Unix; access() resolves it against the real
+        // uid/gid, which is exactly what a non-suid CLI wants to report.
+        const W_OK: i32 = 2;
+        // SAFETY: access merely tests permissions on a NUL-terminated path and
+        // has no preconditions; a NUL in the path makes CString::new fail first.
+        extern "C" {
+            fn access(path: *const std::os::raw::c_char, mode: i32) -> i32;
+        }
+        match CString::new(dir.as_os_str().as_bytes()) {
+            Ok(c) => unsafe { access(c.as_ptr(), W_OK) == 0 },
+            Err(_) => false, // path contains an interior NUL — cannot be a real dir
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        // No portable access() equivalent; fall back to "exists and is a dir".
+        dir.is_dir()
+    }
+}
+
 /// Locate a command on `$PATH`, returning the first executable match.
 ///
 /// A `name` containing `/` is treated as a literal path (and still must be an
@@ -74,6 +105,25 @@ mod tests {
         if let Some(p) = resolve_on_path("sh") {
             let as_literal = p.to_string_lossy().into_owned();
             assert_eq!(resolve_on_path(&as_literal), Some(p));
+        }
+    }
+
+    #[test]
+    fn is_writable_dir_reflects_real_access() {
+        // A freshly-created temp dir is writable by its creator…
+        let tmp = std::env::temp_dir();
+        assert!(is_writable_dir(&tmp), "temp dir should be writable: {tmp:?}");
+        // …a nonexistent path is not…
+        assert!(!is_writable_dir(Path::new("/nonexistent/xyzzy/dir")));
+        // …and (when not running as root) a root-owned system dir is not
+        // writable even though its mode has the owner-write bit set — the exact
+        // case a bare `mode & 0o200` check gets wrong. Skip under root, where it
+        // legitimately *is* writable.
+        if !crate::env::is_root() {
+            assert!(
+                !is_writable_dir(Path::new("/usr/bin")),
+                "/usr/bin must not be writable to a non-root user"
+            );
         }
     }
 
