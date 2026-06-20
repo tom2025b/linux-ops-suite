@@ -1,5 +1,51 @@
 # Last Work
 
+## suite-core — new shared foundation crate + 7-crate migration
+
+2026-06-20. Branch `worktree-suite-core` (worktree
+`.claude/worktrees/suite-core`), off `main` at 98af8dc. Committed, NOT pushed
+(awaiting review). 8 commits; +629/-432 across 28 files; net source shrinks.
+
+Created `crates/suite-core/` — the suite's first shared NON-UI library
+(peer to thomas-tui/suite-ui), ZERO third-party deps (std + isatty/geteuid
+externs only). Four modules consolidate helpers that were copy-pasted
+(mostly byte-identical) across the tool crates:
+  env  : stdout_is_tty (isatty), is_root (geteuid), home_dir ($HOME)
+  path : is_executable_file (mode & 0o111), resolve_on_path, which
+  xdg  : data_dir(tool), config_dir(tool), expand_tilde
+  fmt  : human_size (1024-based, "B/KB/MB/GB/TB")
+
+Migrated 7 consumers, each keeping its public fn names (util.rs became thin
+re-export shims; call sites untouched): rewind, tripwire, portman,
+rex-doctor, rex-check, conductor, pulse. Crate-specific bits stayed local
+(rewind store_dir/config_path; tripwire baseline_path; portman baseline_path;
+rex-doctor SUITE_BINS + which_all + dir_on_path; rex-check command_exists +
+stdin_is_tty/is_tty; conductor data_root — the bare no-suffix XDG root it
+needs to read OTHER tools' subtrees, rebuilt on suite_core::env::home_dir).
+
+TWO intentional, approved behavior changes:
+  1. pulse `cockpit.rs::resolve_on_path` BUG FIX — it matched on is_file()
+     only (no exec bit), so a non-executable file shadowing `rexops` on
+     $PATH could be picked for launch; now delegates to suite-core which
+     always checks the exec bit.
+  2. rex-check `human_size` units standardized from "K/M/G" (no space) to
+     the suite-wide "KB/MB/GB" (with space); its test expectations updated.
+
+NOT extracted (deliberately, this pass): the 251-line hand-rolled Sha256
+(byte-identical in rewind+tripwire) and the per-tool error.rs enums.
+
+Design doc: docs/superpowers/specs/2026-06-20-suite-core-design.md.
+Verify (whole workspace): cargo build --workspace clean; cargo test
+--workspace = 581 passed / 0 failed; clippy --workspace --all-targets -D
+warnings clean; fmt --all --check clean.
+
+Footnote: 3 parallel subagents (rex-check/conductor/pulse) were dispatched
+but each correctly refused — `worktree` isolation branched them from main,
+which predates suite-core, so the crate wasn't in their workspace. Did all 3
+in-place here instead. (They returned two useful fixes, both applied above:
+rex-check's PATH helper is `command_exists`, and is_tty is shared with
+stdin_is_tty so it can't be deleted.)
+
 ## Conductor Phase 3 — the driver (Ring-2 + confirm modal + orchestrate)
 
 2026-06-19. Branch `conductor-phase3` (worktree
