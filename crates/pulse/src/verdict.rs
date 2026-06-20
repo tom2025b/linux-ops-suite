@@ -556,13 +556,19 @@ mod tests {
     fn all_binaries_present() -> Vec<BinaryCheck> {
         // The installed binary is named "scriptvault" (matching rexops and PATH);
         // only Pulse's display roster says "vault".
-        ["workstate", "bulwark", "proto", "toolfoundry", "scriptvault"]
-            .iter()
-            .map(|&name| BinaryCheck {
-                name,
-                present: true,
-            })
-            .collect()
+        [
+            "workstate",
+            "bulwark",
+            "proto",
+            "toolfoundry",
+            "scriptvault",
+        ]
+        .iter()
+        .map(|&name| BinaryCheck {
+            name,
+            present: true,
+        })
+        .collect()
     }
     /// A fully-current snapshot covering the three sections.
     fn fresh_snapshot() -> SnapshotFreshness {
@@ -593,7 +599,11 @@ mod tests {
             &empty_bulwark(),
             &binaries,
         );
-        assert_eq!(got, Source::Stale, "installed scriptvault must read as Stale");
+        assert_eq!(
+            got,
+            Source::Stale,
+            "installed scriptvault must read as Stale"
+        );
 
         // And when it is genuinely not installed, it is Missing.
         let none_installed: Vec<BinaryCheck> = Vec::new();

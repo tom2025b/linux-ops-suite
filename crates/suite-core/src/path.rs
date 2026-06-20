@@ -112,7 +112,10 @@ mod tests {
     fn is_writable_dir_reflects_real_access() {
         // A freshly-created temp dir is writable by its creator…
         let tmp = std::env::temp_dir();
-        assert!(is_writable_dir(&tmp), "temp dir should be writable: {tmp:?}");
+        assert!(
+            is_writable_dir(&tmp),
+            "temp dir should be writable: {tmp:?}"
+        );
         // …a nonexistent path is not…
         assert!(!is_writable_dir(Path::new("/nonexistent/xyzzy/dir")));
         // …and (when not running as root) a root-owned system dir is not
