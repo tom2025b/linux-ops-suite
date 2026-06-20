@@ -151,13 +151,18 @@ pub enum Key {
     Other,
 }
 
-/// Read one key from stdin (blocking). Decodes:
+/// Read one key from a byte stream (blocking). Decodes:
 ///   - `\r` / `\n` → Enter
 ///   - `0x7f` / `0x08` → Backspace
 ///   - `0x1b` → Esc, *and* swallows a following CSI/SS3 sequence (arrow keys
 ///     etc.) so a stray arrow doesn't get read as Esc + letters.
 ///   - `0x04` (Ctrl-D) / EOF → Eof
 ///   - a UTF-8 char → Char
+///
+/// **Legacy / test-only.** Production input goes through [`read_event`]
+/// (crossterm) now; this byte decoder is kept only so its existing tests keep
+/// documenting the decode rules, and is removed with the rest of the legacy
+/// driver in step T10.
 pub fn read_key(input: &mut impl Read) -> io::Result<Key> {
     let mut b0 = [0u8; 1];
     if input.read(&mut b0)? == 0 {
@@ -458,6 +463,24 @@ mod tests {
         assert_eq!(map_key(KeyCode::Up, none), Key::Other);
         assert_eq!(map_key(KeyCode::F(1), none), Key::Other);
         assert_eq!(map_key(KeyCode::Tab, none), Key::Other);
+    }
+
+    #[test]
+    fn typed_letters_map_to_literal_chars_for_the_search_box() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        let none = KeyModifiers::NONE;
+        // In the search box every printable key is literal text — including `r`,
+        // which is the cockpit shortcut elsewhere. The adapter must yield a plain
+        // Char and never special-case command letters; app::handle owns the
+        // "search box swallows it" rule, so the *mapping* stays dumb.
+        for c in ['r', 'q', 'a', 'Z', '7', ' '] {
+            assert_eq!(map_key(KeyCode::Char(c), none), Key::Char(c));
+        }
+        // Shift-held letters still arrive as a Char (the char is already cased).
+        assert_eq!(
+            map_key(KeyCode::Char('A'), KeyModifiers::SHIFT),
+            Key::Char('A')
+        );
     }
 
     #[test]
