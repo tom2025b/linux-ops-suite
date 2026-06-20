@@ -36,25 +36,32 @@ tool and mark `✓` when it exits. **Ring-2 steps (changes-state) are shown but
 not run** in Phase 2: they need the Phase 3 confirm driver. Conductor still
 writes nothing itself.
 
-## Interactive mode (Phase 2)
+## Interactive mode
 
-Run `conductor` with no arguments in a terminal to open the interactive plan:
-
-    conductor
-
-It shows the situation and the ordered steps, with the current step marked `▸`.
+Bare `conductor` (on a terminal) opens the interactive driver — the same thing as
+`conductor orchestrate`. It shows the ordered plan and walks you through it, with
+the current step marked `▸`:
 
     enter  run step    s  skip    a  advance    r  rexops    ?  help    q  quit
 
-- `enter` runs the current step. **Read-only** steps spawn the tool, hand over
-  the terminal, and mark the step `✓`. A **changes-state** step is shown with
-  its command and `changes state` tag but is **not run** in Phase 2 (it needs
-  the Phase 3 driver) — Conductor says so and leaves it pending.
-- `s` skips, `a` moves focus, `r` hands off to the RexOps cockpit, `q` quits.
+- `enter` runs the current step. A **read-only** step spawns its sibling
+  immediately, hands over the terminal, and marks the step `✓`. A
+  **changes-state** step first opens a confirm showing the exact command — it
+  runs only when you press `y` (a stray `enter` never fires a state change),
+  with `s` to skip and `q` to back out.
+- `s` skip · `a` advance focus · `r` hand off to the RexOps cockpit · `?` help ·
+  `q` quit. A step whose tool exits non-zero is marked failed (`✗`); the cursor
+  stays so you can retry or skip.
 
-Conductor still writes nothing itself and runs no state-changing command. Piped
-or non-interactive (`conductor | cat`, CI), bare `conductor` prints `status`
-instead, so scripts keep working.
+Conductor still changes nothing with its own code: every state change is a
+confirmed spawn of the tool that owns it, with that tool's own safety gate on top.
+
+Exit codes for a guided run (bare `conductor` and `orchestrate`): `0` clean /
+all steps done / nothing to conduct, `1` a step that ran failed, `2` you quit
+with steps still pending or skipped, `3` conductor itself could not run.
+
+When not a terminal (piped / CI) or with `--json`, both fall back to the
+read-only `status` output so scripts keep working.
 
 ## Usage
 

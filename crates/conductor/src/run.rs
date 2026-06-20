@@ -1,12 +1,12 @@
 //! The delegated-spawn layer — Conductor's single subprocess choke point.
 //!
-//! Phase 2 runs ONLY Ring-1 (read-only) steps. A Ring-2 (state-changing) step is
-//! refused here as defence in depth, on top of the TUI routing it to a no-op.
-//! Spawning is direct (`std::process::Command`) with a fixed argv vector and NO
-//! shell, so a finding id carried in a step's command can never become a shell
-//! metacharacter — it is one argv element. The actual launch sits behind the
-//! `Spawner` trait so tests can assert intent ("would spawn X with argv […]")
-//! without starting a real process.
+//! A Ring-2 (state-changing) step is spawned like any other step here; the
+//! `y`-confirm gate that must precede it lives in the TUI (`tui/mod.rs`), not in
+//! this module. Spawning is direct (`std::process::Command`) with a fixed argv
+//! vector and NO shell, so a finding id carried in a step's command can never
+//! become a shell metacharacter — it is one argv element. The actual launch sits
+//! behind the `Spawner` trait so tests can assert intent ("would spawn X with
+//! argv […]") without starting a real process.
 
 use std::process::ExitStatus;
 
@@ -37,8 +37,6 @@ pub enum RunOutcome {
     Ran(bool),
     /// The step's binary is not on `$PATH`; carries the binary name for a hint.
     NotAvailable(String),
-    /// A Ring-2 step was asked to run in Phase 2 — refused.
-    RefusedChangesState,
     /// The step has no runnable command (Info, or no command at all).
     NotRunnable,
 }
@@ -57,13 +55,18 @@ fn argv_of(cmd: &str) -> Vec<String> {
     cmd.split_whitespace().map(|s| s.to_string()).collect()
 }
 
-/// Run a single step through the spawner, enforcing every Phase-2 safety rule:
-/// Ring-2 is refused; Info / commandless steps are not runnable; the program
-/// must be a known suite binary and present on `$PATH` before any spawn.
+/// The literal command a Ring-2 confirm should display — the SAME string
+/// `run_step` will spawn, so the modal can never advertise a different command
+/// than it runs. `None` for a pure-prose step.
+pub fn confirm_command(step: &Step) -> Option<&str> {
+    step.command.as_deref()
+}
+
+/// Run a single step through the spawner, enforcing every safety rule: the
+/// program must be a known suite binary and present on `$PATH` before any spawn;
+/// Info / commandless steps are not runnable. A Ring-2 step is spawned like any
+/// other — the confirm gate that precedes it lives in the TUI, not here.
 pub fn run_step(step: &Step, spawner: &dyn Spawner) -> RunOutcome {
-    if step.ring == Ring::ChangesState {
-        return RunOutcome::RefusedChangesState;
-    }
     let Some(cmd) = &step.command else {
         return RunOutcome::NotRunnable;
     };
@@ -120,7 +123,29 @@ mod tests {
     }
 
     #[test]
-    fn ring2_step_is_refused_and_never_spawned() {
+    fn ring2_step_now_spawns_after_the_gate() {
+        // Phase 3: run.rs no longer refuses a changes-state step — by the time
+        // run_step is called the TUI confirm has already happened. The gate is
+        // the loop's job (tested in tui/mod.rs); run.rs is just the mechanism.
+        let dir = tempfile::tempdir().unwrap();
+        let stub = dir.path().join("workstate");
+        std::fs::write(&stub, "#!/bin/sh\nexit 0\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let _guard = crate::ENV_TEST_LOCK.lock().unwrap();
+        let orig = std::env::var_os("PATH");
+        let new_path = match &orig {
+            Some(p) => {
+                let mut v = std::ffi::OsString::from(dir.path());
+                v.push(":");
+                v.push(p);
+                v
+            }
+            None => std::ffi::OsString::from(dir.path()),
+        };
+        std::env::set_var("PATH", &new_path);
+
         let sp = TestSpawner::new(true);
         let step = Step::new(
             "refresh",
@@ -128,11 +153,30 @@ mod tests {
             Some("workstate snapshot".into()),
             Ring::ChangesState,
         );
-        assert_eq!(run_step(&step, &sp), RunOutcome::RefusedChangesState);
-        assert!(
-            sp.calls.borrow().is_empty(),
-            "a changes-state step must never reach the spawner"
+        let outcome = run_step(&step, &sp);
+        assert!(matches!(outcome, RunOutcome::Ran(true)));
+        let calls = sp.calls.borrow();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0][0], "workstate");
+        assert_eq!(calls[0][1], "snapshot");
+
+        match orig {
+            Some(v) => std::env::set_var("PATH", v),
+            None => std::env::remove_var("PATH"),
+        }
+    }
+
+    #[test]
+    fn confirm_command_returns_the_exact_command_that_would_spawn() {
+        let step = Step::new(
+            "refresh",
+            "refresh",
+            Some("workstate snapshot".into()),
+            Ring::ChangesState,
         );
+        assert_eq!(confirm_command(&step), Some("workstate snapshot"));
+        let prose = Step::new("note", "note", None, Ring::ChangesState);
+        assert_eq!(confirm_command(&prose), None);
     }
 
     #[test]

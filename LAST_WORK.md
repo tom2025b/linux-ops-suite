@@ -1,5 +1,26 @@
 # Last Work
 
+## Conductor Phase 3 — the driver (Ring-2 + confirm modal + orchestrate)
+
+2026-06-19. Branch `conductor-phase3` (worktree
+`.claude/worktrees/conductor-design`), off `main` at 602c992. Built on Phase 2;
+all prior tests still pass.
+
+Bare `conductor` and the new `conductor orchestrate` verb now DRIVE the plan:
+Enter on a changes-state step opens a confirm modal showing the literal command;
+it spawns the sibling only on `y` (a stray Enter can never fire a state change),
+with `s` skip / `q` back. `run.rs` no longer refuses Ring-2 (the gate moved to
+the TUI); every other guard is intact (known-binary-only, $PATH check, fixed
+argv, NO shell). A step that runs and exits non-zero is marked Failed (new
+StepStatus variant, ✗). The guided run returns a RunReport mapped to exit codes:
+0 clean/all-done/nothing-to-conduct, 1 a step failed, 2 quit with pending/skipped
+(failure outranks unfinished), 3 can't-run — for BOTH bare and orchestrate.
+Non-TTY / --json still falls back to `status`. Conductor still writes zero live
+files with its own code. No new dependency; rules + JSON envelope unchanged.
+Tests: the full confirm-gate matrix + RunReport mapping + `--dump-view confirm`,
+all green (85 lib + 13 cli); clippy -D warnings + fmt + `cargo build --workspace`
+clean.
+
 ## Conductor Phase 2 — interactive TUI + Ring-1 spawning (crates/conductor)
 
 2026-06-19. Branch `conductor-phase2` (worktree

@@ -24,6 +24,9 @@ use crate::tui::term::{Key, RawMode};
 pub enum Screen {
     Plan,
     Help,
+    /// The Ring-2 confirm modal for the cursor step. `y` runs it; anything else
+    /// (incl. Enter) backs out without running.
+    Confirm,
 }
 
 /// Whether the loop should repaint and continue, or exit.
@@ -31,6 +34,40 @@ pub enum Screen {
 pub enum Action {
     Redraw,
     Quit,
+}
+
+/// The outcome of a guided run, mapped to a process exit code. `failed` counts
+/// steps whose delegated command exited non-zero; `unfinished` counts steps left
+/// Pending or Skipped. A failure outranks unfinished.
+pub struct RunReport {
+    pub failed: usize,
+    pub unfinished: usize,
+}
+
+impl RunReport {
+    pub fn exit_code(&self) -> u8 {
+        if self.failed > 0 {
+            1
+        } else if self.unfinished > 0 {
+            2
+        } else {
+            0
+        }
+    }
+}
+
+/// Tally a plan's final step statuses into a `RunReport`.
+pub fn report_from(plan: &Plan) -> RunReport {
+    let mut failed = 0;
+    let mut unfinished = 0;
+    for s in &plan.steps {
+        match s.status {
+            StepStatus::Failed => failed += 1,
+            StepStatus::Pending | StepStatus::Skipped => unfinished += 1,
+            StepStatus::Done => {}
+        }
+    }
+    RunReport { failed, unfinished }
 }
 
 /// All interactive state. The plan's per-step `status` carries Done/Skipped;
@@ -66,6 +103,10 @@ impl AppState {
 pub fn step(app: &mut AppState, key: Key, spawner: &dyn Spawner) -> Action {
     // Any key clears a stale notice first; specific arms may set a fresh one.
     app.notice = None;
+
+    if app.screen == Screen::Confirm {
+        return confirm_key(app, key, spawner);
+    }
 
     if app.screen == Screen::Help {
         // In help, any key returns to the plan (q still quits).
@@ -105,29 +146,72 @@ pub fn step(app: &mut AppState, key: Key, spawner: &dyn Spawner) -> Action {
             Action::Redraw
         }
         Key::Enter => {
-            run_current(app, spawner);
+            // A changes-state step never fires on Enter — it opens the confirm.
+            // Every other runnable step runs immediately.
+            let opens_confirm = app
+                .plan
+                .steps
+                .get(app.cursor)
+                .map(|s| s.ring == Ring::ChangesState && crate::run::confirm_command(s).is_some())
+                .unwrap_or(false);
+            if opens_confirm {
+                app.screen = Screen::Confirm;
+            } else {
+                run_current(app, spawner);
+            }
             Action::Redraw
         }
         _ => Action::Redraw,
     }
 }
 
-/// Run the focused step (Enter). Ring-1 spawns + marks Done + advances; Ring-2
-/// is a no-op with a note; Info / unavailable produce a note and stay put.
+/// Handle a key while the Ring-2 confirm modal is showing. `y` runs the cursor
+/// step (the ONLY spawn trigger); `s` skips it; anything else — including a stray
+/// Enter — backs out to the plan without running. This is the core safety gate.
+fn confirm_key(app: &mut AppState, key: Key, spawner: &dyn Spawner) -> Action {
+    match key {
+        Key::Char('y') => {
+            run_current(app, spawner);
+            app.screen = Screen::Plan;
+            Action::Redraw
+        }
+        Key::Char('s') => {
+            if let Some(s) = app.plan.steps.get_mut(app.cursor) {
+                s.status = StepStatus::Skipped;
+            }
+            app.advance();
+            app.screen = Screen::Plan;
+            Action::Redraw
+        }
+        // q, Esc, Enter, any other key: decline, run nothing, back to the plan.
+        _ => {
+            app.screen = Screen::Plan;
+            Action::Redraw
+        }
+    }
+}
+
+/// Run the focused step (Enter, or `y` in the confirm). On success: mark Done +
+/// advance. On a non-zero exit: mark Failed + stay (the operator can retry or
+/// skip). Unavailable / Info produce a note and stay put. The Ring-2 gate has
+/// already happened by the time this is called for a changes-state step.
 fn run_current(app: &mut AppState, spawner: &dyn Spawner) {
     let Some(step_ref) = app.plan.steps.get(app.cursor) else {
         return;
     };
     let ring = step_ref.ring;
     match run_step(step_ref, spawner) {
-        RunOutcome::Ran(_) => {
+        RunOutcome::Ran(true) => {
             if let Some(s) = app.plan.steps.get_mut(app.cursor) {
                 s.status = StepStatus::Done;
             }
             app.advance();
         }
-        RunOutcome::RefusedChangesState => {
-            app.notice = Some("this step changes state — needs Phase 3, not run".to_string());
+        RunOutcome::Ran(false) => {
+            if let Some(s) = app.plan.steps.get_mut(app.cursor) {
+                s.status = StepStatus::Failed;
+            }
+            app.notice = Some("that step failed (the tool exited non-zero)".to_string());
         }
         RunOutcome::NotAvailable(bin) => {
             app.notice = Some(format!("{bin} is not on PATH — install it first"));
@@ -175,6 +259,11 @@ fn render(app: &AppState, style: &crate::tui::style::Style) -> String {
     if app.screen == Screen::Help {
         return crate::tui::frame::help_screen(style);
     }
+    if app.screen == Screen::Confirm {
+        if let Some(step) = app.plan.steps.get(app.cursor) {
+            return crate::tui::frame::confirm_screen(step, style);
+        }
+    }
     if cols < 80 || rows < 24 {
         return crate::tui::frame::compact_plan(&app.plan, app.cursor, style);
     }
@@ -195,9 +284,10 @@ impl Spawner for SuspendSpawner<'_> {
 }
 
 /// Run the interactive TUI to completion. Sets up the panic guard + raw mode,
-/// loops painting frames and applying keys until Quit, and always restores the
-/// terminal on the way out (RawMode's Drop).
-pub fn run(plan: Plan, force_no_color: bool) -> std::io::Result<()> {
+/// loops painting frames and applying keys until Quit, always restores the
+/// terminal on the way out (RawMode's Drop), and returns a `RunReport` tallying
+/// what the operator left behind (for the exit code).
+pub fn run(plan: Plan, force_no_color: bool) -> std::io::Result<RunReport> {
     term::install_panic_guard();
     let style = crate::tui::style::Style::resolve(force_no_color);
     let mut app = AppState::new(plan);
@@ -216,7 +306,7 @@ pub fn run(plan: Plan, force_no_color: bool) -> std::io::Result<()> {
             break;
         }
     }
-    Ok(())
+    Ok(report_from(&app.plan))
 }
 
 /// True when the bare invocation should open the interactive TUI: stdout is a
@@ -248,6 +338,17 @@ mod tests {
         fn spawn(&self, argv: &[String]) -> std::io::Result<ExitStatus> {
             self.calls.borrow_mut().push(argv.to_vec());
             std::process::Command::new("true").status()
+        }
+    }
+
+    /// A spawner that fabricates a chosen exit status without forking.
+    struct ExitSpawner {
+        success: bool,
+    }
+    impl Spawner for ExitSpawner {
+        fn spawn(&self, _argv: &[String]) -> std::io::Result<ExitStatus> {
+            use std::os::unix::process::ExitStatusExt;
+            Ok(ExitStatus::from_raw(if self.success { 0 } else { 1 << 8 }))
         }
     }
 
@@ -293,18 +394,169 @@ mod tests {
     }
 
     #[test]
-    fn enter_on_ring2_is_a_noop_with_note_and_no_spawn() {
+    fn enter_on_ring2_opens_confirm_and_spawns_nothing() {
         let mut app = AppState::new(sample()); // step 0 is the Ring2 refresh
         let sp = FakeSpawner::new();
-        step(&mut app, Key::Enter, &sp);
-        assert_eq!(
-            app.plan.steps[0].status,
-            StepStatus::Pending,
-            "ring2 must not be marked done"
+        let action = step(&mut app, Key::Enter, &sp);
+        assert_eq!(action, Action::Redraw);
+        assert_eq!(app.screen, Screen::Confirm);
+        assert_eq!(app.plan.steps[0].status, StepStatus::Pending);
+        assert_eq!(app.cursor, 0);
+        assert!(
+            sp.calls.borrow().is_empty(),
+            "opening confirm must not spawn"
         );
-        assert_eq!(app.cursor, 0, "ring2 must not advance");
-        assert!(sp.calls.borrow().is_empty(), "ring2 must never spawn");
-        assert!(app.notice.as_deref().unwrap().contains("needs Phase 3"));
+    }
+
+    #[test]
+    fn confirm_y_spawns_once_marks_done_and_returns_to_plan() {
+        // Stub `workstate` on PATH so the Ring-2 spawn passes the availability check.
+        let dir = tempfile::tempdir().unwrap();
+        let stub = dir.path().join("workstate");
+        std::fs::write(&stub, "#!/bin/sh\nexit 0\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let _guard = crate::ENV_TEST_LOCK.lock().unwrap();
+        let orig = std::env::var_os("PATH");
+        let new_path = match &orig {
+            Some(p) => {
+                let mut v = std::ffi::OsString::from(dir.path());
+                v.push(":");
+                v.push(p);
+                v
+            }
+            None => std::ffi::OsString::from(dir.path()),
+        };
+        std::env::set_var("PATH", &new_path);
+
+        let mut app = AppState::new(sample());
+        let sp = FakeSpawner::new();
+        step(&mut app, Key::Enter, &sp); // open confirm
+        assert_eq!(app.screen, Screen::Confirm);
+        step(&mut app, Key::Char('y'), &sp); // confirm + run
+        assert_eq!(app.screen, Screen::Plan);
+        assert_eq!(app.plan.steps[0].status, StepStatus::Done);
+        assert_eq!(app.cursor, 1, "a successful run advances");
+        assert_eq!(sp.calls.borrow().len(), 1);
+        assert_eq!(sp.calls.borrow()[0][0], "workstate");
+
+        match orig {
+            Some(v) => std::env::set_var("PATH", v),
+            None => std::env::remove_var("PATH"),
+        }
+    }
+
+    #[test]
+    fn confirm_non_y_keys_never_spawn_and_back_out() {
+        // q, Esc, Enter, and an arbitrary key all decline — the central safety
+        // property: a stray Enter cannot fire a state change.
+        for k in [Key::Char('q'), Key::Esc, Key::Enter, Key::Char('z')] {
+            let mut app = AppState::new(sample());
+            let sp = FakeSpawner::new();
+            step(&mut app, Key::Enter, &sp); // open confirm
+            assert_eq!(app.screen, Screen::Confirm);
+            step(&mut app, k, &sp); // decline
+            assert_eq!(app.screen, Screen::Plan, "{k:?} must return to plan");
+            assert_eq!(app.plan.steps[0].status, StepStatus::Pending);
+            assert_eq!(app.cursor, 0, "{k:?} must not advance");
+            assert!(sp.calls.borrow().is_empty(), "{k:?} must not spawn");
+        }
+    }
+
+    #[test]
+    fn confirm_s_skips_and_advances_without_spawning() {
+        let mut app = AppState::new(sample());
+        let sp = FakeSpawner::new();
+        step(&mut app, Key::Enter, &sp); // open confirm
+        step(&mut app, Key::Char('s'), &sp); // skip from the modal
+        assert_eq!(app.screen, Screen::Plan);
+        assert_eq!(app.plan.steps[0].status, StepStatus::Skipped);
+        assert_eq!(app.cursor, 1);
+        assert!(sp.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_failing_spawn_marks_failed_and_stays_put() {
+        // Stub `bulwark` that exits non-zero; the Ring-1 investigate step then fails.
+        let dir = tempfile::tempdir().unwrap();
+        let stub = dir.path().join("bulwark");
+        std::fs::write(&stub, "#!/bin/sh\nexit 1\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let _guard = crate::ENV_TEST_LOCK.lock().unwrap();
+        let orig = std::env::var_os("PATH");
+        let new_path = match &orig {
+            Some(p) => {
+                let mut v = std::ffi::OsString::from(dir.path());
+                v.push(":");
+                v.push(p);
+                v
+            }
+            None => std::ffi::OsString::from(dir.path()),
+        };
+        std::env::set_var("PATH", &new_path);
+
+        let mut app = AppState::new(sample());
+        let last = app.plan.steps.len() - 1; // the Ring-1 investigate step
+        app.cursor = last;
+        let sp = ExitSpawner { success: false };
+        step(&mut app, Key::Enter, &sp);
+        assert_eq!(app.plan.steps[last].status, StepStatus::Failed);
+        assert_eq!(app.cursor, last, "a failed step does not advance");
+        assert!(app.notice.is_some());
+
+        match orig {
+            Some(v) => std::env::set_var("PATH", v),
+            None => std::env::remove_var("PATH"),
+        }
+    }
+
+    #[test]
+    fn run_report_maps_statuses_to_exit_codes() {
+        // all done -> 0
+        assert_eq!(
+            RunReport {
+                failed: 0,
+                unfinished: 0
+            }
+            .exit_code(),
+            0
+        );
+        // a failure -> 1, and failure beats unfinished
+        assert_eq!(
+            RunReport {
+                failed: 1,
+                unfinished: 3
+            }
+            .exit_code(),
+            1
+        );
+        // unfinished, none failed -> 2
+        assert_eq!(
+            RunReport {
+                failed: 0,
+                unfinished: 2
+            }
+            .exit_code(),
+            2
+        );
+    }
+
+    #[test]
+    fn report_from_plan_counts_failed_and_unfinished() {
+        let mut app = AppState::new(sample());
+        // mark: step0 Failed, step1 Skipped, leave the rest Pending.
+        app.plan.steps[0].status = StepStatus::Failed;
+        app.plan.steps[1].status = StepStatus::Skipped;
+        let r = report_from(&app.plan);
+        assert_eq!(r.failed, 1);
+        assert!(
+            r.unfinished >= 1,
+            "skipped + any pending count as unfinished"
+        );
+        assert_eq!(r.exit_code(), 1, "any failure outranks unfinished");
     }
 
     #[test]
@@ -359,11 +611,25 @@ mod tests {
 
     #[test]
     fn notice_clears_on_next_key() {
+        // Enter on the Ring-1 investigate step (bulwark) with a bare PATH yields a
+        // "not on PATH" notice deterministically; then any key clears it. (Uses a
+        // notice path that survives the Phase-3 confirm gate.)
+        let _guard = crate::ENV_TEST_LOCK.lock().unwrap();
+        let orig = std::env::var_os("PATH");
+        std::env::set_var("PATH", "/nonexistent-conductor-test-dir");
+
         let mut app = AppState::new(sample());
+        let last = app.plan.steps.len() - 1; // the Ring-1 bulwark step
+        app.cursor = last;
         let sp = FakeSpawner::new();
-        step(&mut app, Key::Enter, &sp); // sets the ring2 notice
+        step(&mut app, Key::Enter, &sp); // bulwark not on PATH -> sets a notice
         assert!(app.notice.is_some());
         step(&mut app, Key::Char('a'), &sp); // any key clears it
         assert!(app.notice.is_none());
+
+        match orig {
+            Some(v) => std::env::set_var("PATH", v),
+            None => std::env::remove_var("PATH"),
+        }
     }
 }

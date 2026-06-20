@@ -23,6 +23,7 @@ fn glyph(status: StepStatus, is_current: bool) -> char {
         StepStatus::Pending => '○',
         StepStatus::Done => '✓',
         StepStatus::Skipped => '·',
+        StepStatus::Failed => '✗',
     }
 }
 
@@ -149,10 +150,30 @@ pub fn compact_plan(plan: &Plan, cursor: usize, style: &Style) -> String {
     out
 }
 
+/// The Ring-2 confirm modal. Shows the step title with its `changes state` tag,
+/// the LITERAL command on its own line, a one-line caution, and the explicit
+/// `y` / `s` / `q` strip. `y` is the only spawn trigger; `q` (and Esc) backs out
+/// — there is no Esc-only path. The command shown is the step's own command,
+/// exactly what `run.rs` will spawn.
+pub fn confirm_screen(step: &Step, style: &Style) -> String {
+    let cmd = step.command.as_deref().unwrap_or("(no command)");
+    format!(
+        "\n   {mc}▸{rst} {title}   {rc}{tag}{rst}\n\n        this will run:  {dim}{cmd}{rst}\n        {ylw}it changes suite state.{rst}\n\n        y  run it        s  skip        q  back to plan\n",
+        mc = style.current_marker(),
+        rst = style.rst,
+        title = step.title,
+        rc = style.ring_color(step.ring),
+        tag = step.ring.tag(),
+        dim = style.dim,
+        cmd = cmd,
+        ylw = style.ylw,
+    )
+}
+
 /// The help screen: every key with a one-line description.
 pub fn help_screen(style: &Style) -> String {
     format!(
-        " {b}keys{r}\n   enter  run the current step (read-only runs; changes-state needs Phase 3)\n   s      skip the current step\n   a      advance focus without running\n   r      hand off to the rexops cockpit\n   ?      toggle this help\n   q      quit\n",
+        " {b}keys{r}\n   enter  run the current step (read-only runs; changes-state steps ask first)\n   s      skip the current step\n   a      advance focus without running\n   r      hand off to the rexops cockpit\n   ?      toggle this help\n   q      quit\n",
         b = style.bold,
         r = style.rst,
     )
@@ -209,8 +230,8 @@ mod tests {
     #[test]
     fn plan_screen_renders_notice_line_when_present() {
         let p = sample_plan();
-        let out = plan_screen(&p, 0, Some("needs Phase 3 — not run"), &plain());
-        assert!(out.contains("needs Phase 3 — not run"));
+        let out = plan_screen(&p, 0, Some("a step failed — exit 1"), &plain());
+        assert!(out.contains("a step failed — exit 1"));
     }
 
     #[test]
@@ -237,7 +258,7 @@ mod tests {
             longest_line(&plan_screen(
                 &p,
                 0,
-                Some("needs Phase 3 — not run"),
+                Some("a step failed — exit 1"),
                 &plain()
             )) <= 80
         );
@@ -253,5 +274,48 @@ mod tests {
         assert!(out.contains("▸ 2"));
         assert!(out.contains("workstate snapshot"));
         assert!(longest_line(&out) <= 60, "compact must stay narrow: {out}");
+    }
+
+    #[test]
+    fn failed_step_glyph_is_a_cross_when_not_current() {
+        assert_eq!(glyph(StepStatus::Failed, false), '✗');
+        // the current marker still wins regardless of status
+        assert_eq!(glyph(StepStatus::Failed, true), '▸');
+    }
+
+    fn ring2_step() -> Step {
+        Step::new(
+            "refresh-stale-data",
+            "refresh stale data",
+            Some("workstate snapshot".into()),
+            crate::plan::Ring::ChangesState,
+        )
+    }
+
+    #[test]
+    fn confirm_screen_shows_command_caution_and_a_non_esc_back_path() {
+        let out = confirm_screen(&ring2_step(), &plain());
+        assert!(out.contains("refresh stale data"));
+        assert!(out.contains("changes state"));
+        assert!(out.contains("workstate snapshot"));
+        assert!(out.contains("it changes suite state"));
+        // y is the only spawn trigger; q is the explicit non-Esc back path.
+        assert!(out.contains("y  run it"));
+        assert!(out.contains("s  skip"));
+        assert!(out.contains("q  back"));
+    }
+
+    #[test]
+    fn confirm_screen_is_width_safe_and_color_off_has_no_escapes() {
+        let out = confirm_screen(&ring2_step(), &plain());
+        assert!(longest_line(&out) <= 80);
+        assert!(!out.contains('\u{1b}'));
+    }
+
+    #[test]
+    fn help_no_longer_mentions_phase_3() {
+        let out = help_screen(&plain());
+        assert!(!out.contains("Phase 3"));
+        assert!(out.contains("changes-state steps ask first"));
     }
 }
