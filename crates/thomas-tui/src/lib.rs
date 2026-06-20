@@ -51,6 +51,26 @@
 //!   [`PaletteFrame`]/[`PaletteItem`]. Each clears its area and frames in the
 //!   accent border; the app owns the keys and state.
 //!
+//! ## Widget API contract
+//!
+//! Every widget is a struct of **borrowed display values**. None captures input,
+//! owns application state, or reads the environment. The render surface follows one
+//! rule by shape:
+//!
+//! - **Single span** (a count, a badge): `fn span(self, theme: Theme) -> Span` and
+//!   `fn line(self, theme: Theme) -> Line` — e.g. [`Counted`].
+//! - **Single line** (a strip, a bar, a hint row): `fn line(&self, theme: Theme) ->
+//!   Line` **and** `fn render(&self, frame, area, theme)`, and it composes as a
+//!   `ratatui::Widget` via `.themed(theme)` (it implements [`ThemedLine`], so
+//!   `&`[`Themed`]`<_>` is a `Widget`) — e.g. [`SearchBar`], [`StatusStrip`].
+//! - **A framed / multi-line region** (an overlay, a placeholder): `fn render(&self,
+//!   frame, area, theme)` only — it owns its layout, so there is no single `Line`
+//!   — e.g. [`EmptyState`], [`ConfirmModal`].
+//!
+//! New widgets MUST pick the matching shape; do not invent a fourth. A one-line
+//! widget gets the `ratatui::Widget` surface for free by implementing
+//! [`ThemedLine`] (delegating to its `line()`).
+//!
 //! ## The `clap` feature
 //!
 //! Off by default. Enabling it derives `clap::ValueEnum` on [`ThemeChoice`] and
@@ -70,6 +90,7 @@ mod status_strip;
 mod text;
 mod theme;
 mod tui;
+mod widget;
 mod widgets;
 
 pub use counted::Counted;
@@ -84,4 +105,5 @@ pub use status_strip::{StatusStrip, STATUS_SEP};
 pub use text::{truncate_desc, truncate_path};
 pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
 pub use tui::{Tui, TuiError, TuiOptions};
+pub use widget::{Themable, Themed, ThemedLine};
 pub use widgets::{pane, pane_blank, pane_titled};

@@ -1,5 +1,49 @@
 # Last Work
 
+## suite-ui design review fixes (R1–R4) — thomas-tui + suite-ui
+
+2026-06-20. Worktree `.claude/worktrees/suite-ui-design-doc`, branch
+`worktree-suite-ui-design-doc`, off main at 06ca26a. Committed on the branch,
+**NOT pushed, no PR** (awaiting Tom). Implemented the design review in
+`docs/design/suite-ui/SUITE_UI_DESIGN.md` per the plan
+`docs/superpowers/plans/2026-06-20-suite-ui-fixes.md`.
+
+R1 [bug] — `thomas-tui` `truncate_path`/`truncate_desc` counted `char`s, not
+display columns, so wide CJK/emoji (1 char = 2 cols) overflowed the cell budget
+and corrupted table layout while the doc-comment claimed "Unicode-safe". Fixed to
+measure UAX#11 width over grapheme clusters (`unicode-width` +
+`unicode-segmentation` — the crates ratatui uses internally); post-condition is
+now ≤ max columns; added CJK/emoji/combining-mark/ZWJ tests. (892ad9f)
+
+R2 — widget API was inconsistent and nothing implemented `ratatui::Widget`, so the
+chrome didn't compose into the ecosystem. Added a public `ThemedLine` trait + one
+blanket `impl Widget for &Themed<W>` so every one-line widget gets `.themed(theme)`.
+Blanket-over-local-trait was required: a direct `impl Widget for &Themed<OurWidget>`
+in suite-ui trips the orphan rule (E0117); implementing the local `ThemedLine` on
+suite-ui's own types is legal. suite-ui's StatusBar/AttentionFlag/HealthStrip opt
+in. Documented the span/line/render-by-shape contract in both crate-docs.
+(abc14be, e41d116, b1630d8)
+
+R3 — added `insta` geometry snapshots: thomas-tui (pane + a CJK-in-narrow-pane
+shot that is the R1 regression net — the right border stays intact) and suite-ui
+(status footer). Note: ratatui 0.29 `Buffer` has NO `Display`, so snapshots render
+the cell grid to a string first. `assert_buffer_eq!` was never used (don't-regress
+note only). (3ecb154, 3ccdbc3)
+
+R4 — done as the **additive** variant Tom chose (not the breaking enum collapse):
+added `JobState::outcome() -> Option<Outcome>` and routed `line()` through it so the
+`JobState→Outcome` mapping lives once; `Done{ok}`/`Cancelled` variants unchanged →
+no consumer migration. The full `Done{ok}`→`Finished{outcome}` collapse stays
+recorded in design-doc §7 as the eventual cleanup. (b8af919)
+
+Also: deps added to the workspace (d8ac1fa); two-layer (`thomas-tui` toolkit /
+`suite-ui` shim) split now headlines §2 and both crate-docs; design doc marks
+R1–R4 fixed (7e54115). Gate: `cargo build --workspace` green, thomas-tui 92+2+13
+and suite-ui 29+1+5 tests green (142 total, +38 over baseline), clippy `-D warnings`
+clean, fmt clean, gallery renders in all 3 themes. R5/R6 are documentation-only
+(no code action). color_eyre "restore-first" panic note is consumer-side guidance
+in design-doc §8.
+
 ## new-tools review — LOW findings (tripwire/portman/pulse)
 
 2026-06-20. Worktree `.claude/worktrees/fix-low-findings`, branch

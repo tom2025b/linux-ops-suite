@@ -17,3 +17,8 @@ clap = ["dep:clap"]
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 clap = { workspace = true, optional = true }
+unicode-width = { workspace = true }
+unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
