@@ -1,16 +1,15 @@
-//! Minimal, dependency-free terminal driver for Pulse's interactive mode.
+//! Pulse's input layer plus the legacy terminal driver it is migrating off.
 //!
-//! Pulse stays a tiny self-contained binary (like rex-check), so instead of
-//! pulling a TUI crate it drives the terminal directly: raw mode via libc
-//! `termios` behind a hand-rolled `extern "C"` block, the alternate screen and
-//! cursor toggles via plain ANSI, and a small stdin byte reader that decodes the
-//! handful of keys the design uses (`a f Enter / ? q Esc` plus letters/Backspace
-//! for the search box).
+//! Production now drives the terminal through `suite_ui::Tui` (raw mode + alt
+//! screen + a restoring panic hook, all via crossterm), and reads input through
+//! [`read_event`], which maps crossterm key events onto Pulse's [`Key`] enum.
 //!
-//! The one rule that matters most here: **the terminal is always restored.**
-//! `RawMode` restores the original termios, leaves the alt-screen, and shows the
-//! cursor on `Drop`, and a panic hook does the same, so a crash never strands the
-//! user in a broken shell.
+//! The original hand-rolled driver below — `RawMode` (libc `termios` behind an
+//! `extern "C"` block), the ANSI [`paint`], `install_panic_guard`, and the
+//! byte-stream [`read_key`] decoder — is **retained only for its unit tests**
+//! during the suite-ui migration and is scheduled for removal in step T10. It is
+//! no longer wired into the loop, hence the module-scoped `dead_code` allow.
+#![allow(dead_code)]
 
 use std::io::{self, Read, Write};
 
@@ -195,6 +194,57 @@ pub fn read_key(input: &mut impl Read) -> io::Result<Key> {
         0x20..=0x7e => Ok(Key::Char(b as char)),
         // Multi-byte UTF-8: gather the continuation bytes and decode.
         _ => decode_utf8(b, input),
+    }
+}
+
+/// Block on the next key from crossterm, mapped onto Pulse's [`Key`] vocabulary.
+///
+/// This is the production input source now that the terminal is driven by
+/// `suite_ui::Tui` (raw mode + alt screen via crossterm). It produces the exact
+/// same [`Key`] values [`read_key`] did, so the pure state machine in
+/// [`crate::app`] — and all of its tests — stay untouched; only the *source* of a
+/// key changed from a byte stream to crossterm events. Non-key events (resize,
+/// mouse, focus) are skipped so the caller only ever sees a real keypress, and
+/// crossterm already decodes CSI/SS3 sequences (arrows, function keys), so the
+/// hand-rolled escape-swallowing in [`read_key`] is not needed in production (it
+/// stays for its unit tests until the byte path is removed in a later step).
+pub fn read_event() -> io::Result<Key> {
+    use crossterm::event::{self, Event, KeyEventKind};
+    loop {
+        match event::read()? {
+            Event::Key(k) => {
+                // Act only on key *press* — terminals (and Windows) can emit
+                // Release/Repeat too, and a release must not double-fire a step.
+                if k.kind != KeyEventKind::Press {
+                    continue;
+                }
+                return Ok(map_key(k.code, k.modifiers));
+            }
+            // Resize/mouse/focus/paste: the loop repaints per key and ratatui
+            // re-reads the size on the next draw, so just wait for real input.
+            _ => continue,
+        }
+    }
+}
+
+/// Map a crossterm key (code + modifiers) onto Pulse's [`Key`]. Ctrl-D and Ctrl-C
+/// both mean "leave" → [`Key::Eof`] (the loop treats it as quit), matching the
+/// old byte reader where `0x04` (Ctrl-D) was EOF.
+fn map_key(code: crossterm::event::KeyCode, mods: crossterm::event::KeyModifiers) -> Key {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    if mods.contains(KeyModifiers::CONTROL) {
+        if let KeyCode::Char('d') | KeyCode::Char('c') = code {
+            return Key::Eof;
+        }
+    }
+    match code {
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Esc => Key::Esc,
+        KeyCode::Backspace => Key::Backspace,
+        KeyCode::Char(c) => Key::Char(c),
+        // Arrows, function keys, Tab, etc. aren't in Pulse's keymap — the loop
+        // ignores Other, exactly as the byte reader reported such sequences.
+        _ => Key::Other,
     }
 }
 
@@ -388,6 +438,26 @@ mod tests {
     fn decodes_multibyte_utf8() {
         // "é" is 0xc3 0xa9.
         assert_eq!(keys("é".as_bytes()), vec![Key::Char('é')]);
+    }
+
+    #[test]
+    fn crossterm_keys_map_to_the_same_key_vocabulary() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        let none = KeyModifiers::NONE;
+        // The keys Pulse's keymap acts on map straight across.
+        assert_eq!(map_key(KeyCode::Enter, none), Key::Enter);
+        assert_eq!(map_key(KeyCode::Esc, none), Key::Esc);
+        assert_eq!(map_key(KeyCode::Backspace, none), Key::Backspace);
+        assert_eq!(map_key(KeyCode::Char('q'), none), Key::Char('q'));
+        assert_eq!(map_key(KeyCode::Char('/'), none), Key::Char('/'));
+        // Ctrl-D and Ctrl-C both quit (EOF), like 0x04 in the old byte reader.
+        assert_eq!(map_key(KeyCode::Char('d'), KeyModifiers::CONTROL), Key::Eof);
+        assert_eq!(map_key(KeyCode::Char('c'), KeyModifiers::CONTROL), Key::Eof);
+        // Arrows / function keys aren't in the keymap → Other (ignored), exactly
+        // as the byte reader reported a swallowed CSI/SS3 sequence.
+        assert_eq!(map_key(KeyCode::Up, none), Key::Other);
+        assert_eq!(map_key(KeyCode::F(1), none), Key::Other);
+        assert_eq!(map_key(KeyCode::Tab, none), Key::Other);
     }
 
     #[test]

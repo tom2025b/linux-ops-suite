@@ -15,7 +15,9 @@
 
 use std::io;
 
-use crate::tui::{self, Key, RawMode};
+use suite_ui::{Tui, TuiOptions};
+
+use crate::tui::{self, Key};
 use crate::verdict::{Readings, Source, Verdict};
 use crate::{render, Style, TermSize};
 
@@ -63,21 +65,46 @@ impl App {
         }
     }
 
-    /// Run the interactive loop until the user quits. Owns raw mode for its
-    /// duration; the terminal is restored when `_raw` drops (and by the panic
-    /// hook installed here). `input` is stdin in production; tests drive it with
-    /// a byte cursor via [`App::handle`] instead of calling `run`.
-    pub fn run(mut self, style: &Style) -> io::Result<()> {
-        tui::install_panic_guard();
-        let mut raw = RawMode::enter()?;
-        let mut stdin = io::stdin();
+    /// Run the interactive loop until the user quits. Owns the terminal via the
+    /// shared [`suite_ui::Tui`] guard for its duration; the terminal is restored
+    /// when `tui` drops (and by ratatui's restoring panic hook, installed by
+    /// `Tui::new`). Tests drive the pure state machine via [`App::handle`]
+    /// directly instead of calling `run`.
+    ///
+    /// MIGRATION BRIDGE (T2): the legacy string view is still built by
+    /// [`App::frame`], but it is now blitted through ratatui as a single
+    /// `Paragraph` instead of raw ANSI. Because a `Paragraph` would render ANSI
+    /// escapes literally, the bridge renders the frame with a **plain** (no-code)
+    /// style — so this step is intentionally monochrome. Real suite-ui theming
+    /// and per-view widgets replace this `frame()`/`Paragraph` path in later
+    /// steps (T4–T8); the loop shape here is the final one.
+    pub fn run(mut self, _style: &Style) -> io::Result<()> {
+        // Read-only dashboard: hide the cursor; require a real tty so we fail
+        // with a friendly message rather than entering raw mode on a pipe.
+        let mut tui = Tui::new(TuiOptions {
+            hide_cursor: true,
+            require_tty: true,
+            ..Default::default()
+        })
+        .map_err(io::Error::other)?;
+
+        // The bridge renders the legacy frame monochrome (see above).
+        let bridge_style = Style::plain_for_bridge();
+
         loop {
-            let size = TermSize::resolve();
-            tui::paint(&self.frame(style, size))?;
+            // ratatui owns terminal size now; build the legacy frame to match the
+            // current draw area, then blit it as one Paragraph.
+            let area = tui.terminal().size()?;
+            let size = TermSize::from_area(area.width, area.height);
+            let frame = self.frame(&bridge_style, size);
+            tui.terminal().draw(|f| {
+                let text = ratatui::text::Text::raw(frame.clone());
+                f.render_widget(ratatui::widgets::Paragraph::new(text), f.area());
+            })?;
             if self.quit {
                 break;
             }
-            let key = tui::read_key(&mut stdin)?;
+            let key = tui::read_event()?;
             self.handle(key);
             if self.quit {
                 // Repaint nothing more; just restore and leave.
@@ -85,11 +112,11 @@ impl App {
             }
             // `r` requested the cockpit: hand the terminal to `rexops tui` and
             // come back. The launch is here (not in `handle`) so `handle` stays
-            // pure; `RawMode::suspend` guarantees Pulse's terminal is restored
+            // pure; `Tui::suspended` guarantees Pulse's terminal is restored
             // afterwards. A missing/failed rexops becomes a transient status
             // line, never an error that ends the session.
             if std::mem::take(&mut self.launch_cockpit) {
-                self.status = crate::cockpit::open(&mut raw).status_line();
+                self.status = crate::cockpit::open(&mut tui).status_line();
             }
         }
         Ok(())

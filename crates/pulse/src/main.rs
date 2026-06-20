@@ -753,6 +753,14 @@ impl Style {
         Self::plain()
     }
 
+    /// A code-free style for the T2 migration bridge: the legacy `frame()` is
+    /// blitted through a ratatui `Paragraph`, which would print ANSI escapes
+    /// literally, so the bridge must render monochrome. Removed once the
+    /// per-view suite-ui widgets replace the string renderer.
+    pub(crate) fn plain_for_bridge() -> Self {
+        Self::plain()
+    }
+
     /// Color for a verdict word: healthy green, attention amber, incomplete
     /// amber (it's a confidence problem, not a critical one). Bold-less; the
     /// size and centering already make it the focal point.
@@ -797,6 +805,16 @@ impl TermSize {
     #[cfg(test)]
     pub(crate) fn for_test(width: u16, height: u16) -> Self {
         TermSize { width, height }
+    }
+
+    /// Build from a ratatui draw area's dimensions. Used by the interactive loop
+    /// now that ratatui (not Pulse's ioctl) owns terminal size; both dimensions
+    /// are clamped to at least 1 so the legacy renderer never sees a zero.
+    pub(crate) fn from_area(width: u16, height: u16) -> Self {
+        TermSize {
+            width: width.max(1),
+            height: height.max(1),
+        }
     }
 
     /// Resolve the terminal size: ask the tty via `TIOCGWINSZ`; if that fails
