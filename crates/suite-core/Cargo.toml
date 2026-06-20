@@ -1,0 +1,13 @@
+[package]
+name = "suite-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared dependency-free helpers for the Linux Ops Suite: TTY/root/home detection, $PATH executable resolution, XDG data/config paths, tilde expansion, and human-readable byte sizes."
+
+# Intentionally no dependencies: these helpers use only std + two libc
+# externs (isatty, geteuid), matching the suite's lean discipline.
+[dependencies]
