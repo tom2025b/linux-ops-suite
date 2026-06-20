@@ -4,18 +4,20 @@ History, snapshot, and safe-rollback for the Linux Ops Suite.
 
 Where **portman** watches the network surface and **tripwire** watches the
 filesystem surface, `rewind` is the suite's **time axis**: it records the suite's
-own state files into a content-addressed store, lets you list the timeline, and —
-in later phases — compare any two points and **restore** under a hard safety
-gate. Read-only by default; the only thing it writes routinely is its own store.
+own state files into a content-addressed store, lets you list the timeline,
+compare any two points, and **restore** under a hard safety gate. Read-only by
+default; the only write to a live path is a guarded, dry-run-by-default
+`restore`, and the only thing it writes routinely is its own store.
 
 See [`REWIND_DESIGN.md`](../../REWIND_DESIGN.md) at the repo root for the full
 design (storage model, the restore safety contract, JSON envelopes, roadmap).
 
 ## Status
 
-**Phase 2** — the storage layer plus `capture`, the timeline view, `sources`,
-`show` (one capture's manifest), and `diff` (two captures, or a capture against
-the live files). The guarded `restore` and `prune` arrive in a later phase.
+**Phase 3** — the full surface: the storage layer plus `capture`, the timeline
+view, `sources`, `show` (one capture's manifest), `diff` (two captures, or a
+capture against the live files), the guarded `restore`, and store maintenance
+with `prune`.
 
 ## What it captures
 
@@ -42,6 +44,8 @@ rewind capture [--label L]  # record the current capture set as a new immutable 
 rewind sources              # show the resolved capture set, its source, and store stats
 rewind show <capture>       # show one capture's manifest: paths, sizes, hashes, schema
 rewind diff <a> [<b>]       # compare two captures, or capture <a> against the live files
+rewind restore <capture>    # restore a capture to its files — DRY-RUN by default
+rewind prune [...]          # remove old captures by count/age; --gc reclaims objects
 ```
 
 A `<capture>` is a full id, a unique id prefix, `latest`, `latest-good` (the
@@ -50,6 +54,41 @@ newest capture whose snapshot is a valid envelope), or a relative index like
 capture against the current live files — the "has the live state drifted from
 this pin?" check, which exits `1` on any difference (and re-walks captured
 directories, so a newly-appeared or deleted file counts as drift).
+
+### restore — the one guarded write
+
+`rewind restore <capture>` writes a capture's recorded files back to their
+original paths, under a hard safety contract:
+
+- **Dry-run by default.** With no `--apply` it prints the plan (what would be
+  overwritten / created / left unchanged / skipped) and writes nothing.
+- **`--apply` performs the writes**, and *first* takes a `pre-restore:<id>`
+  safety capture of the current live state — so every restore is itself
+  undoable. Skip it with `--no-safety-capture` (the plan warns you when it will).
+- Each file is written to a temp file in the target directory then **renamed
+  over** the original (atomic same-filesystem replace), restoring the captured
+  mode and — best-effort — uid/gid (a can't-set-owner warns and continues).
+- Restoring an envelope whose schema is **older** than the live one is flagged
+  as a downgrade.
+- A per-path failure never aborts the batch and never silently "succeeds": any
+  failure is reported and surfaces as **exit 2**.
+
+`rewind restore --latest-good` is shorthand for restoring the newest capture
+with a valid snapshot (the `<capture>` argument is then optional).
+
+### prune — store maintenance
+
+`rewind prune` removes old captures and optionally garbage-collects their
+objects. It is **immediate** (no dry run) and nothing is ever auto-pruned:
+
+```text
+rewind prune --keep-last N     # keep only the newest N captures
+rewind prune --older-than 30d  # remove captures older than a duration (s/m/h/d)
+rewind prune --keep-last 5 --gc# ...and sweep objects no surviving capture references
+```
+
+Removing a capture deletes only its manifest; the shared blobs stay until
+`--gc` mark-and-sweeps the objects nothing references anymore.
 
 Global flags: `--json`, `--no-color`, `-v/--verbose` (extra `show` columns:
 mode, owner, hash prefix, mtime), `--store PATH`, `--path PATH` (repeatable),
@@ -73,16 +112,17 @@ temp file + atomic rename, so a crash leaves the store consistent.
 ## Exit codes
 
 ```text
-0   success — timeline/sources/show/diff rendered, capture written, or a
-    diff found no differences
+0   success — timeline/sources/show/diff rendered, capture written, a diff
+    found no differences, a restore dry-run/apply completed cleanly, or a
+    prune ran
 1   diff drift — `rewind diff` found a difference between the two points
     (so `rewind diff <pin>` drops into cron as a live-state drift check)
+2   restore partial failure — `rewind restore --apply` could not write one or
+    more files; what succeeded is reported, what failed is named (R6)
 3   rewind itself could not run — no/corrupt store, empty capture set,
     an unknown/ambiguous capture selector, a manifest from a newer schema,
-    or no data dir to anchor the store
+    a bad `--older-than` duration, or no data dir to anchor the store
 ```
-
-(Exit 2 for a partial `restore` arrives with that command in a later phase.)
 
 ## Lean by design
 

@@ -38,6 +38,8 @@ pub enum RewindError {
     /// so the live side would silently be a *different* set. Refused rather than
     /// comparing the wrong files.
     SetMismatch { selector: String },
+    /// A `prune --older-than` duration couldn't be parsed (e.g. `5y`, `abc`).
+    BadDuration { spec: String },
 }
 
 impl fmt::Display for RewindError {
@@ -71,6 +73,10 @@ impl fmt::Display for RewindError {
                 "capture '{selector}' was taken from explicit --path arguments; \
                  re-run `rewind diff {selector}` with the same --path/--config so \
                  the live side compares the same files"
+            ),
+            RewindError::BadDuration { spec } => write!(
+                f,
+                "invalid --older-than '{spec}'; use <n><unit> with unit s/m/h/d (e.g. 30d, 12h)"
             ),
         }
     }
