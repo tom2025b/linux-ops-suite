@@ -8,5 +8,6 @@ repository.workspace = true
 description = "Installer entrypoint for preparing Linux Ops Suite tools and local integration paths."
 
 [dependencies]
+suite-core = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }

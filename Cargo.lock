@@ -493,6 +493,7 @@ version = "0.1.2"
 dependencies = [
  "clap",
  "serde_json",
+ "suite-core",
 ]
 
 [[package]]

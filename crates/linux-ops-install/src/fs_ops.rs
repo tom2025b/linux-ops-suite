@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use suite_core::path::is_executable_file;
+
 use crate::error::InstallError;
 use crate::net::run_command;
 use crate::platform::Platform;
@@ -48,7 +50,7 @@ pub(crate) fn install_tool(
     tool: &Tool,
 ) -> Result<(), InstallError> {
     let destination = paths.bin_dir.join(tool.binary);
-    if !cli.force && is_executable(&destination) {
+    if !cli.force && is_executable_file(&destination) {
         skip(format!(
             "{} already installed at {}; use --force to reinstall",
             tool.binary,
@@ -432,12 +434,6 @@ fn set_executable(path: &Path) -> Result<(), InstallError> {
         context: format!("chmod +x {}", path.display()),
         source,
     })
-}
-
-fn is_executable(path: &Path) -> bool {
-    fs::metadata(path)
-        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
 }
 
 pub(crate) fn path_contains(path: &Path) -> bool {
