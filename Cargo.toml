@@ -13,6 +13,7 @@ members = [
     "crates/tripwire",
     "crates/rewind",
     "crates/conductor",
+    "crates/rex-forge",
 ]
 
 [workspace.package]
@@ -36,3 +37,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
+minijinja = "2"
+include_dir = "0.7"
+toml = "0.8"
+tempfile = "3"
