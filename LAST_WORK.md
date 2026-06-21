@@ -1,6 +1,182 @@
 # Last Work
 
-## RexOps Cockpit Phase D — FeedReady tools (registry = single launch source)
+## RexOps tools-to-Live — tripwire + rewind + rex-forge flipped (rollup 10/11, the CEILING)
+
+2026-06-21. Branch `rexops-tools-live-finish` (rexops repo). Status: **MERGED to
+rexops `main`** — PR #33, merge commit `44c1146`, on top of `83db82c`. Three
+per-tool commits: `2adb2f4` tripwire, `b260af3` rewind, `a14c962` rex-forge —
+each its own small green commit. Local branch deleted post-merge; **cockpit
+redesign is now complete.**
+
+Finished the cockpit tool-wiring: flipped the **last three Planned tools to Live**,
+reaching **10/11** — the ceiling (only workstate=Feed and system=Host never
+launch). No fake cards.
+
+**Contract check first (the assigned step 1):** none of the three has the
+`{healthy,detail,latency_ms}` line, so StatusCommand (the Pulse path) was OFF the
+table for all three — verified by reading their real CLIs in
+`linux-ops-suite/crates/*`:
+- **tripwire** `--json` = a Workstate-style envelope (`source_tool/clean/added…`).
+- **rewind** `--json` = a `TimelineEnvelope` (`schema_version/source_tool/captures…`).
+- **rex-forge** = a TUI scaffolder with only `new`/`list`, **no JSON contract at all**.
+
+**Decision: all three flipped with the validated rex-check Probe+launch pattern**
+(NOT a Feed adapter — that would mean building feed-publish + vital wiring, heavier
+and unnecessary; KISS). Per tool: `health: HealthSource::Probe{ binary, --help }`
+(present→Healthy, absent→Unavailable — honest, self-degrading), `launch:
+LaunchSpec{ Foreground }`, `maturity: Live`.
+- tripwire / rewind launch args `&[]` (current-view / capture-timeline).
+- rex-forge launch args `&["list"]` — deliberately: bare errors (subcommand
+  required, exit 2) and `new` is interactive + **writes a project**; `list` is the
+  read-only catalog (zero side effects), proving the tool runs without scaffolding.
+
+**Install gap (Tom chose "flip registry only"):** tripwire is on PATH
+(`~/.cargo/bin/tripwire`) so its card is green now; rewind + rex-forge aren't
+installed, so their cards are Live but `rexops launch <tool>` **refuses with exit
+1 + a precise reason** ("not on PATH, no configured binary") rather than
+fake-resolving. Registry vs install are separate concerns; the suite installer
+places binaries later. (The installer TOOLS roster in
+`crates/linux-ops-install/src/release.rs` still doesn't list these newer crates —
+a separate follow-up, not done here.)
+
+**Files (rexops repo only): 4** — `rexops-core/src/component_table.rs` (3 registry
+entries + the ordered launchable-list test), `rexops-app/src/snapshot.rs` (live-
+count anchor 7→10/11 + the "neutral-not-faulty" test rewritten), `rexops-tui/.../
+cockpit.rs` (guard test) + `rexops-tui/src/tools/catalog.rs` (order + stream
+lists). Two ceiling tests were rewritten to pin the **terminal state** (0 Planned
+rows, nothing fake-green, all 4 Probe+launch tools launchable) instead of chasing
+a shrinking Planned set; the `HealthSource::Planned => Unknown` projection arm in
+`registry_walk` still guards any future Planned tool.
+
+Quality: four cargo gates green on the final tree — build --all-targets, test
+--workspace **303 tests 0 failed**, clippy --all-targets -D warnings, fmt.
+Verified at runtime: `rexops components` → **10 live, proto feed-ready**; `launch
+tripwire --dry-run` resolves to the installed binary; `launch rewind/rex-forge
+--dry-run` refuse honestly ("not on PATH").
+
+**Rollup 10/11 — DONE & MERGED.** Nothing flippable remains; the cockpit redesign
+(Phases A–F + the tools-to-Live tail) is finished. Real tails (separate tasks, NOT
+done here): add these crates to the installer TOOLS roster in
+`crates/linux-ops-install/src/release.rs` so rewind/rex-forge cards go green;
+optionally give a tool a real `status` one-line contract for a StatusCommand
+upgrade; the pre-existing "hub schema" CI red (fixture `snapshot_v3.json` declares
+`schema_version: 3`, hub schema mandates const 4 — a genuine v3→v4 fixture/adapter
+migration) is still red on main and was bypassed via `--admin` for this unrelated
+PR, exactly as for prior merges.
+
+## RexOps tools-to-Live — rex-check flipped (rollup 7/11)
+
+2026-06-21. Branch `rexops-tools-live`. Status: **MERGED to rexops `main`** —
+PR #32, merge commit `83db82c` (impl `e20f8f8`).
+
+Flipped **rex-check / RexDoctor** from Planned to **Live + launchable** using the
+**Probe + LaunchSpec** pattern (bulwark/proto), NOT StatusCommand: rex-check has
+no `{healthy,detail,latency_ms}` contract, so health = binary presence
+(`rex-check --help` exits 0) + a foreground LaunchSpec. Touched only the
+launchable-set anchors (rex-check is the 6th launchable, after pulse) and the
+live-cards anchor (6/11 → 7/11); the adapter_health/status roster is unchanged
+(like proto, an unwired Probe row isn't probed into it). Cockpit guard test
+updated. Four gates green (303 tests). Verified: `rexops components` → rex-check
+`live`; `rexops launch rex-check --dry-run` resolves.
+
+**Rollup now 7/11 Live.** The remaining three stay **Planned** — deliberately NOT
+flipped, because none has a proper status contract and we don't ship fake cards:
+- **rex-forge** — no binary installed anywhere (no repo/crate/PATH). Needs its
+  binary built/installed first, then a trivial Probe+launch flip like rex-check.
+- **tripwire** — binary exists but no `status` contract; its `--json` is a
+  Workstate-style envelope (`{schema_version, clean, added, …}`), wrong shape for
+  the probe. Best made Live as a **Feed adapter** (map clean→Healthy, drift count
+  → vital), not a one-row flip.
+- **rewind** — Planned pending a proper status contract / adapter (not yet
+  inspected in depth).
+
+NEXT (proper, not fake): for each remaining tool either (A) add a real `status`
+subcommand emitting the one-line `{healthy,detail,latency_ms}` contract → Pulse
+one-row flip, or (B) build a proper Feed/Probe adapter. Each is a genuine task,
+not a one-liner. Reaching 10/11 (the ceiling — workstate=Feed, system=Host are
+never "launchable") depends on doing those.
+
+## RexOps Cockpit Phase F — CLI parity (gated `rexops launch`)
+
+2026-06-21. Branch `rexops-cockpit-phase-f` (rexops repo). Status: **MERGED to
+rexops `main`** — PR #31, merge commit `3e44028` (impl `a38ad6a`). This is the
+**final phase** of the cockpit redesign; roadmap §9 success criteria are met.
+
+Added a gated `rexops launch <tool>` mirroring the TUI confirm-before-run flow:
+- **Shared resolver:** moved `resolve_launch_command` + `LaunchCommand` (and their
+  helpers + pure tests) from `rexops-tui::tools::launcher` into a new
+  `rexops-app::launch` module. Both front-ends already depend on rexops-app and
+  the resolver is pure (registry + AppConfig + `which`), so no new dep edges;
+  rexops-tui re-exports the two symbols → every TUI call site unchanged.
+- **`rexops launch <tool> [--yes] [--dry-run]`** with a pure, exhaustively-tested
+  `decide()` gate: unresolved→refuse(exit 1); `--dry-run`→print argv, run nothing
+  (wins over `--yes`); `--yes`→run; interactive y/N→run/abort; non-interactive &
+  !`--yes`→refuse(exit 1, never hang/run-blind). Child exit code propagated.
+  `--dry-run` reuses the resolved argv that would run (CR-2, no preview/run drift).
+- README documents `launch` + the previously-undocumented `components`.
+- No new binaries/wrappers/aliases. Background launches out of scope for v1.
+
+Quality: four cargo gates green (build --all-targets, test --workspace **303
+tests** 0 failed, clippy --all-targets -D warnings, fmt); workspace stable 6/6
+under default parallelism. Smoke-tested help/refuse/non-tty/dry-run. CI "Rust
+verification" passed on PR #31. (The "hub schema" check is still pre-existing red
+— see Phase E note; NOT bumped here because it's a real v3→v4 adapter migration,
+not a fixture tweak: the umbrella schema mandates schema_version const 4 while the
+rexops workstate adapter parses/asserts v3 and skips unknown versions. Tracked as
+a follow-up.)
+
+REMAINING (the redesign's longer tail, not blockers): flip the 4 still-`Planned`
+tools (rex-check, tripwire, rewind, rex-forge) to Live — each = give the tool a
+`status` contract + one registry-row flip + extend the two literal roster anchors;
+rollup climbs 6/11 → 10/11. Plus the v3→v4 Workstate schema migration.
+
+## RexOps Cockpit Phase E — Pulse Live via StatusCommand + Heartbeat widget
+
+2026-06-21. Branch `rexops-cockpit-phase-e` (rexops repo). Status: **MERGED to
+rexops `main`** — PR #30, merge commit `3990e74` (branch tip `340ef1a`).
+
+Promoted **Pulse** from a `Planned` card to a launchable `Live` cockpit component
+driven by a real `status` contract, plus a per-component **heartbeat** vital:
+- `HealthSource::StatusCommand` wired end-to-end — the `COMPONENTS` loop in
+  `build_snapshot_with_piped` spawns `pulse status`, bounds it by the configured
+  timeout, and parses the one-line JSON liveness contract
+  (`{healthy, detail, latency_ms}`) into `AdapterHealth` + latency. Parse/health
+  mapping is pure in `status_probe`; spawn glue is in `snapshot.rs`.
+- Pulse flips `Planned → Live` and gains a `LaunchSpec`; banner rollup `5/11 → 6/11`.
+- Heartbeat vital: transient per-component ring buffer of probe latencies feeds the
+  suite-ui Heartbeat sparkline (suite-ui pin bumped `2f5fa82 → 49b71e9`). A
+  `Degraded` probe (no latency sample) falls back to the probe `detail` as the vital.
+- Roster tests re-anchored to a literal component set so the Pulse flip is explicit.
+
+**Test-robustness fix landed in the same PR (commit `340ef1a`).** `cargo test
+--workspace` was intermittently red (~5/5 under load, green in isolation) on
+`degraded_status_command_detail_surfaces_as_component_vital`. Root cause (proven by
+reproduction: failure vanished under `--test-threads=1`/`--nocapture`, and a
+standalone stress harness reproduced **raw OS error 26** deterministically): the
+test helper wrote a fresh executable shell script and spawned it; under `cargo
+test`'s parallelism a `fork` for an unrelated spawn held that file's write handle
+across its exec window, so Linux rejected the exec with **ETXTBSY** ("Text file
+busy") and the probe reported `Unavailable("not found")`. Unique filenames/dirs
+don't help — the contended state is the process fd table. Fix: **never execute a
+freshly written file.** The stub is now a non-executable data script that `/bin/sh`
+*reads* as an argument; a new empty-by-default `AdapterConfig::status_prefix_args`
+is injected before the status subcommand's own args, so the probe spawns
+`/bin/sh <script> status`. Production behaviour unchanged (prefix empty for every
+real adapter; field is `#[serde(default, skip_serializing_if)]` → config files
+wire-compatible). A 16-thread stress that gave 130 ETXTBSY failures gives 0; the
+workspace suite is now **green 20/20 under default parallelism**.
+
+Quality: `cargo build --workspace --all-targets`, `cargo test --workspace`
+(rexops-core 65 / app 27 / tui 176 / cli 1, 0 failed), `clippy --workspace
+--all-targets -D warnings`, `fmt --all --check` — all green. CI "Rust verification"
+passed on PR #30. (The "Validate Workstate fixture against hub schema" check is red,
+but that is **pre-existing cross-repo drift** — the umbrella's schema now wants
+`schema_version: 4` while rexops's fixture is v3; Phase E touched no fixtures/schemas,
+and `main`'s own CI has been red on that check throughout the A–E series, which all
+merged on Rust-verification-green.) No binaries installed, no wrappers/aliases added.
+Manual TTY smoke of the live cockpit remains deferred (non-TTY env).
+
+## Previous: RexOps Cockpit Phase D — FeedReady tools (registry = single launch source)
 
 2026-06-21. Branch `rexops-cockpit-phase-d` (rexops repo, worktree
 `.claude/worktrees/rexops-cockpit-phase-d`, off origin/main 04b41a8). Spec → plan →
