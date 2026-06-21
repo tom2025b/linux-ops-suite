@@ -25,12 +25,18 @@ pub fn run_new(reg: &Registry, args: &NewArgs) -> Result<(), ForgeError> {
         .name
         .clone()
         .ok_or_else(|| ForgeError::Write(WriteError::Io("project name required".into())))?;
+    // No --base -> launch the interactive TUI, which returns a full Selection.
     let base = match &args.base {
         Some(b) => b.clone(),
         None => {
-            return Err(ForgeError::Write(WriteError::Io(
-                "--base required (interactive mode lands later)".into(),
-            )));
+            match tui::run(reg, name.clone())? {
+                // TUI path writes into a dir named after the project.
+                Some(sel) => {
+                    let dest = sel.project_name.clone();
+                    return generate_and_write(reg, &sel, args, &dest);
+                }
+                None => return Ok(()), // user quit / no TTY
+            }
         }
     };
     let components: Vec<String> = args
@@ -57,21 +63,32 @@ pub fn run_new(reg: &Registry, args: &NewArgs) -> Result<(), ForgeError> {
         author: args.author.clone().unwrap_or_default(),
     };
 
+    // Flag path writes to the exact path the user passed (may include dirs).
+    generate_and_write(reg, &sel, args, &name)
+}
+
+/// Resolve + generate + write a Selection into `dest`, printing the summary.
+/// Shared by the flag-driven and interactive (TUI) paths.
+fn generate_and_write(
+    reg: &Registry,
+    sel: &Selection,
+    args: &NewArgs,
+    dest: &str,
+) -> Result<(), ForgeError> {
     let plan = resolve::resolve(reg, &sel.base, &sel.components)?;
-    let generated = merge::generate(reg, &plan, &sel)?;
+    let generated = merge::generate(reg, &plan, sel)?;
 
     let opts = WriteOpts { force: args.force, dry_run: args.dry_run, git: args.git };
-    let dest = Path::new(&name);
-    write(&generated.tree, dest, &opts)?;
+    write(&generated.tree, Path::new(dest), &opts)?;
 
     if args.dry_run {
-        println!("{name}/");
+        println!("{dest}/");
         print!("{}", generated.tree.render_tree());
         println!("(dry run — nothing written)");
     } else {
         println!(
             "Created {} ({} files, base {})",
-            name,
+            sel.project_name,
             generated.tree.paths().len(),
             sel.base
         );

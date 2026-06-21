@@ -793,9 +793,11 @@ name = "rex-forge"
 version = "0.2.0"
 dependencies = [
  "clap",
+ "crossterm",
  "include_dir",
  "insta",
  "minijinja",
+ "ratatui",
  "serde",
  "suite-ui",
  "tempfile",
