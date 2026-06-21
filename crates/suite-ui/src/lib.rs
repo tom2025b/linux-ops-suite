@@ -64,6 +64,7 @@
 mod attention_flag;
 mod badge;
 mod health_strip;
+mod heartbeat;
 mod overlays;
 mod status_bar;
 mod widget;
@@ -82,6 +83,7 @@ mod theme {
 pub use attention_flag::AttentionFlag;
 pub use badge::SeverityBadge;
 pub use health_strip::{HealthStrip, HEALTH_SEP};
+pub use heartbeat::Heartbeat;
 pub use overlays::{ConfirmModal, HelpSheet, PaletteFrame, PaletteItem, Toast, ToastKind};
 pub use status_bar::{JobState, Outcome, StatusBar};
 pub use theme::{ColorChoice, Health, Severity, Theme, ThemeChoice};
