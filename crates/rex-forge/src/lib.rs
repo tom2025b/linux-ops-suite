@@ -8,3 +8,4 @@ pub mod model;
 pub mod registry;
 pub mod render;
 pub mod resolve;
+pub mod writer;
