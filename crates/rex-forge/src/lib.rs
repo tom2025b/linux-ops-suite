@@ -9,6 +9,7 @@ pub mod model;
 pub mod registry;
 pub mod render;
 pub mod resolve;
+pub mod tui;
 pub mod writer;
 
 use crate::cli::NewArgs;
