@@ -3,6 +3,7 @@
 
 pub mod error;
 pub mod filetree;
+pub mod merge;
 pub mod model;
 pub mod registry;
 pub mod render;
