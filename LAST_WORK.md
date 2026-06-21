@@ -1,5 +1,33 @@
 # Last Work
 
+## RexOps Cockpit Phase C — interactive cockpit
+
+2026-06-21. Branch `rexops-cockpit-phase-b` (in the rexops repo, worktree
+`.claude/worktrees/rexops-cockpit-redesign-doc`). Built via spec → plan → inline
+TDD execution. **8 task commits on the branch, NOT pushed** — PR to rexops main is
+a separate step Tom gates.
+
+Made the Phase B cockpit landing screen interactive, all 4 requirements met:
+- **Card focus** (`j`/`k`/arrows), keyed by component `id` (`App::selected_component`)
+  so it survives reordering refreshes; a snapshot auto-focuses the first card.
+- **Per-card letter hotkeys** — each card shows a dim `[a]` marker; pressing it
+  arms that component through the **existing** `arm_tool → pending_action` confirm
+  gate (no new launch path). Marker alphabet curated to exclude every bound nav key
+  + digits `1`–`7`; marker/focus order share one source of truth
+  (`cockpit_nav::cockpit_visit_order`).
+- **Drill-down** — new `Screen::CockpitDetail` (`screens/cockpit_detail.rs`) joins
+  the static registry row with the live `ComponentStatus`. `g` drills any card,
+  `Enter` drills a non-launchable card (and launches a launchable one), `Esc` backs
+  out.
+- **Phase B rendering frozen** — StatusCard gained additive `marker`/`focused`
+  fields; all Phase B render tests still pass.
+
+New files: `screens/cockpit_nav.rs`, `screens/cockpit_detail.rs`,
+`app/tests/cockpit.rs`. Workspace green: rexops-tui lib **163 passed**, full
+`cargo test --workspace` + `clippy --workspace -D warnings` + `fmt` clean at every
+commit. Headless smoke (`rexops components` fed the Workstate fixture) lists all 11
+components with vitals; interactive keypress smoke deferred (ran in a non-TTY job).
+
 ## rex-forge v0.1 — new scaffolder crate
 
 2026-06-20. Branch `worktree-rex-forge-spec` (isolated worktree off main). Built
