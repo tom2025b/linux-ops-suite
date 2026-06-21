@@ -11,7 +11,6 @@ use crate::verdict::{State, Verdict};
 
 /// The tiny contract RexOps parses. Stable: add fields only additively.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[allow(dead_code)]
 pub struct StatusReport {
     /// True only when the verdict is fully healthy.
     pub healthy: bool,
@@ -21,7 +20,6 @@ pub struct StatusReport {
     pub latency_ms: u64,
 }
 
-#[allow(dead_code)]
 impl StatusReport {
     /// Derive the report from an already-computed verdict. No new health logic:
     /// `healthy` mirrors `State::Healthy`; `detail` is the top cause if any,

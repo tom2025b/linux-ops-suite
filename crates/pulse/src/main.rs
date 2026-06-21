@@ -37,6 +37,7 @@
 //!
 //! Usage:
 //!   pulse                 interactive verdict screen (when stdout is a TTY)
+//!   pulse status          one JSON liveness line, then exit (for RexOps)
 //!   pulse --state STATE   force a demo state: healthy | attention | incomplete
 //!   pulse --theme THEME   accent: cyan | amber       (suite_ui::ThemeChoice)
 //!   pulse --color WHEN    auto | always | never      (suite_ui::ColorChoice)
@@ -155,6 +156,19 @@ fn main() -> ExitCode {
                 dump_view = Some((name.clone(), query));
                 i += consumed;
             }
+            "status" => {
+                // Machine-readable liveness for parent processes (RexOps). Reuse
+                // the same readings→verdict the screens use; time only that work.
+                use std::time::Instant;
+                let start = Instant::now();
+                let readings = verdict::Readings::load(&sources::DataDir::resolve());
+                let theme = Theme::resolve(color_choice, theme_choice);
+                let app = app::App::new(readings, theme);
+                let latency_ms = start.elapsed().as_millis() as u64;
+                let report = status::StatusReport::from_verdict(app.verdict(), latency_ms);
+                println!("{}", report.to_json_line());
+                return report.exit_code();
+            }
             other => {
                 eprintln!("pulse: unexpected argument '{other}' (try --help)");
                 return ExitCode::from(2);
@@ -229,6 +243,7 @@ OPTIONS:
                       (default: build the verdict from live suite data)
     --data-dir <DIR>  read suite feeds from DIR instead of the default data dir
                       (same as setting $PULSE_DATA_DIR)
+    status            one JSON liveness line, then exit (for RexOps)
     --dump-view <V>   render one view once and exit (no event loop):
                       default | attention | feeds | details | help | search
                       (append a query for search: --dump-view search aws)
