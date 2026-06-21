@@ -245,6 +245,7 @@ With no options, Pulse reads the suite's file contracts under $XDG_DATA_HOME
 mod app;
 mod cockpit;
 mod sources;
+mod status;
 mod tui;
 mod verdict;
 mod view;
