@@ -1,5 +1,66 @@
 # Last Work
 
+## RexOps Probe wiring fix — HealthSource::Probe rows are now actually probed
+
+2026-06-21. Branch `feat/probe-rows-into-adapter-health` (`rexops` repo).
+Status: **PUSHED, PR #34 open** (commit `dfc1ef9`) on top of merged main
+`44c1146`. Tests: full workspace green (310, +7 new); build --all-targets, clippy
+--all-targets -D warnings, fmt --all --check all clean. Touches 3 files:
+`rexops-app/src/snapshot.rs` (the fix), `rexops-core/src/component_table.rs`
+(comments), and `rexops-tui/src/app/tests/cockpit.rs` (tests).
+
+**Three review follow-ups also done this pass:**
+- (1) Comments: the four registry rows + `registry_walk`'s health comment now say
+  the snapshot builder actually spawns `<bin> --help` each refresh (exits 0→Healthy,
+  absent→Unavailable) instead of implying it's unwired/aspirational. No comment
+  overstates how "Live" the tools are — they're Live+launchable but health is real.
+- (2) `component_vital` Probe arm now prefers any real `status_detail` the probe
+  recorded, falling back to "installed"/"not installed" presence, and None when not
+  yet probed — so it reflects real data when available rather than a fixed label.
+- (3) Tests strengthened: `every_probe_tool_is_unknown_until_probed_then_resolves`
+  (app) pins Unknown-until-probed + Healthy-once-probed + Live + launchable + vital
+  across all four tools; the cockpit guard test now asserts the full per-tool Probe
+  contract (binary==id, version_args==`--help`, Foreground); new
+  `probe_tool_card_gates_launch_on_resolved_health` (tui) proves the launch gate
+  follows resolved health at the UI boundary.
+
+**The bug (found in review of PR #33):** the four Probe+launch tools
+(tripwire/rewind/rex-check/rex-forge) declared `HealthSource::Probe{binary,
+version_args}`, but **nothing ever read those fields** — `build_snapshot_with_piped`
+only resolved the hardcoded `RESOLVED_TODAY` adapters (bulwark/system/workstate)
+plus the StatusCommand loop (pulse). So every Probe row fell through `registry_walk`'s
+`_ => adapter_health.get(id).unwrap_or(Unknown)` arm and was **permanently Unknown
+with a blank vital**, regardless of whether the binary was installed. The cards said
+"Live" but were indistinguishable from Planned except for the label + launch button.
+This contradicted the prior LAST_WORK claim ("present→Healthy, absent→Unavailable")
+and ("tripwire is on PATH so its card is green now") — both were false until this fix.
+
+**The fix (minimal, one file):**
+- New `probe_binary_presence(config, id, version_args)` — mirrors the existing
+  `status_command_probe` spawn/timeout structure but maps on exit status only:
+  spawn-fail→Unavailable, exit 0→Healthy, non-zero/timeout→Unavailable. Reuses the
+  same `status_prefix_args` test seam (sh-reads-script, no `ETXTBSY`).
+- New Probe loop in `build_snapshot_with_piped` (right after the StatusCommand
+  loop): for every `HealthSource::Probe` row **not** in `real_adapter_ids` (skips
+  bulwark — its adapter owns it; no double-probe) and enabled in config, write the
+  resolved health into `adapter_health`. The registry walk then projects it onto the
+  card AND the launch gate (`health != Unavailable`), so an absent binary is both
+  Unavailable and unlaunchable. This also lights **proto** (Probe, FeedReady).
+- `component_vital` Probe arm: Healthy→"installed", Unavailable→"not installed",
+  Unknown→None (no blank for a resolved card; no guess for an unresolved one).
+- Updated 3 roster-anchor tests that hardcoded the old `[bulwark, pulse, system,
+  workstate]` adapter_health set — now `+ [proto, tripwire, rewind, rex-check,
+  rex-forge]`; fixed the stale "Probe rows are NOT in adapter_health" comment.
+- Added 5 tests: exit-status→health mapping, missing-binary, installed-end-to-end
+  (Healthy+launchable+"installed" vital), absent-end-to-end (Unavailable+unlaunchable
+  +"not installed"), and no-double-probe-bulwark.
+
+**Net:** an installed Probe tool now reads genuinely Healthy; an absent one honestly
+Unavailable+unlaunchable. No more permanently-Unknown "Live" cards. Pure addition —
+the StatusCommand/Pulse and adapter paths are untouched.
+
+---
+
 ## RexOps tools-to-Live — tripwire + rewind + rex-forge flipped (rollup 10/11, the CEILING)
 
 2026-06-21. Branch `rexops-tools-live-finish` (rexops repo). Status: **MERGED to
