@@ -1,0 +1,39 @@
+---
+source: crates/rex-forge/tests/golden.rs
+assertion_line: 24
+expression: "generate(\"rust-bin\", &[])"
+---
+=== .gitignore ===
+/target
+=== Cargo.toml ===
+[dependencies]
+
+[package]
+authors = ["tomb"]
+edition = "2021"
+license = "MIT"
+name = "myapp"
+version = "0.1.0"
+
+=== README.md ===
+# myapp
+
+Generated with rex-forge.
+
+```sh
+cargo run
+```
+=== rust-toolchain.toml ===
+[toolchain]
+channel = "1.85"
+components = ["clippy", "rustfmt"]
+=== src/main.rs ===
+#![forbid(unsafe_code)]
+#![warn(clippy::all, clippy::pedantic)]
+// rex:imports
+
+fn main() {
+    // rex:init
+    // rex:main
+    println!("hello from myapp");
+}

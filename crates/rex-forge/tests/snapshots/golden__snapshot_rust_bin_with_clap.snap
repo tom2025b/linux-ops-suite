@@ -1,0 +1,53 @@
+---
+source: crates/rex-forge/tests/golden.rs
+assertion_line: 29
+expression: "generate(\"rust-bin\", &[\"clap\"])"
+---
+=== .gitignore ===
+/target
+=== Cargo.toml ===
+[dependencies.clap]
+features = ["derive"]
+version = "4"
+
+[package]
+authors = ["tomb"]
+edition = "2021"
+license = "MIT"
+name = "myapp"
+version = "0.1.0"
+
+=== README.md ===
+# myapp
+
+Generated with rex-forge.
+
+```sh
+cargo run
+```
+=== rust-toolchain.toml ===
+[toolchain]
+channel = "1.85"
+components = ["clippy", "rustfmt"]
+=== src/cli.rs ===
+use clap::Parser;
+
+/// myapp
+#[derive(Parser, Debug)]
+#[command(version, about)]
+pub struct Cli {
+    // TODO: add your subcommands / args here.
+}
+=== src/main.rs ===
+#![forbid(unsafe_code)]
+#![warn(clippy::all, clippy::pedantic)]
+// rex:imports
+mod cli;
+use clap::Parser;
+
+fn main() {
+    // rex:init
+    // rex:main
+    let _args = cli::Cli::parse();
+    println!("hello from myapp");
+}
