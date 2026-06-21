@@ -1,0 +1,21 @@
+name = "metrics"
+language = "rust"
+category = "Observability"
+summary = "Prometheus metrics handle"
+bases = ["rust-bin"]
+requires = ["config"]
+
+[dependencies]
+prometheus = "0.13"
+
+[[files]]
+path = "src/metrics.rs"
+template = "files/metrics.rs.j2"
+
+[[inject]]
+target = "src/main.rs"
+anchor = "rex:imports"
+template = "files/imports.rs.j2"
+
+[[note]]
+text = "src/metrics.rs exposes a default registry; wire it to an HTTP endpoint."

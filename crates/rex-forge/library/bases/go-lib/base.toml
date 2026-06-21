@@ -1,0 +1,4 @@
+name = "go-lib"
+language = "go"
+summary = "Go library / module"
+anchors = ["rex:imports", "rex:body", "rex:require"]

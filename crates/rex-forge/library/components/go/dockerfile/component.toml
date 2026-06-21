@@ -1,0 +1,13 @@
+name = "dockerfile"
+language = "go"
+category = "Ops"
+summary = "Multi-stage, distroless image"
+bases = ["go-bin"]
+
+[[files]]
+path = "Dockerfile"
+template = "files/Dockerfile.j2"
+
+[[files]]
+path = ".dockerignore"
+template = "files/dockerignore.j2"

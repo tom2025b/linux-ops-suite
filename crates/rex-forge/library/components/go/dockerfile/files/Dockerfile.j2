@@ -1,0 +1,9 @@
+FROM golang:1.22 AS build
+WORKDIR /app
+COPY . .
+RUN CGO_ENABLED=0 go build -o /{{ project_name }} .
+
+FROM gcr.io/distroless/static-debian12
+COPY --from=build /{{ project_name }} /usr/local/bin/{{ project_name }}
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/{{ project_name }}"]

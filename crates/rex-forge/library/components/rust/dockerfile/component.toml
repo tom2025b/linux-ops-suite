@@ -1,0 +1,13 @@
+name = "dockerfile"
+language = "rust"
+category = "Ops"
+summary = "Multi-stage, distroless image"
+bases = ["rust-bin"]
+
+[[files]]
+path = "Dockerfile"
+template = "files/Dockerfile.j2"
+
+[[files]]
+path = ".dockerignore"
+template = "files/dockerignore.j2"

@@ -1,0 +1,4 @@
+name = "rust-lib"
+language = "rust"
+summary = "Rust library crate"
+anchors = ["rex:imports", "rex:body"]

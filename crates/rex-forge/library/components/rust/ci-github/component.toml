@@ -1,0 +1,9 @@
+name = "ci-github"
+language = "rust"
+category = "Ops"
+summary = "GitHub Actions: build/test/clippy"
+bases = ["rust-bin", "rust-lib"]
+
+[[files]]
+path = ".github/workflows/ci.yml"
+template = "files/.github/workflows/ci.yml.j2"

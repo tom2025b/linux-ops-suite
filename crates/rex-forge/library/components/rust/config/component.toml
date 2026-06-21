@@ -1,0 +1,21 @@
+name = "config"
+language = "rust"
+category = "Config"
+summary = "Layered config loader (figment)"
+bases = ["rust-bin"]
+
+[dependencies]
+figment = { version = "0.10", features = ["env", "toml"] }
+serde = { version = "1", features = ["derive"] }
+
+[[files]]
+path = "src/config.rs"
+template = "files/config.rs.j2"
+
+[[inject]]
+target = "src/main.rs"
+anchor = "rex:imports"
+template = "files/imports.rs.j2"
+
+[[note]]
+text = "Config loads from app.toml then APP_ environment variables (src/config.rs)."
