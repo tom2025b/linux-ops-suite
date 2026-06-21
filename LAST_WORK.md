@@ -1,5 +1,34 @@
 # Last Work
 
+## RexOps Cockpit Phase D — FeedReady tools (registry = single launch source)
+
+2026-06-21. Branch `rexops-cockpit-phase-d` (rexops repo, worktree
+`.claude/worktrees/rexops-cockpit-phase-d`, off origin/main 04b41a8). Spec → plan →
+inline TDD. **6 tasks committed on the branch, NOT pushed** — PR to rexops main is
+a separate gate.
+
+Promoted ScriptVault + ToolFoundry from data-only cards to launchable `Live`
+cockpit components, by unifying the two launch sources into one:
+- **Registry is now the single source of launch data.** `tools/catalog.rs`'s
+  hand-maintained `CATALOG`/`ToolEntry` deleted; `tools::catalog` is a thin view
+  over `rexops_core::COMPONENTS` (`launchable()` = `launchable_components()`).
+  `resolve_launch_command`, the Launcher screen, palette, availability cache, and
+  `is_streamable`/`refreshes_after` all read the registry `LaunchSpec`.
+- `Component` gained `blurb` (the human description the Launcher/palette need).
+- ScriptVault + ToolFoundry got a `LaunchSpec` (Foreground, bare) + `Maturity::Live`;
+  the launchable set is now `[bulwark, proto, scriptvault, toolfoundry]`.
+- **Semantic change:** `live` now means "fully wired" = adapter roster + feed-backed
+  launchables (the snapshot.rs invariant test was renamed + split accordingly; the
+  two cross-source rosters `status`/`adapters` are unchanged — feeds aren't adapters).
+- Guard test `launcher_list_is_exactly_the_registry_launchable_set` locks the
+  Launcher list to the registry, so the two sources can never drift again.
+
+Launch resolution unchanged (`which <id>` then config `binary`) — no binaries
+installed, no wrappers/aliases added; the tools launch the moment one word resolves.
+Workspace green: rexops-core 65 / app 17 / tui 168, full `cargo test --workspace` +
+`clippy --workspace -D warnings` + `fmt` clean. Headless smoke (`rexops components`
+on the fixture) shows ScriptVault + ToolFoundry as `live` with vitals.
+
 ## RexOps Cockpit Phase C — interactive cockpit
 
 2026-06-21. Branch `rexops-cockpit-phase-b` (in the rexops repo, worktree
