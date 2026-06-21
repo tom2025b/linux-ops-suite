@@ -5,7 +5,11 @@ use minijinja::{context, Environment, Value};
 
 /// Build the shared render context available to every template.
 pub fn context(sel: &Selection) -> Value {
-    let language = if sel.base.starts_with("rust") { "rust" } else { "go" };
+    let language = if sel.base.starts_with("rust") {
+        "rust"
+    } else {
+        "go"
+    };
     context! {
         project_name => sel.project_name.clone(),
         base => sel.base.clone(),

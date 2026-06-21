@@ -31,10 +31,12 @@ pub fn resolve(
         if reg.component(&name).is_none() {
             return Err(ResolveError::UnknownComponent(name.clone()));
         }
-        let comp = reg.component_for(&name, base).ok_or_else(|| ResolveError::BaseMismatch {
-            component: name.clone(),
-            base: base.to_string(),
-        })?;
+        let comp = reg
+            .component_for(&name, base)
+            .ok_or_else(|| ResolveError::BaseMismatch {
+                component: name.clone(),
+                base: base.to_string(),
+            })?;
         for req in &comp.requires {
             if !final_set.contains(req) {
                 queue.push(req.clone());
@@ -47,8 +49,14 @@ pub fn resolve(
     for i in 0..final_set.len() {
         for j in (i + 1)..final_set.len() {
             let (a, b) = (&final_set[i], &final_set[j]);
-            let a_conf = reg.component_for(a, base).map(|c| c.conflicts.contains(b)).unwrap_or(false);
-            let b_conf = reg.component_for(b, base).map(|c| c.conflicts.contains(a)).unwrap_or(false);
+            let a_conf = reg
+                .component_for(a, base)
+                .map(|c| c.conflicts.contains(b))
+                .unwrap_or(false);
+            let b_conf = reg
+                .component_for(b, base)
+                .map(|c| c.conflicts.contains(a))
+                .unwrap_or(false);
             if a_conf || b_conf {
                 let (mut x, mut y) = (a.clone(), b.clone());
                 if x > y {

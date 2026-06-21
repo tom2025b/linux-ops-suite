@@ -11,6 +11,19 @@ a single entry covers the whole suite.
 
 ## [Unreleased]
 
+### Added
+
+- **rex-forge** (`crates/rex-forge`): a TUI-first project scaffolder for Rust and
+  Go. `rex-forge new` opens a suite-ui TUI to pick a base (`rust-bin`/`rust-lib`/
+  `go-bin`/`go-lib`) and multi-select components, generating a complete,
+  compiling, secure starter project; a non-interactive `--base/--with` path and
+  `rex-forge list` are also provided. The component library is authored as plain
+  `.toml`+`.j2` files and embedded at build time (fully offline); generation is a
+  pure, deterministic engine behind a single filesystem boundary, covered by
+  golden snapshots and a compile gate that builds the generated projects. v0.1
+  Go components are stdlib-only (`flag`/`slog`); `cobra`/`viper`/`zap` are
+  deferred to v0.2.
+
 ## [0.2.0] - 2026-06-20
 
 A large release: the shared TUI library landed and Pulse became its first full

@@ -33,6 +33,13 @@ fn base_files_strip_j2_suffix() {
 fn dotfiles_are_embedded() {
     // Guards the include_dir dotfile behavior: .gitignore must ship.
     let reg = registry::load();
-    let paths: Vec<_> = reg.base_files("rust-bin").iter().map(|(p, _)| p.clone()).collect();
-    assert!(paths.contains(&".gitignore".to_string()), "embedded paths: {paths:?}");
+    let paths: Vec<_> = reg
+        .base_files("rust-bin")
+        .iter()
+        .map(|(p, _)| p.clone())
+        .collect();
+    assert!(
+        paths.contains(&".gitignore".to_string()),
+        "embedded paths: {paths:?}"
+    );
 }

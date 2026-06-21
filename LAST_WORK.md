@@ -1,5 +1,32 @@
 # Last Work
 
+## rex-forge v0.1 — new scaffolder crate
+
+2026-06-20. Branch `worktree-rex-forge-spec` (isolated worktree off main). Built
+end-to-end via spec → plan → inline TDD execution; **committed on the branch, NOT
+pushed** (PR to main is a separate step Tom gates).
+
+- New crate `crates/rex-forge` (13th workspace member): TUI-first scaffolder for
+  Rust/Go. Pure engine (resolve → render → merge → in-memory `FileTree`) behind a
+  clap CLI + a suite-ui TUI; single `writer` module is the only fs/git boundary.
+- Component library authored in-tree under `library/` (`.toml`+`.j2`), embedded via
+  `include_dir`; `build.rs` validates every `[[inject]]` anchor against its base.
+- Bases: rust-bin, rust-lib, go-bin, go-lib (secure-by-default: forbid-unsafe +
+  clippy lints + pinned toolchain). Components: Rust clap/config/tracing/metrics/
+  anyhow/thiserror/dockerfile/ci-github; Go flag/slog/dockerfile/ci-github
+  (stdlib-only — cobra/viper/zap deferred to v0.2 to keep the offline compile-gate).
+- Tests: 46 total — resolver/merge/render/writer/state units, golden snapshots
+  (determinism), and a compile-gate that actually `cargo build`s generated Rust and
+  `go build`s generated Go (CI gained a Go toolchain step). fmt + clippy `-D
+  warnings` clean.
+- Two real bugs caught by the compile-gate and fixed: cross-language component
+  name collisions (`ci-github`/`dockerfile`) → base/language-aware lookup; and
+  Cargo dep-merge corrupting Go `go.mod` → dep-merge is now Rust-only.
+- Spec + plan in `docs/superpowers/{specs,plans}/2026-06-20-rex-forge*`.
+- REMAINING (human-only): interactive PTY smoke of `rex-forge new`; the no-TTY
+  path + pure state-machine flow tests cover the wiring, but a real terminal
+  walk-through hasn't been done.
+
 ## Release 0.2.0 prep — umbrella
 
 2026-06-20. Branch `release/0.2.0` off main at d2e5d87. Committed on the branch,

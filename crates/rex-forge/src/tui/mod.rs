@@ -30,8 +30,11 @@ pub fn run(reg: &Registry, project_name: String) -> Result<Option<Selection>, Fo
         return Ok(None);
     }
     // Visible filter input -> do not hide the cursor; require a real tty.
-    let mut tui = Tui::new(TuiOptions { require_tty: true, ..Default::default() })
-        .map_err(|e| ForgeError::Write(crate::error::WriteError::Io(e.to_string())))?;
+    let mut tui = Tui::new(TuiOptions {
+        require_tty: true,
+        ..Default::default()
+    })
+    .map_err(|e| ForgeError::Write(crate::error::WriteError::Io(e.to_string())))?;
 
     let mut state = AppState::new(reg, project_name);
 
@@ -137,7 +140,9 @@ fn retreat(state: &mut AppState) {
 fn read_action() -> Action {
     use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
     loop {
-        let Ok(ev) = event::read() else { return Action::Quit };
+        let Ok(ev) = event::read() else {
+            return Action::Quit;
+        };
         let Event::Key(k) = ev else { continue };
         if k.kind != KeyEventKind::Press {
             continue;

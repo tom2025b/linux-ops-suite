@@ -16,7 +16,7 @@
 | Q4 | Git init on generate? | **Off by default**, `--git` opt-in (and a toggle on the confirm step). Writer stays the single pure I/O boundary; git is a clearly-bounded opt-in second side effect. |
 | Q5 | Security default depth | **Baked into bases:** deny-by-default clippy lints, `#![forbid(unsafe_code)]` on libs, pinned toolchain (`rust-toolchain.toml` / Go version). **Opt-in components:** Dockerfile, CI, govulncheck. Bases stay minimal but secure-by-default. |
 | Q6 | License / author metadata | Optional, **skippable "details" step** in the TUI (project name shown, license picker, author). Non-interactive defaults: license `MIT`, author from `$CARGO_*`/git config when available, else placeholder. |
-| Q7 | v0.1 component menu | **Drafted menu as-is.** Rust: `clap`, `config`, `tracing`, `metrics`, `anyhow`, `thiserror`, `dockerfile`, `ci-github`. Go: `cobra`, `viper`, `zap`, `dockerfile`, `ci-github`. Adjust later via PRs. |
+| Q7 | v0.1 component menu | Rust: `clap`, `config`, `tracing`, `metrics`, `anyhow`, `thiserror`, `dockerfile`, `ci-github`. Go (revised 2026-06-20): **stdlib-only** — `flag`, `slog`, `dockerfile`, `ci-github`. `cobra`/`viper`/`zap` **deferred to v0.2**: they need external `require` lines in `go.mod`, and the engine holds `go.mod` aside (no Go dep-merge in v0.1), so wiring them would either break the offline/CI compile-gate (module downloads) or require an engine change out of scope for v0.1. Stdlib `flag`/`slog` compile offline and keep the compile-gate green. |
 
 ---
 
@@ -77,7 +77,9 @@ best practices on the first try.
 
 **Deferred to v2 (named, not built):** `rex-forge update` (refresh bundled index from
 GitHub), live/cached remote components, custom user component dirs, presets/bundles,
-version-pinning UI, `/cmd`+`/internal` Go layout component.
+version-pinning UI, `/cmd`+`/internal` Go layout component, **Go dependency components
+(`cobra`/`viper`/`zap`) + `go.mod` `require`-injection** (v0.1 Go is stdlib-only to keep
+the offline compile-gate intact).
 
 ---
 
@@ -273,8 +275,8 @@ crates/rex-forge/library/
     |   |- clap/  { component.toml, files/ }
     |   |- tracing/ ...  anyhow/ ...  thiserror/ ...  config/ ...  metrics/ ...
     |   |- dockerfile/ ...  ci-github/ ...
-    `- go/
-        |- cobra/ ...  viper/ ...  zap/ ...
+    `- go/                          # v0.1: stdlib-only (cobra/viper/zap -> v0.2)
+        |- flag/ ...  slog/ ...
         |- dockerfile/ ...  ci-github/ ...
 ```
 
