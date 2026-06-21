@@ -1,0 +1,18 @@
+name = "flag"
+language = "go"
+category = "CLI & Args"
+summary = "Stdlib flag-based arg parsing"
+bases = ["go-bin"]
+
+[[inject]]
+target = "main.go"
+anchor = "rex:imports"
+template = "files/inject/imports.go.j2"
+
+[[inject]]
+target = "main.go"
+anchor = "rex:init"
+template = "files/inject/init.go.j2"
+
+[[note]]
+text = "Run with --name to see flag parsing (stdlib flag package)."

@@ -61,17 +61,17 @@ pub fn generate(
     let mut tree = FileTree::new();
     let mut notes = Vec::new();
 
-    let manifest_path = if sel.base.starts_with("rust") {
-        "Cargo.toml"
-    } else {
-        "go.mod"
-    };
+    // Dependency-merge is Cargo-specific: only Rust holds Cargo.toml aside for
+    // the [dependencies] merge. Go's go.mod passes through untouched (v0.1 Go
+    // components are stdlib-only, so there is nothing to merge into it).
+    let is_rust = sel.base.starts_with("rust");
+    let cargo_manifest = "Cargo.toml";
 
-    // 1. Render base files; hold the manifest aside for dep merging.
+    // 1. Render base files; for Rust, hold Cargo.toml aside for dep merging.
     let mut manifest_body = String::new();
     for (rel, raw) in reg.base_files(&plan.base) {
         let rendered = render_str(&raw, &ctx, &rel)?;
-        if rel == manifest_path {
+        if is_rust && rel == cargo_manifest {
             manifest_body = rendered;
         } else {
             tree.insert(rel, rendered);
@@ -81,17 +81,21 @@ pub fn generate(
     // 2. Apply each component.
     let mut merged_deps = toml::Table::new();
     for name in &plan.components {
-        let Some(comp) = reg.component(name) else { continue };
+        let Some(comp) = reg.component_for(name, &plan.base) else { continue };
+        let lang = match comp.language {
+            crate::model::Language::Rust => "rust",
+            crate::model::Language::Go => "go",
+        };
 
         for f in &comp.files {
-            if let Some(raw) = reg.component_template(name, &f.template) {
+            if let Some(raw) = reg.component_template(lang, name, &f.template) {
                 let rendered = render_str(&raw, &ctx, &f.path)?;
                 tree.insert(f.path.clone(), rendered);
             }
         }
 
         for inj in &comp.injects {
-            if let Some(raw) = reg.component_template(name, &inj.template) {
+            if let Some(raw) = reg.component_template(lang, name, &inj.template) {
                 let fragment = render_str(&raw, &ctx, &inj.template)?;
                 // Injections target tree files (the manifest is handled separately).
                 if let Some(current) = tree.get(&inj.target) {
@@ -116,9 +120,12 @@ pub fn generate(
         }
     }
 
-    // 3. Merge deps into the manifest and insert it last.
-    let final_manifest = merge_dependencies(&manifest_body, &merged_deps);
-    tree.insert(manifest_path, final_manifest);
+    // 3. For Rust, merge deps into Cargo.toml and insert it last. (Go's go.mod
+    //    was already inserted untouched in step 1.)
+    if is_rust {
+        let final_manifest = merge_dependencies(&manifest_body, &merged_deps);
+        tree.insert(cargo_manifest, final_manifest);
+    }
 
     Ok(Generated { tree, notes })
 }

@@ -1,0 +1,12 @@
+//! Prometheus metrics for {{ project_name }}.
+#![allow(dead_code)]
+
+use prometheus::{Registry, IntCounter};
+
+/// Build a registry with a single example counter registered.
+pub fn registry() -> Registry {
+    let registry = Registry::new();
+    let requests = IntCounter::new("requests_total", "Total requests").unwrap();
+    registry.register(Box::new(requests)).ok();
+    registry
+}

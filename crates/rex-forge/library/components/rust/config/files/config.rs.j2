@@ -1,0 +1,23 @@
+//! Layered configuration for {{ project_name }}: file then environment.
+#![allow(dead_code)]
+
+use figment::providers::{Env, Format, Toml};
+use figment::Figment;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct Config {
+    /// Example setting; replace with your own.
+    #[serde(default)]
+    pub name: String,
+}
+
+impl Config {
+    /// Load from `app.toml`, overlaid with `APP_`-prefixed env vars.
+    pub fn load() -> Result<Self, figment::Error> {
+        Figment::new()
+            .merge(Toml::file("app.toml"))
+            .merge(Env::prefixed("APP_"))
+            .extract()
+    }
+}

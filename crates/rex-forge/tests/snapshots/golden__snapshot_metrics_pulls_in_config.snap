@@ -1,0 +1,91 @@
+---
+source: crates/rex-forge/tests/golden.rs
+assertion_line: 50
+expression: "generate(\"rust-bin\", &[\"metrics\"])"
+---
+=== .gitignore ===
+/target
+=== Cargo.toml ===
+[dependencies]
+prometheus = "0.13"
+
+[dependencies.figment]
+features = [
+    "env",
+    "toml",
+]
+version = "0.10"
+
+[dependencies.serde]
+features = ["derive"]
+version = "1"
+
+[package]
+authors = ["tomb"]
+edition = "2021"
+license = "MIT"
+name = "myapp"
+version = "0.1.0"
+
+=== README.md ===
+# myapp
+
+Generated with rex-forge.
+
+```sh
+cargo run
+```
+=== rust-toolchain.toml ===
+[toolchain]
+channel = "1.85"
+components = ["clippy", "rustfmt"]
+=== src/config.rs ===
+//! Layered configuration for myapp: file then environment.
+#![allow(dead_code)]
+
+use figment::providers::{Env, Format, Toml};
+use figment::Figment;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct Config {
+    /// Example setting; replace with your own.
+    #[serde(default)]
+    pub name: String,
+}
+
+impl Config {
+    /// Load from `app.toml`, overlaid with `APP_`-prefixed env vars.
+    pub fn load() -> Result<Self, figment::Error> {
+        Figment::new()
+            .merge(Toml::file("app.toml"))
+            .merge(Env::prefixed("APP_"))
+            .extract()
+    }
+}
+=== src/main.rs ===
+#![forbid(unsafe_code)]
+#![warn(clippy::all, clippy::pedantic)]
+// rex:imports
+mod metrics;
+mod config;
+
+fn main() {
+    // rex:init
+    // rex:main
+    println!("hello from myapp");
+}
+
+=== src/metrics.rs ===
+//! Prometheus metrics for myapp.
+#![allow(dead_code)]
+
+use prometheus::{Registry, IntCounter};
+
+/// Build a registry with a single example counter registered.
+pub fn registry() -> Registry {
+    let registry = Registry::new();
+    let requests = IntCounter::new("requests_total", "Total requests").unwrap();
+    registry.register(Box::new(requests)).ok();
+    registry
+}

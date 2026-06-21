@@ -1,0 +1,22 @@
+//! {{ project_name }}
+#![forbid(unsafe_code)]
+#![warn(clippy::all, clippy::pedantic)]
+// rex:imports
+
+// rex:body
+
+/// Returns a greeting from this crate.
+#[must_use]
+pub fn hello() -> &'static str {
+    "hello from {{ project_name }}"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hello_greets() {
+        assert!(hello().contains("{{ project_name }}"));
+    }
+}

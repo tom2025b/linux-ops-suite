@@ -1,0 +1,52 @@
+---
+source: crates/rex-forge/tests/golden.rs
+assertion_line: 39
+expression: "generate(\"rust-lib\", &[])"
+---
+=== .gitignore ===
+/target
+=== Cargo.toml ===
+[dependencies]
+
+[package]
+authors = ["tomb"]
+edition = "2021"
+license = "MIT"
+name = "myapp"
+version = "0.1.0"
+
+=== README.md ===
+# myapp
+
+Generated with rex-forge.
+
+```sh
+cargo run
+```
+=== rust-toolchain.toml ===
+[toolchain]
+channel = "1.85"
+components = ["clippy", "rustfmt"]
+=== src/lib.rs ===
+//! myapp
+#![forbid(unsafe_code)]
+#![warn(clippy::all, clippy::pedantic)]
+// rex:imports
+
+// rex:body
+
+/// Returns a greeting from this crate.
+#[must_use]
+pub fn hello() -> &'static str {
+    "hello from myapp"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hello_greets() {
+        assert!(hello().contains("myapp"));
+    }
+}

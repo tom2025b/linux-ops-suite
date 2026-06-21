@@ -1,0 +1,9 @@
+name = "ci-github"
+language = "go"
+category = "Ops"
+summary = "GitHub Actions: build/test/vet/govulncheck"
+bases = ["go-bin", "go-lib"]
+
+[[files]]
+path = ".github/workflows/ci.yml"
+template = "files/.github/workflows/ci.yml.j2"

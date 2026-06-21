@@ -1,0 +1,14 @@
+// Package lib is the entry point for {{ project_name }}.
+package lib
+
+import (
+	"fmt"
+	// rex:imports
+)
+
+// rex:body
+
+// Hello returns a greeting from this module.
+func Hello() string {
+	return fmt.Sprintf("hello from %s", "{{ project_name }}")
+}

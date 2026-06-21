@@ -1,0 +1,87 @@
+---
+source: crates/rex-forge/tests/golden.rs
+assertion_line: 34
+expression: "generate(\"rust-bin\", &[\"clap\", \"tracing\", \"anyhow\", \"ci-github\"])"
+---
+=== .github/workflows/ci.yml ===
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo build --all-targets
+      - run: cargo test
+      - run: cargo clippy --all-targets -- -D warnings
+=== .gitignore ===
+/target
+=== Cargo.toml ===
+[dependencies]
+anyhow = "1"
+tracing = "0.1"
+
+[dependencies.clap]
+features = ["derive"]
+version = "4"
+
+[dependencies.tracing-subscriber]
+features = ["env-filter"]
+version = "0.3"
+
+[package]
+authors = ["tomb"]
+edition = "2021"
+license = "MIT"
+name = "myapp"
+version = "0.1.0"
+
+=== README.md ===
+# myapp
+
+Generated with rex-forge.
+
+```sh
+cargo run
+```
+=== rust-toolchain.toml ===
+[toolchain]
+channel = "1.85"
+components = ["clippy", "rustfmt"]
+=== src/cli.rs ===
+use clap::Parser;
+
+/// myapp
+#[derive(Parser, Debug)]
+#[command(version, about)]
+pub struct Cli {
+    // TODO: add your subcommands / args here.
+}
+=== src/main.rs ===
+#![forbid(unsafe_code)]
+#![warn(clippy::all, clippy::pedantic)]
+// rex:imports
+use tracing::info;
+mod cli;
+use clap::Parser;
+
+fn main() {
+    // rex:init
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+    info!("{} starting", "myapp");
+    // rex:main
+    let _args = cli::Cli::parse();
+    println!("hello from myapp");
+}

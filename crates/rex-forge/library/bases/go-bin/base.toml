@@ -1,0 +1,4 @@
+name = "go-bin"
+language = "go"
+summary = "Go binary (CLI/app)"
+anchors = ["rex:imports", "rex:init", "rex:main", "rex:require"]

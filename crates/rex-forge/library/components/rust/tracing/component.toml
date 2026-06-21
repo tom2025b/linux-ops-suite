@@ -1,0 +1,22 @@
+name = "tracing"
+language = "rust"
+category = "Observability"
+summary = "Structured logging + spans"
+bases = ["rust-bin"]
+
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[inject]]
+target = "src/main.rs"
+anchor = "rex:imports"
+template = "files/inject/imports.rs.j2"
+
+[[inject]]
+target = "src/main.rs"
+anchor = "rex:init"
+template = "files/inject/init.rs.j2"
+
+[[note]]
+text = "Logging level is read from RUST_LOG (defaults to info)."

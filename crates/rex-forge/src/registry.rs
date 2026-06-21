@@ -54,6 +54,15 @@ impl Registry {
         self.components.iter().find(|c| c.name == name)
     }
 
+    /// Look up a component by name *and* applicable base. Component names are
+    /// only unique within a language (e.g. both Rust and Go define `ci-github`),
+    /// so generation must disambiguate by the base in play.
+    pub fn component_for(&self, name: &str, base: &str) -> Option<&Component> {
+        self.components
+            .iter()
+            .find(|c| c.name == name && c.bases.iter().any(|b| b == base))
+    }
+
     pub fn bases(&self) -> Vec<&Base> {
         self.bases.iter().collect()
     }
@@ -78,14 +87,11 @@ impl Registry {
     }
 
     /// Raw template text for a component file by its `files/`-relative path.
-    pub fn component_template(&self, component: &str, rel: &str) -> Option<String> {
-        for lang in ["rust", "go"] {
-            let p = format!("components/{lang}/{component}/{rel}");
-            if let Some(f) = LIBRARY.get_file(&p) {
-                return f.contents_utf8().map(str::to_string);
-            }
-        }
-        None
+    /// Raw template text for a component file. `lang` ("rust"/"go") disambiguates
+    /// components that share a name across languages (e.g. `ci-github`).
+    pub fn component_template(&self, lang: &str, component: &str, rel: &str) -> Option<String> {
+        let p = format!("components/{lang}/{component}/{rel}");
+        LIBRARY.get_file(&p).and_then(|f| f.contents_utf8().map(str::to_string))
     }
 }
 
