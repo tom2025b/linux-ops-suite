@@ -96,7 +96,7 @@ mod tests {
             source: "bulwark".to_owned(),
         }];
         let r = StatusReport::from_verdict(&verdict(State::NeedsAttention, causes), 12);
-        assert_eq!(r.healthy, false);
+        assert!(!r.healthy);
         assert_eq!(r.detail, "bulwark: 1 critical finding");
         assert_eq!(r.exit_code(), std::process::ExitCode::from(1));
     }
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn incomplete_with_no_causes_is_not_healthy_and_has_a_detail() {
         let r = StatusReport::from_verdict(&verdict(State::Incomplete, Vec::new()), 3);
-        assert_eq!(r.healthy, false);
+        assert!(!r.healthy);
         assert_eq!(r.detail, "snapshot incomplete");
         assert_eq!(r.exit_code(), std::process::ExitCode::from(1));
     }
