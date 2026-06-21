@@ -1,0 +1,9 @@
+[package]
+name = "{{ project_name }}"
+version = "0.1.0"
+edition = "2021"
+{% if license %}license = "{{ license }}"
+{% endif %}{% if author %}authors = ["{{ author }}"]
+{% endif %}
+
+[dependencies]

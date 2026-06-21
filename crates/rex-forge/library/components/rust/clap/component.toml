@@ -1,0 +1,25 @@
+name = "clap"
+language = "rust"
+category = "CLI & Args"
+summary = "Arg parsing (derive API)"
+bases = ["rust-bin"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+[[files]]
+path = "src/cli.rs"
+template = "files/src/cli.rs.j2"
+
+[[inject]]
+target = "src/main.rs"
+anchor = "rex:imports"
+template = "files/inject/imports.rs.j2"
+
+[[inject]]
+target = "src/main.rs"
+anchor = "rex:main"
+template = "files/inject/main.rs.j2"
+
+[[note]]
+text = "src/cli.rs has a TODO: add your subcommands."

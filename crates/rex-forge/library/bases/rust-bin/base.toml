@@ -1,0 +1,4 @@
+name = "rust-bin"
+language = "rust"
+summary = "Rust binary (CLI/app)"
+anchors = ["rex:imports", "rex:init", "rex:main"]
