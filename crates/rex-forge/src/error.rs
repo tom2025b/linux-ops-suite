@@ -55,7 +55,10 @@ mod tests {
 
     #[test]
     fn resolve_conflict_message_names_both() {
-        let e = ResolveError::Conflict { a: "anyhow".into(), b: "thiserror".into() };
+        let e = ResolveError::Conflict {
+            a: "anyhow".into(),
+            b: "thiserror".into(),
+        };
         let msg = e.to_string();
         assert!(msg.contains("anyhow") && msg.contains("thiserror"));
     }

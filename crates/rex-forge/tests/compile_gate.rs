@@ -14,7 +14,16 @@ fn gen_to(dir: &std::path::Path, base: &str, with: &[&str]) {
     };
     let plan = resolve::resolve(&reg, &sel.base, &sel.components).unwrap();
     let g = merge::generate(&reg, &plan, &sel).unwrap();
-    write(&g.tree, dir, &WriteOpts { force: true, dry_run: false, git: false }).unwrap();
+    write(
+        &g.tree,
+        dir,
+        &WriteOpts {
+            force: true,
+            dry_run: false,
+            git: false,
+        },
+    )
+    .unwrap();
 }
 
 #[test]
@@ -29,7 +38,11 @@ fn generated_rust_bin_full_stack_compiles() {
         ])
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 #[test]
@@ -44,7 +57,11 @@ fn generated_rust_lib_compiles() {
         ])
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 #[test]
@@ -65,5 +82,9 @@ fn generated_go_bin_compiles_when_go_present() {
         .current_dir(tmp.path())
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }

@@ -8,7 +8,10 @@ fn resolves_simple_request() {
     let plan = resolve(&reg, "rust-bin", &["clap".into()]).unwrap();
     assert_eq!(
         plan,
-        ResolvePlan { base: "rust-bin".into(), components: vec!["clap".into()] }
+        ResolvePlan {
+            base: "rust-bin".into(),
+            components: vec!["clap".into()]
+        }
     );
 }
 
@@ -38,7 +41,9 @@ fn base_mismatch_is_checked_before_anything_else() {
     // thiserror applies to rust-lib only; requesting it on rust-bin -> BaseMismatch.
     let reg = registry::load();
     let err = resolve(&reg, "rust-bin", &["thiserror".into()]).unwrap_err();
-    assert!(matches!(err, ResolveError::BaseMismatch { component, .. } if component == "thiserror"));
+    assert!(
+        matches!(err, ResolveError::BaseMismatch { component, .. } if component == "thiserror")
+    );
 }
 
 #[test]

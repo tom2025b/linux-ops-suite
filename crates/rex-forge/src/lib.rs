@@ -78,7 +78,11 @@ fn generate_and_write(
     let plan = resolve::resolve(reg, &sel.base, &sel.components)?;
     let generated = merge::generate(reg, &plan, sel)?;
 
-    let opts = WriteOpts { force: args.force, dry_run: args.dry_run, git: args.git };
+    let opts = WriteOpts {
+        force: args.force,
+        dry_run: args.dry_run,
+        git: args.git,
+    };
     write(&generated.tree, Path::new(dest), &opts)?;
 
     if args.dry_run {

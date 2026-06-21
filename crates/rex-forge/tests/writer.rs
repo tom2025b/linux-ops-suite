@@ -13,7 +13,16 @@ fn tree() -> FileTree {
 fn writes_files_to_empty_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let dest = tmp.path().join("proj");
-    write(&tree(), &dest, &WriteOpts { force: false, dry_run: false, git: false }).unwrap();
+    write(
+        &tree(),
+        &dest,
+        &WriteOpts {
+            force: false,
+            dry_run: false,
+            git: false,
+        },
+    )
+    .unwrap();
     assert!(dest.join("Cargo.toml").exists());
     assert!(dest.join("src/main.rs").exists());
 }
@@ -24,8 +33,16 @@ fn refuses_nonempty_dir_without_force() {
     let dest = tmp.path().join("proj");
     std::fs::create_dir_all(&dest).unwrap();
     std::fs::write(dest.join("existing.txt"), "hi").unwrap();
-    let err = write(&tree(), &dest, &WriteOpts { force: false, dry_run: false, git: false })
-        .unwrap_err();
+    let err = write(
+        &tree(),
+        &dest,
+        &WriteOpts {
+            force: false,
+            dry_run: false,
+            git: false,
+        },
+    )
+    .unwrap_err();
     assert!(matches!(err, WriteError::TargetNotEmpty(_)));
 }
 
@@ -33,7 +50,16 @@ fn refuses_nonempty_dir_without_force() {
 fn dry_run_writes_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let dest = tmp.path().join("proj");
-    write(&tree(), &dest, &WriteOpts { force: false, dry_run: true, git: false }).unwrap();
+    write(
+        &tree(),
+        &dest,
+        &WriteOpts {
+            force: false,
+            dry_run: true,
+            git: false,
+        },
+    )
+    .unwrap();
     assert!(!dest.exists());
 }
 
@@ -43,6 +69,15 @@ fn force_overwrites_nonempty_dir() {
     let dest = tmp.path().join("proj");
     std::fs::create_dir_all(&dest).unwrap();
     std::fs::write(dest.join("existing.txt"), "hi").unwrap();
-    write(&tree(), &dest, &WriteOpts { force: true, dry_run: false, git: false }).unwrap();
+    write(
+        &tree(),
+        &dest,
+        &WriteOpts {
+            force: true,
+            dry_run: false,
+            git: false,
+        },
+    )
+    .unwrap();
     assert!(dest.join("Cargo.toml").exists());
 }

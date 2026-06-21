@@ -2,7 +2,11 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "rex-forge", version, about = "TUI-first scaffolder for Rust and Go")]
+#[command(
+    name = "rex-forge",
+    version,
+    about = "TUI-first scaffolder for Rust and Go"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub cmd: Cmd,

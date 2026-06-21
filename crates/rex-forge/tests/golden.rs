@@ -31,7 +31,10 @@ fn snapshot_rust_bin_with_clap() {
 
 #[test]
 fn snapshot_rust_bin_full_stack() {
-    insta::assert_snapshot!(generate("rust-bin", &["clap", "tracing", "anyhow", "ci-github"]));
+    insta::assert_snapshot!(generate(
+        "rust-bin",
+        &["clap", "tracing", "anyhow", "ci-github"]
+    ));
 }
 
 #[test]

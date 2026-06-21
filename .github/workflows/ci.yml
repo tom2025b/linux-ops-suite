@@ -23,6 +23,14 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # rex-forge's compile-gate test builds a generated Go project with
+      # `go build`; without a Go toolchain that test self-skips, so install Go
+      # here to keep the Go path actually verified in CI.
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
       # Cache the cargo registry and target dir keyed on Cargo.lock, so most
       # runs reuse compiled dependencies instead of rebuilding from scratch.
       - name: Cache cargo build

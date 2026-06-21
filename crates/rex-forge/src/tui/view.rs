@@ -21,8 +21,7 @@ const FOOTER: &[(&str, &str)] = &[
 pub fn draw(frame: &mut Frame, state: &AppState, reg: &Registry) {
     let theme = Theme::with_color(true);
     let area = frame.area();
-    let [body, footer] =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(area);
+    let [body, footer] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(area);
 
     match state.step {
         Step::Base => draw_base(frame, body, state, reg, theme),
@@ -90,7 +89,11 @@ fn draw_components(frame: &mut Frame, area: Rect, state: &AppState, reg: &Regist
             ));
             last_category = Some(c.category.clone());
         }
-        let check = if state.is_selected(&c.name) { "[x]" } else { "[ ]" };
+        let check = if state.is_selected(&c.name) {
+            "[x]"
+        } else {
+            "[ ]"
+        };
         let marker = if i == state.cursor { "> " } else { "  " };
         let text = format!("{marker}{check} {:12} {}", c.name, c.summary);
         if i == state.cursor {
@@ -105,7 +108,11 @@ fn draw_components(frame: &mut Frame, area: Rect, state: &AppState, reg: &Regist
     lines.push(Line::from(""));
     let mut sel = state.selected.clone();
     sel.sort();
-    let sel_text = if sel.is_empty() { "-".to_string() } else { sel.join(", ") };
+    let sel_text = if sel.is_empty() {
+        "-".to_string()
+    } else {
+        sel.join(", ")
+    };
     lines.push(Line::styled(format!("selected: {sel_text}"), theme.title()));
     if !state.status.is_empty() {
         lines.push(Line::styled(format!("! {}", state.status), theme.prompt()));
@@ -127,7 +134,10 @@ fn draw_confirm(frame: &mut Frame, area: Rect, state: &AppState, reg: &Registry,
     let mut lines = vec![
         Line::from(format!("Create ./{}", sel.project_name)),
         Line::from(format!("base: {}   components: {}", sel.base, comp_text)),
-        Line::from(format!("git init: {}", if state.git { "yes" } else { "no" })),
+        Line::from(format!(
+            "git init: {}",
+            if state.git { "yes" } else { "no" }
+        )),
         Line::from(""),
     ];
     if let Ok(plan) = crate::resolve::resolve(reg, &sel.base, &sel.components) {

@@ -81,7 +81,9 @@ pub fn generate(
     // 2. Apply each component.
     let mut merged_deps = toml::Table::new();
     for name in &plan.components {
-        let Some(comp) = reg.component_for(name, &plan.base) else { continue };
+        let Some(comp) = reg.component_for(name, &plan.base) else {
+            continue;
+        };
         let lang = match comp.language {
             crate::model::Language::Rust => "rust",
             crate::model::Language::Go => "go",
@@ -101,10 +103,12 @@ pub fn generate(
                 if let Some(current) = tree.get(&inj.target) {
                     let updated =
                         inject_at_anchor(current, &inj.anchor, &fragment).map_err(|e| match e {
-                            RenderError::MissingAnchor { anchor, .. } => RenderError::MissingAnchor {
-                                target: inj.target.clone(),
-                                anchor,
-                            },
+                            RenderError::MissingAnchor { anchor, .. } => {
+                                RenderError::MissingAnchor {
+                                    target: inj.target.clone(),
+                                    anchor,
+                                }
+                            }
                             other => other,
                         })?;
                     tree.insert(inj.target.clone(), updated);

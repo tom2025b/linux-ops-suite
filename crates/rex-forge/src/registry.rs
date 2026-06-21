@@ -75,7 +75,8 @@ impl Registry {
     }
 
     /// `(relative_path, contents)` for a base's `files/` dir, with the `.j2`
-    /// suffix stripped from output paths. Sorted by path (deterministic).
+    /// suffix stripped from output paths. Sorted by path (deterministic). The
+    /// returned tuple is `(output_path, template_text)`.
     pub fn base_files(&self, base: &str) -> Vec<(String, String)> {
         let dir_path = format!("bases/{base}/files");
         let mut out = Vec::new();
@@ -86,12 +87,13 @@ impl Registry {
         out
     }
 
-    /// Raw template text for a component file by its `files/`-relative path.
     /// Raw template text for a component file. `lang` ("rust"/"go") disambiguates
     /// components that share a name across languages (e.g. `ci-github`).
     pub fn component_template(&self, lang: &str, component: &str, rel: &str) -> Option<String> {
         let p = format!("components/{lang}/{component}/{rel}");
-        LIBRARY.get_file(&p).and_then(|f| f.contents_utf8().map(str::to_string))
+        LIBRARY
+            .get_file(&p)
+            .and_then(|f| f.contents_utf8().map(str::to_string))
     }
 }
 
