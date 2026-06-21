@@ -4,7 +4,7 @@
 
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use suite_ui::{JobState, StatusBar, Theme};
+use suite_ui::{Heartbeat, JobState, StatusBar, Theme};
 
 /// Flatten a one-row render into a string (ratatui 0.29 `Buffer` has no `Display`).
 fn render_row<F: FnOnce(&mut ratatui::Frame)>(w: u16, f: F) -> String {
@@ -27,4 +27,13 @@ fn snapshot_status_bar_done_ok() {
     };
     let row = render_row(30, |f| bar.render(f, f.area(), theme));
     insta::assert_snapshot!(row);
+}
+
+#[test]
+fn heartbeat_vital_renders_heart_sparkline_and_latency() {
+    let hb = Heartbeat {
+        samples: &[2, 5, 9, 4],
+        latest_ms: Some(4),
+    };
+    assert_eq!(hb.text(), "♥ ▁▄█▃ 4ms");
 }
