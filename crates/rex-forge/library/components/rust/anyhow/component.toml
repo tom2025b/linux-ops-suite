@@ -1,0 +1,9 @@
+name = "anyhow"
+language = "rust"
+category = "Errors"
+summary = "App-level error handling"
+bases = ["rust-bin", "rust-lib"]
+conflicts = ["thiserror"]
+
+[dependencies]
+anyhow = "1"

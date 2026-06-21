@@ -1,0 +1,9 @@
+name = "thiserror"
+language = "rust"
+category = "Errors"
+summary = "Typed library errors"
+bases = ["rust-lib"]
+conflicts = ["anyhow"]
+
+[dependencies]
+thiserror = "2"
