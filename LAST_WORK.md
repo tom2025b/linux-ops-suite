@@ -1,5 +1,56 @@
 # Last Work
 
+## Conductor → suite-ui migration — Conductor's TUI now matches RexOps
+
+2026-06-22. Worktree branch `worktree-conductor-suite-ui` (`linux-ops-suite`).
+Status: **committed locally, NOT pushed** (commits `794f137`→`8911898`).
+Tests: full workspace green (conductor 78 lib + 13 cli; suite-ui 33; thomas-tui
+92; all consumer tools pass). `cargo build`/`cargo test` clean; `cargo clippy -p
+conductor --all-targets` zero warnings. Manual on-terminal smoke pending Tom's
+eyeball (a `--dump-view` render proxy was inspected and looks right).
+
+**Why:** Conductor was the ONLY suite TUI still on a hand-rolled ANSI renderer
+(`tui/term.rs` raw-mode driver + `tui/frame.rs` String renderers + `tui/style.rs`
+escape-string colours; no ratatui/crossterm/suite-ui). That's why its UI looked
+nothing like RexOps. Pulse was migrated to suite-ui back in PR #40; Conductor was
+the leftover from the old "modeled on pulse" pattern.
+
+**What changed (one crate, `crates/conductor`):**
+- `Cargo.toml`: + `suite-ui`/`ratatui`/`crossterm` as `{ workspace = true }` path
+  deps (no git pin — it's a workspace member, unlike the external rexops repo).
+- `src/tui/` rebuilt on the RexOps structure:
+  - `app.rs` — the state machine (App + key→action + the Ring-2 confirm gate +
+    exit-code tally), ported from the old `tui/mod.rs` to crossterm `KeyEvent`.
+  - `render.rs` — ratatui renderers in the shared look: `pane()` rounded panes
+    (Conductor / The situation / The plan), the `▌` accent selection rail on the
+    focused step, ▸/○/✓/·/✗ glyphs, `ConfirmModal` (Ring-2 gate) + `HelpSheet` +
+    `EmptyState` overlays.
+  - `runtime.rs` — the `suite_ui::Tui` guard (alt screen + panic-restore), a
+    dirty-flag draw/event loop, and a `Spawner` adapter that forwards child
+    spawns to `Tui::suspended` (handoff to rexops, Ring-1/2 step runs).
+  - `mod.rs` — thin root (re-exports `run`/`RunReport`; new `dump_view` renders
+    one frame via `TestBackend` for `--dump-view` + snapshot tests).
+  - DELETED `term.rs`, `style.rs`, `frame.rs` (the hand-rolled stack).
+- `main.rs`: `--dump-view` routes through the suite-ui render; `run_bare` path
+  unchanged (still `tui::run` + `should_run_interactive`).
+- `tests/cli.rs`: the three `--dump-view` assertions updated from old ANSI
+  spacing/copy to the new pane + ConfirmModal content.
+
+**Preserved exactly:** the Ring-2 safety gate (a changes-state step never spawns
+on Enter — only `y` runs it; guarded by ported tests), the `r` rexops handoff,
+exit codes (1 fail / 2 unfinished / 0 clean), and every scriptable path
+(`status`/`plan`/`health`/`--json`/non-TTY fallback — all still via `report.rs`,
+untouched). Domain layer (`plan/`/`state.rs`/`sources.rs`/`run.rs`/`report.rs`)
+not touched.
+
+Design + plan: `docs/superpowers/specs/2026-06-22-conductor-suite-ui-migration-design.md`,
+`docs/superpowers/plans/2026-06-22-conductor-suite-ui-migration.md`.
+
+Next: Tom to run `conductor` on a real terminal and confirm the look; then decide
+push / PR. (suite-ui API was NOT changed, so no consumer rev-bump is needed.)
+
+---
+
 ## RexOps Probe wiring fix — HealthSource::Probe rows are now actually probed
 
 2026-06-21. Branch `feat/probe-rows-into-adapter-health` (`rexops` repo).

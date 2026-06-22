@@ -209,7 +209,10 @@ fn dump_view_plan_renders_steps_for_a_stale_feed_state() {
         String::from_utf8_lossy(&out.stderr)
     );
     let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("the plan"), "frame:\n{s}");
+    // The suite-ui render frames the steps in a "The plan" pane (title cased in
+    // the rounded border); assert case-insensitively so the test tracks content,
+    // not the exact casing/decoration of the pane chrome.
+    assert!(s.to_lowercase().contains("the plan"), "frame:\n{s}");
     assert!(s.contains("workstate snapshot"), "frame:\n{s}");
     assert!(s.contains("changes state"), "frame:\n{s}");
 }
@@ -291,7 +294,14 @@ fn dump_view_confirm_renders_the_ring2_modal() {
     let out = run(&t, &["--dump-view", "confirm"]);
     assert!(out.status.success());
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(text.contains("this will run:"));
-    assert!(text.contains("changes state"));
-    assert!(text.contains("y  run it"));
+    // The suite-ui ConfirmModal shows the literal command + a "changes suite
+    // state" caution and a y/n footer. Assert on that content (the modal owns the
+    // footer wording: "y: yes  ·  n / Esc: no").
+    assert!(text.contains("workstate snapshot"), "frame:\n{text}");
+    assert!(
+        text.to_lowercase().contains("changes suite state")
+            || text.to_lowercase().contains("changes state"),
+        "frame:\n{text}"
+    );
+    assert!(text.contains("yes"), "confirm footer offers yes:\n{text}");
 }

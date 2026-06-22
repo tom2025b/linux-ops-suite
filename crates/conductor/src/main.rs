@@ -124,33 +124,20 @@ fn run_dump_view(cli: &Cli, view: &str) -> ExitCode {
     };
     let state = load_state(&dir);
     let plan = plan::build(&state);
-    let style = conductor::tui::style::Style::resolve(true); // dumps are monochrome
-    use conductor::tui::frame;
-    let frame = match view {
-        "plan" => frame::plan_screen(&plan, 0, None, &style),
-        "healthy" => frame::healthy_screen(&style),
-        "compact" => frame::compact_plan(&plan, 0, &style),
-        "help" => frame::help_screen(&style),
-        // The confirm modal only ever opens for a changes-state step in the real
-        // TUI, so the dump renders the first such step (not just the first step,
-        // which could be an Info/wiring entry). Falls back to healthy if none.
-        "confirm" => match plan
-            .steps
-            .iter()
-            .find(|s| s.ring == conductor::plan::Ring::ChangesState)
-        {
-            Some(step) => frame::confirm_screen(step, &style),
-            None => frame::healthy_screen(&style),
-        },
-        other => {
-            eprintln!(
-                "conductor: --dump-view needs one of: plan healthy compact help confirm (got {other})"
-            );
-            return ExitCode::from(3);
+    // Dumps are monochrome and rendered into an off-screen buffer by the shared
+    // suite-ui render path, so the snapshot matches what the live TUI draws.
+    match conductor::tui::dump_view(&plan, view, true) {
+        Some(frame) => {
+            print!("{frame}");
+            ExitCode::SUCCESS
         }
-    };
-    print!("{frame}");
-    ExitCode::SUCCESS
+        None => {
+            eprintln!(
+                "conductor: --dump-view needs one of: plan healthy compact help confirm (got {view})"
+            );
+            ExitCode::from(3)
+        }
+    }
 }
 
 fn run_status(cli: &Cli, style: &Style) -> Result<ExitCode, ConductorError> {
