@@ -4,7 +4,7 @@
 //! the live cockpit, rex-doctor answers the third question: "is the *installed
 //! suite* wired up and working end-to-end?" This first cut ships the two
 //! foundational groups — `env.*` (PATH, XDG, writability, aliases) and `bin.*`
-//! (present, executable, actually-runs, version-skew, PATH shadowing) — with
+//! (present, executable, actually-runs, version compatibility, PATH shadowing) — with
 //! the model, selection, and reporting plumbing the later groups
 //! (contracts, data-flow, tool self-checks) will slot straight into.
 //!

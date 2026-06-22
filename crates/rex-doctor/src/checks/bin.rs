@@ -129,9 +129,9 @@ fn shadowed() -> Check {
     }
 }
 
-/// `bin.version-skew` — flag suite binaries whose reported version differs from
-/// the most common version across the suite. WARN, not FAIL: mixed versions are
-/// normal mid-rollout, but you want to know which tool is the odd one out.
+/// `bin.version-skew` — flag suite binaries outside the suite compatibility
+/// line. The repos release independently, so patch-level drift is expected; a
+/// major/minor mismatch is the useful setup signal.
 fn version_skew() -> Check {
     let id = "bin.version-skew";
     let mut versions: Vec<(&str, String)> = Vec::new();
@@ -151,20 +151,25 @@ fn version_skew() -> Check {
             "fewer than two versioned binaries found; nothing to compare",
         );
     }
-    // The modal version is the baseline; anything not matching it is "skew".
-    let baseline = modal_version(&versions);
+    // The modal major/minor line is the baseline; patch differences are normal
+    // across the independently versioned suite repos.
+    let baseline = modal_version_line(&versions);
     let outliers: Vec<String> = versions
         .iter()
-        .filter(|(_, v)| *v != baseline)
+        .filter(|(_, v)| version_line(v).as_deref() != Some(baseline.as_str()))
         .map(|(b, v)| format!("{b} {v}"))
         .collect();
     if outliers.is_empty() {
-        Check::pass(id, CAT, format!("all suite binaries at {baseline}"))
+        Check::pass(
+            id,
+            CAT,
+            format!("all suite binaries in {baseline}.x compatibility line"),
+        )
     } else {
         Check::warn(
             id,
             CAT,
-            format!("version skew vs {baseline}: {}", outliers.join(", ")),
+            format!("version line skew vs {baseline}.x: {}", outliers.join(", ")),
             "align versions: cargo run -p linux-ops-install -- --force",
         )
     }
@@ -239,15 +244,36 @@ fn parse_version(output: &str) -> Option<String> {
         .map(|tok| tok.trim_start_matches('v').to_string())
 }
 
-/// The most frequently occurring version string (ties broken by first seen).
-fn modal_version(versions: &[(&str, String)]) -> String {
-    let mut best = versions[0].1.clone();
+/// Return the compatibility line (`major.minor`) for a parsed version string.
+fn version_line(version: &str) -> Option<String> {
+    let mut parts = version.split('.');
+    let major = parts.next()?;
+    let minor = parts.next()?;
+    if [major, minor]
+        .iter()
+        .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    {
+        Some(format!("{major}.{minor}"))
+    } else {
+        None
+    }
+}
+
+/// The most frequently occurring compatibility line (ties broken by first seen).
+fn modal_version_line(versions: &[(&str, String)]) -> String {
+    let mut best = version_line(&versions[0].1).unwrap_or_else(|| versions[0].1.clone());
     let mut best_count = 0usize;
     for (_, v) in versions {
-        let count = versions.iter().filter(|(_, o)| o == v).count();
+        let Some(line) = version_line(v) else {
+            continue;
+        };
+        let count = versions
+            .iter()
+            .filter(|(_, o)| version_line(o).as_deref() == Some(line.as_str()))
+            .count();
         if count > best_count {
             best_count = count;
-            best = v.clone();
+            best = line;
         }
     }
     best
@@ -270,13 +296,20 @@ mod tests {
     }
 
     #[test]
-    fn modal_version_picks_the_majority() {
+    fn version_line_uses_major_minor_only() {
+        assert_eq!(version_line("0.1.2").as_deref(), Some("0.1"));
+        assert_eq!(version_line("1.4").as_deref(), Some("1.4"));
+        assert_eq!(version_line("bad").as_deref(), None);
+    }
+
+    #[test]
+    fn modal_version_line_picks_the_majority_lane() {
         let v = vec![
             ("a", "0.1.2".to_string()),
-            ("b", "0.1.2".to_string()),
-            ("c", "0.1.1".to_string()),
+            ("b", "0.1.0".to_string()),
+            ("c", "0.2.1".to_string()),
         ];
-        assert_eq!(modal_version(&v), "0.1.2");
+        assert_eq!(modal_version_line(&v), "0.1");
     }
 
     #[test]

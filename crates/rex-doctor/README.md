@@ -32,7 +32,7 @@ rex-doctor --json
 
 ## Key features
 
-- **Two check groups.** `env.*` — PATH, the XDG data dir, writability, aliases. `bin.*` — each suite binary is present, executable, actually runs, version-aligned, and not shadowed earlier on `PATH`.
+- **Two check groups.** `env.*` — PATH, the XDG data dir, writability, aliases. `bin.*` — each suite binary is present, executable, actually runs, on the expected compatibility line, and not shadowed earlier on `PATH`.
 - **Actionable.** Every WARN/FAIL prints the exact command that resolves it.
 - **Selectable.** `--only` / `--skip` take check ids or whole categories; `--quick` is the cheap "is it installed at all?" subset for hooks.
 - **Structured exit codes.** `0` clean · `1` warn · `2` fail · `3` the doctor itself couldn't run. Use `--fail-on warn` to treat warnings as failures.
@@ -40,4 +40,4 @@ rex-doctor --json
 
 ## How it fits into the suite
 
-rex-doctor is the suite's pre-flight check. Before `rex run` produces or compiles anything, rex-doctor confirms the tools are installed, on `PATH`, and version-aligned — so a broken refresh is diagnosed as a setup problem, not a data problem. It pairs with `rex-check` (the commit/hazard gate) as the suite's health and safety tooling.
+rex-doctor is the suite's pre-flight check. Before `rex run` produces or compiles anything, rex-doctor confirms the tools are installed, on `PATH`, and version-compatible — so a broken refresh is diagnosed as a setup problem, not a data problem. It pairs with `rex-check` (the commit/hazard gate) as the suite's health and safety tooling.
