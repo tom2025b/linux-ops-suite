@@ -1,5 +1,71 @@
 # Last Work
 
+## Fix "conductor keeps saying workstate snapshot is stale" — wire workstate to LIVE tools
+
+2026-06-22. Spans 4 repos, **NOT committed, NOT pushed** (changes in working
+trees only): siblings `workstate`, `scriptvault`, `toolfoundry`, plus `conductor`
+inside the `linux-ops-suite` worktree `worktree-workstate-live-feeds`.
+Tests: workstate 60 green, scriptvault (full) green, toolfoundry-core green,
+conductor 108 green. `cargo clippy` clean on all four. End-to-end verified live.
+
+**Root cause (diagnosed first, then fixed):** `workstate` shipped three COMMITTED
+demo fixtures (`workstate/feeds/{scriptvault,toolfoundry,bulwark}.json`) with
+frozen `generated_at` dates (June 2/4). Workstate's freshness rule is correct —
+`Stale` when `now − source_observed_at > 24h` (`compile/mod.rs:19`) — so the
+~18-day-old fixtures were ALWAYS Stale. Re-running `workstate` re-read the SAME
+frozen files, so the snapshot was forever made of stale data and Conductor's rule
+1 forever said "workstate snapshot is stale". Both tools behaved as written;
+neither was "broken" alone. Path was never the issue (write==read ==
+`~/.local/share/rexops/feeds/workstate.snapshot.json`).
+
+**Tom's decision:** wire workstate to the REAL tools (option 2), and have workstate
+SPAWN them each run (not read published files), adding a ScriptVault exporter.
+
+**What changed:**
+- **scriptvault** — NEW `scriptvault workstate-feed` (alias `ws-feed`) subcommand
+  (`crates/scriptvault/src/cli/workstate_feed.rs`): emits the versioned envelope
+  Workstate's `ScriptVaultRaw` adapter expects (`schema_version/source_tool/
+  generated_at/scripts[id,name,description]/favorites/recents`) from the LIVE
+  index (`ScriptVault::load().all()`), stable id = file stem, `generated_at`
+  stamped now. + `chrono` dep (0.4, `clock` only). Wired in `cli.rs` + `main.rs`.
+- **workstate** — NEW `src/ingest/transport.rs`: `FeedTransport::{File,Command}`.
+  The three adapters (`bulwark/scriptvault/toolfoundry`) now hold a transport
+  instead of a `String` path; `fetch()` = `self.transport.read()? → parse` (this
+  REMOVED the triplicated file-read). `main.rs` builds each feed via
+  `from_command("<tool>", ["workstate-feed"])` — spawns the tool, ingests stdout.
+  Binary resolved as bare name on `$PATH`, overridable by `WORKSTATE_<TOOL>_BIN`.
+  Graceful-degradation contract preserved + extended: tool not on PATH → NotFound
+  → Missing; ran-but-exited-nonzero / non-UTF8 → Failed. Tests updated to
+  `XxxFeed::from_path(...)`. Static fixtures are NO LONGER read (proven by moving
+  them aside and still getting Fresh data).
+- **toolfoundry** (`crates/toolfoundry-core/src/registry/catalog.rs`) — `manifest_
+  paths` now treats an ABSENT registry dir as an empty catalog, not a hard error
+  (fail-soft). Without this, a fresh machine with no `~/.local/share/toolfoundry/
+  manifests` made `toolfoundry workstate-feed` exit 1 → workstate `tools` section
+  Failed. A real read error (file-where-dir) still propagates. Test rewritten.
+- **conductor** (`crates/conductor/src/{state.rs,plan/rules.rs}`) — split the
+  conflated "stale OR unavailable → refresh" message. Added `stale_feeds()` /
+  `unavailable_feeds()`; `situation()` now emits a STALE line ("refresh before
+  trusting feeds", names the feed) AND a separate UNAVAILABLE line ("a refresh
+  won't fix it"). Rule-1 step relabeled "refresh suite snapshot" (id unchanged).
+  This kills the SAME class of false advice (telling you to refresh something a
+  refresh can't clear). + 2 new tests.
+
+**End-to-end proof:** live `workstate` (spawning the 3 real release binaries) now
+writes scripts/tools/findings all **Fresh** (114 scripts, 229 findings, tools
+empty-but-fresh since no manifests exist yet). Conductor from /tmp, ~, and
+~/projects/rexops all print "nothing to conduct — every feed is current". The
+multi-folder symptom is gone (conductor reads the data-root snapshot, not cwd).
+
+**Follow-ups (none blocking):** (1) the three tool binaries aren't bare-on-`$PATH`
+on this box (aliases / built artifacts), so the live flow currently needs the
+`WORKSTATE_*_BIN` overrides — install them on PATH for zero-config. (2) Workstate
+snapshot is still `schema_version 3` on disk while fixtures/tests reference v4 —
+pre-existing drift, NOT this bug, left untouched. (3) Nothing committed yet —
+awaiting Tom's review + per-repo commit/push approval.
+
+---
+
 ## Conductor → suite-ui migration — Conductor's TUI now matches RexOps
 
 2026-06-22. Worktree branch `worktree-conductor-suite-ui` (`linux-ops-suite`).
