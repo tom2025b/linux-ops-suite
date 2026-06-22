@@ -21,7 +21,7 @@ use crate::run::confirm_command;
 /// The keybinding rows for the help overlay. Kept next to the real key handling
 /// (in `app::step`) so help can't drift from the bindings.
 pub const HELP_ROWS: &[(&str, &str)] = &[
-    ("enter", "run the current step (changes-state steps confirm first)"),
+    ("enter", "run the step (changes-state steps confirm first)"),
     ("s", "skip the current step"),
     ("a", "advance focus without running"),
     ("r", "hand off to the rexops cockpit"),
