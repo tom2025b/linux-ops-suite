@@ -7,6 +7,7 @@
 //! only maps keys to state transitions and chooses which frame to paint — so the
 //! transitions are unit-testable with a fake spawner and no PTY.
 
+pub mod app;
 pub mod frame;
 pub mod style;
 pub mod term;
