@@ -202,9 +202,12 @@ version = "0.2.0"
 dependencies = [
  "chrono",
  "clap",
+ "crossterm",
+ "ratatui",
  "serde",
  "serde_json",
  "suite-core",
+ "suite-ui",
  "tempfile",
 ]
 
