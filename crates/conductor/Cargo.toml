@@ -16,16 +16,24 @@ path = "src/main.rs"
 name = "conductor"
 path = "src/lib.rs"
 
-# Lean on purpose, same philosophy as rewind/tripwire/pulse: Conductor reads the
-# suite's contract files (serde_json), probes $PATH, and renders. Its isatty/XDG/
-# $PATH helpers come from suite-core (the shared, dependency-free helper crate);
-# chrono supplies only the "checked Nm ago" stamp. No network, no async.
+# Conductor reads the suite's contract files (serde_json), probes $PATH, derives a
+# plan, and renders it. Its isatty/XDG/$PATH helpers come from suite-core (the
+# shared, dependency-free helper crate); chrono supplies only the "checked Nm ago"
+# stamp. No network, no async.
 [dependencies]
 suite-core = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
+
+# Shared suite-wide TUI: the same ratatui-based chrome (Theme/pane/overlays + the
+# Tui terminal guard) that RexOps/Pulse/ScriptVault render from, so Conductor's
+# interactive view matches the rest of the suite. Workspace path dep — no git pin
+# (that is only for repos outside this workspace).
+suite-ui = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
