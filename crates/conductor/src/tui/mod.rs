@@ -9,6 +9,7 @@
 
 pub mod app;
 pub mod frame;
+pub mod render;
 pub mod style;
 pub mod term;
 
