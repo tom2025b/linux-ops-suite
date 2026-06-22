@@ -9,12 +9,17 @@ use crate::state::{Severity, SuiteState};
 
 /// Rule 1 — trust the data first. A stale/unavailable feed means every later
 /// step reads possibly-wrong data, so refresh first. One step regardless of how
-/// many feeds are stale (a single `workstate snapshot` refreshes them).
+/// many feeds are affected: `workstate snapshot` re-probes ALL producers, so it
+/// both refreshes a stale feed AND re-checks an unavailable one (clearing it if
+/// its producer is now yielding data). The label is "refresh suite snapshot"
+/// rather than "refresh stale data" because the trigger may be unavailability,
+/// not staleness — the situation lines say precisely which, and only promise a
+/// fix for the stale ones.
 pub(super) fn refresh_stale_feeds(state: &SuiteState) -> Option<Step> {
     if state.has_stale_or_unavailable_feed() {
         Some(Step::new(
             "refresh-stale-data",
-            "refresh stale data",
+            "refresh suite snapshot",
             Some("workstate snapshot".to_string()),
             Ring::ChangesState,
         ))
@@ -104,8 +109,25 @@ pub(super) fn safety_capture() -> Step {
 /// The human "situation" lines explaining why there's a plan.
 pub(super) fn situation(state: &SuiteState) -> Vec<String> {
     let mut lines = Vec::new();
-    if state.has_stale_or_unavailable_feed() {
-        lines.push("workstate snapshot is stale — refresh before trusting feeds".to_string());
+    // Stale and unavailable feeds need DIFFERENT remedies, so they get different
+    // lines. Stale (readable but old) is fixed by a refresh; unavailable (absent
+    // or unusable) is NOT — re-running `workstate snapshot` won't conjure data a
+    // producer isn't yielding, so saying "refresh" there would be the exact false
+    // advice that sends an operator in circles. Name the affected feeds so it's
+    // actionable.
+    let stale = state.stale_feeds();
+    if !stale.is_empty() {
+        lines.push(format!(
+            "workstate snapshot is stale ({}) — refresh before trusting feeds",
+            stale.join(", ")
+        ));
+    }
+    let unavailable = state.unavailable_feeds();
+    if !unavailable.is_empty() {
+        lines.push(format!(
+            "workstate feed unavailable ({}) — its producer isn't yielding usable data; a refresh won't fix it",
+            unavailable.join(", ")
+        ));
     }
     let drifted: Vec<&str> = state.drift.iter().map(|d| d.path.as_str()).collect();
     let correlated = state
@@ -190,6 +212,60 @@ mod tests {
         });
         let plan = super::super::build(&s);
         assert!(!plan.steps.iter().any(|s| s.id == "safety-capture"));
+    }
+
+    #[test]
+    fn stale_and_unavailable_feeds_get_distinct_honest_situation_lines() {
+        // The crux of the wording fix: a STALE feed is told to refresh; an
+        // UNAVAILABLE feed is told a refresh WON'T fix it. Conflating them is what
+        // made conductor say "refresh" for a feed re-running could never clear.
+        let mut s = SuiteState::empty();
+        s.feeds.push(FeedStatus {
+            name: "scripts",
+            freshness: Freshness::Stale,
+        });
+        s.feeds.push(FeedStatus {
+            name: "tools",
+            freshness: Freshness::Unavailable,
+        });
+        let lines = situation(&s);
+
+        // One line names the stale feed and offers the refresh remedy.
+        let stale_line = lines
+            .iter()
+            .find(|l| l.contains("stale"))
+            .expect("a stale feed must produce a stale line");
+        assert!(stale_line.contains("scripts"), "names the stale feed");
+        assert!(stale_line.contains("refresh"), "stale → refresh remedy");
+
+        // A SEPARATE line names the unavailable feed and explicitly says a refresh
+        // won't help — the false-advice fix.
+        let unavail_line = lines
+            .iter()
+            .find(|l| l.contains("unavailable"))
+            .expect("an unavailable feed must produce its own line");
+        assert!(unavail_line.contains("tools"), "names the unavailable feed");
+        assert!(
+            unavail_line.contains("won't fix it"),
+            "unavailable → refresh explicitly does NOT fix it"
+        );
+    }
+
+    #[test]
+    fn a_purely_stale_feed_does_not_emit_an_unavailable_line() {
+        // No unavailable feed ⇒ no "unavailable" line at all (and vice-versa),
+        // so the operator never sees a remedy that doesn't apply.
+        let mut s = SuiteState::empty();
+        s.feeds.push(FeedStatus {
+            name: "findings",
+            freshness: Freshness::Stale,
+        });
+        let lines = situation(&s);
+        assert!(lines.iter().any(|l| l.contains("stale")));
+        assert!(
+            !lines.iter().any(|l| l.contains("unavailable")),
+            "no unavailable feed ⇒ no unavailable line"
+        );
     }
 
     #[test]
