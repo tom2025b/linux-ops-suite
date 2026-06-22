@@ -166,8 +166,13 @@ pub fn step(app: &mut App, key: KeyEvent, spawner: &dyn Spawner) -> Action {
             // Hand off to the rexops cockpit if present; else a dim note. A
             // failure here (suspend/re-enter around the child broke) must be
             // shown, not swallowed — otherwise the terminal looks frozen.
+            //
+            // Invoke BARE `rexops` — its interactive TUI is the default when no
+            // subcommand is given. (`rexops tui` is NOT a real subcommand; passing
+            // it makes clap exit non-zero, which presented as a screen "flash"
+            // with no cockpit.)
             if crate::sources::is_on_path("rexops") {
-                if let Err(e) = spawner.spawn(&["rexops".to_string(), "tui".to_string()]) {
+                if let Err(e) = spawner.spawn(&["rexops".to_string()]) {
                     app.notice =
                         Some(format!("rexops handoff failed ({e}); press a key to redraw"));
                 }
