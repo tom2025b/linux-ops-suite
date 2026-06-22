@@ -1,6 +1,7 @@
 use rex_forge::model::Selection;
 use rex_forge::writer::{write, WriteOpts};
 use rex_forge::{merge, registry, resolve};
+use std::fs;
 use std::process::Command;
 
 fn gen_to(dir: &std::path::Path, base: &str, with: &[&str]) {
@@ -65,6 +66,33 @@ fn generated_rust_lib_compiles() {
 }
 
 #[test]
+fn generated_rust_projects_compile_inside_unrelated_parent_workspace() {
+    for base in ["rust-bin", "rust-lib"] {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
+
+        let project_dir = tmp.path().join(base);
+        fs::create_dir(&project_dir).unwrap();
+        gen_to(&project_dir, base, &[]);
+
+        let out = Command::new("cargo")
+            .args([
+                "build",
+                "--offline",
+                "--manifest-path",
+                project_dir.join("Cargo.toml").to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{base} failed inside parent workspace:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+#[test]
 fn generated_go_bin_compiles_when_go_present() {
     let go_present = Command::new("go")
         .arg("version")
@@ -78,7 +106,7 @@ fn generated_go_bin_compiles_when_go_present() {
     let tmp = tempfile::tempdir().unwrap();
     gen_to(tmp.path(), "go-bin", &["flag", "slog"]);
     let out = Command::new("go")
-        .args(["build", "./..."])
+        .args(["build", "-buildvcs=false", "./..."])
         .current_dir(tmp.path())
         .output()
         .unwrap();

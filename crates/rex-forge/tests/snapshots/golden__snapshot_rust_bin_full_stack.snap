@@ -43,6 +43,8 @@ license = "MIT"
 name = "myapp"
 version = "0.1.0"
 
+[workspace]
+
 === README.md ===
 # myapp
 

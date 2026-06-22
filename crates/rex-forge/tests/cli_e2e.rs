@@ -44,6 +44,42 @@ fn non_interactive_generate_creates_compiling_project() {
 }
 
 #[test]
+fn new_from_inside_parent_cargo_workspace_creates_independent_project() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
+
+    let out = bin()
+        .current_dir(tmp.path())
+        .args(["new", "child", "--base", "rust-bin"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let dest = tmp.path().join("child");
+    let manifest = std::fs::read_to_string(dest.join("Cargo.toml")).unwrap();
+    assert!(manifest.contains("[workspace]"));
+
+    let build = Command::new("cargo")
+        .args([
+            "build",
+            "--offline",
+            "--manifest-path",
+            dest.join("Cargo.toml").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "generated project failed to build: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
+
+#[test]
 fn list_prints_bases_and_components() {
     let out = bin().arg("list").output().unwrap();
     assert!(out.status.success());
