@@ -11,6 +11,7 @@
 pub mod app;
 pub mod render;
 pub mod runtime;
+pub mod style;
 
 use std::io::IsTerminal;
 

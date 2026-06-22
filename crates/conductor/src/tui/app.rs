@@ -71,6 +71,62 @@ pub struct App {
     pub cursor: usize,
     pub screen: Screen,
     pub notice: Option<String>,
+    /// Display density — the in-app "text size" proxy. A terminal can't change
+    /// its own font, so `+`/`-` step this to add blank spacer rows + padding,
+    /// making each step physically larger and easier to read. See [`Density`].
+    pub density: Density,
+    /// High-contrast palette toggle (`c`). On by default for readability: bright
+    /// bold text, vivid accent, no dim/grey. See `render`/`style`.
+    pub high_contrast: bool,
+}
+
+/// How much vertical room each step gets — the readable "text size" control.
+/// A TUI can't resize the terminal font, so bigger = more blank rows + padding
+/// around each step, which is the largest legibility lever we own in-app.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Density {
+    /// Tight: one line per step + its command. The original layout.
+    Compact,
+    /// One blank spacer row between steps. The default — easy on the eyes.
+    Roomy,
+    /// Two blank spacer rows + a leading pad. Maximum size for weak vision.
+    Huge,
+}
+
+impl Density {
+    /// Blank spacer rows to insert after each step block at this density.
+    pub fn gap(self) -> usize {
+        match self {
+            Density::Compact => 0,
+            Density::Roomy => 1,
+            Density::Huge => 2,
+        }
+    }
+
+    /// One step larger (saturates at `Huge`).
+    fn larger(self) -> Self {
+        match self {
+            Density::Compact => Density::Roomy,
+            Density::Roomy | Density::Huge => Density::Huge,
+        }
+    }
+
+    /// One step smaller (saturates at `Compact`).
+    fn smaller(self) -> Self {
+        match self {
+            Density::Huge => Density::Roomy,
+            Density::Roomy | Density::Compact => Density::Compact,
+        }
+    }
+
+    /// A short human label for the transient notice when the size changes.
+    fn label(self) -> &'static str {
+        match self {
+            Density::Compact => "compact",
+            Density::Roomy => "roomy",
+            Density::Huge => "huge",
+        }
+    }
 }
 
 impl App {
@@ -80,6 +136,9 @@ impl App {
             cursor: 0,
             screen: Screen::Plan,
             notice: None,
+            // Default to the readable settings: roomy spacing + high contrast.
+            density: Density::Roomy,
+            high_contrast: true,
         }
     }
 
@@ -153,6 +212,33 @@ pub fn step(app: &mut App, key: KeyEvent, spawner: &dyn Spawner) -> Action {
             if let Some(n) = c.to_digit(10) {
                 app.jump_to(n as usize);
             }
+            Action::Redraw
+        }
+        // Bigger / smaller text. A terminal owns its font, so this steps the
+        // display DENSITY (blank rows + padding around each step) — the largest
+        // in-app size lever. `+`/`=` grow, `-`/`_` shrink. (`=`/`_` are the
+        // unshifted keycaps so the user doesn't need to hold Shift.)
+        KeyCode::Char('+') | KeyCode::Char('=') => {
+            app.density = app.density.larger();
+            app.notice = Some(format!("text size: {} (+/- to adjust)", app.density.label()));
+            Action::Redraw
+        }
+        KeyCode::Char('-') | KeyCode::Char('_') => {
+            app.density = app.density.smaller();
+            app.notice = Some(format!("text size: {} (+/- to adjust)", app.density.label()));
+            Action::Redraw
+        }
+        // Toggle the high-contrast palette.
+        KeyCode::Char('c') => {
+            app.high_contrast = !app.high_contrast;
+            app.notice = Some(
+                if app.high_contrast {
+                    "high-contrast theme: on"
+                } else {
+                    "high-contrast theme: off"
+                }
+                .to_string(),
+            );
             Action::Redraw
         }
         KeyCode::Char('s') => {
@@ -433,6 +519,51 @@ mod tests {
         assert_eq!(app.cursor, 1, "a number past the last step does nothing");
         step(&mut app, k('0'), &sp); // there is no step 0
         assert_eq!(app.cursor, 1, "'0' is not a step");
+    }
+
+    #[test]
+    fn plus_and_minus_step_the_text_size() {
+        let mut app = App::new(sample());
+        assert_eq!(app.density, Density::Roomy, "default is roomy");
+        let sp = FakeSpawner::new();
+        step(&mut app, k('+'), &sp);
+        assert_eq!(app.density, Density::Huge, "+ grows");
+        step(&mut app, k('+'), &sp);
+        assert_eq!(app.density, Density::Huge, "+ saturates at huge");
+        step(&mut app, k('-'), &sp);
+        assert_eq!(app.density, Density::Roomy, "- shrinks");
+        step(&mut app, k('-'), &sp);
+        assert_eq!(app.density, Density::Compact, "- shrinks again");
+        step(&mut app, k('-'), &sp);
+        assert_eq!(app.density, Density::Compact, "- saturates at compact");
+    }
+
+    #[test]
+    fn equals_and_underscore_are_unshifted_aliases_for_plus_minus() {
+        let mut app = App::new(sample()); // Roomy
+        let sp = FakeSpawner::new();
+        step(&mut app, k('='), &sp); // no need to hold Shift for '+'
+        assert_eq!(app.density, Density::Huge);
+        step(&mut app, k('_'), &sp);
+        assert_eq!(app.density, Density::Roomy);
+    }
+
+    #[test]
+    fn c_toggles_high_contrast() {
+        let mut app = App::new(sample());
+        assert!(app.high_contrast, "high contrast on by default");
+        let sp = FakeSpawner::new();
+        step(&mut app, k('c'), &sp);
+        assert!(!app.high_contrast, "c turns it off");
+        step(&mut app, k('c'), &sp);
+        assert!(app.high_contrast, "c toggles back on");
+    }
+
+    #[test]
+    fn density_gap_grows_with_size() {
+        assert_eq!(Density::Compact.gap(), 0);
+        assert_eq!(Density::Roomy.gap(), 1);
+        assert_eq!(Density::Huge.gap(), 2);
     }
 
     #[test]

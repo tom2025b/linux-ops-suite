@@ -8,15 +8,48 @@
 //! so the chrome matches RexOps from one source. No I/O, no app state owned here.
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
 use suite_ui::{pane, ConfirmModal, EmptyState, HelpSheet, Theme};
 
 use super::app::{App, Screen};
+use super::style::Palette;
 use crate::plan::{Ring, Step, StepStatus};
 use crate::run::confirm_command;
+
+/// A titled box for the high-contrast view: a thick double border in the accent
+/// colour with a bold title, replacing the suite's thin rounded `pane` so the
+/// frames read cleanly for weak vision. Falls back to suite `pane` when high
+/// contrast is off (see `titled_block`).
+fn hc_block(title: &str, pal: Palette) -> Block<'static> {
+    Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .border_style(pal.accent())
+        .title(Span::styled(format!(" {title} "), pal.title()))
+}
+
+/// The titled box for a pane, honoring the contrast toggle: thick double border
+/// (high contrast) or the shared suite rounded `pane` (off).
+fn titled_block(title: &str, pal: Palette, theme: Theme) -> Block<'static> {
+    if pal.active() {
+        hc_block(title, pal)
+    } else {
+        pane(title, theme)
+    }
+}
+
+/// Body text style: bright bold (high contrast) or the shared dim (off).
+fn body(pal: Palette, theme: Theme) -> Style {
+    if pal.active() {
+        pal.text()
+    } else {
+        theme.dim()
+    }
+}
 
 /// The keybinding rows for the help overlay. Kept next to the real key handling
 /// (in `app::step`) so help can't drift from the bindings.
@@ -26,12 +59,14 @@ pub const HELP_ROWS: &[(&str, &str)] = &[
     ("enter", "run the step (changes-state confirm first)"),
     ("s", "skip the current step"),
     ("r", "hand off to the rexops cockpit"),
+    ("+ / -", "bigger / smaller text"),
+    ("c", "toggle high-contrast theme"),
     ("?", "toggle this help"),
     ("q / Esc", "quit"),
 ];
 
 /// The one-line key-hint strip shown at the foot of the plan screen.
-const HINT: &str = "↑/↓ move · enter run · s skip · r rexops · ? help · q quit";
+const HINT: &str = "↑/↓ move · enter run · s skip · +/- size · c contrast · ? help · q quit";
 
 /// The glyph for a step. The focused step overrides this with `▸`.
 fn glyph(status: StepStatus, focused: bool) -> char {
@@ -46,28 +81,36 @@ fn glyph(status: StepStatus, focused: bool) -> char {
     }
 }
 
-/// Ring tag style: changes-state reads as attention, read-only/info as dim.
-fn ring_style(ring: Ring, theme: Theme) -> ratatui::style::Style {
+/// Ring tag style: changes-state reads as caution, read-only/info as body.
+fn ring_style(ring: Ring, pal: Palette, theme: Theme) -> Style {
     match ring {
-        Ring::ChangesState => theme.confirm(),
-        Ring::ReadOnly | Ring::Info => theme.dim(),
+        Ring::ChangesState => {
+            if pal.active() {
+                pal.caution()
+            } else {
+                theme.confirm()
+            }
+        }
+        Ring::ReadOnly | Ring::Info => body(pal, theme),
     }
 }
 
 /// Build one plan row: selection rail (accent on the focused row), status glyph,
 /// number, title, the inline annotation, and the right-edge ring tag — composed
-/// the way RexOps's launcher rows are.
-fn step_line(n: usize, step: &Step, focused: bool, theme: Theme) -> Line<'static> {
+/// the way RexOps's launcher rows are. In high contrast the title is bright
+/// bold and the focused row gets a strong reverse bar.
+fn step_line(n: usize, step: &Step, focused: bool, pal: Palette, theme: Theme) -> Line<'static> {
     let rail = if focused {
-        Span::styled("▌ ", theme.selected_rail())
+        Span::styled("▌ ", if pal.active() { pal.accent() } else { theme.selected_rail() })
     } else {
         Span::raw("  ")
     };
     let g = glyph(step.status, focused);
-    let title_style = if focused {
-        theme.selection()
-    } else {
-        theme.title()
+    let title_style = match (focused, pal.active()) {
+        (true, true) => pal.selection(),
+        (true, false) => theme.selection(),
+        (false, true) => pal.text(),
+        (false, false) => theme.title(),
     };
 
     let mut spans = vec![
@@ -76,24 +119,26 @@ fn step_line(n: usize, step: &Step, focused: bool, theme: Theme) -> Line<'static
         Span::styled(step.title.clone(), title_style),
     ];
     if let Some(note) = &step.annotation {
-        spans.push(Span::styled(format!("  ← {note}"), theme.accent_bar()));
+        let accent = if pal.active() { pal.accent() } else { theme.accent_bar() };
+        spans.push(Span::styled(format!("  ← {note}"), accent));
     }
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         step.ring.tag().to_string(),
-        ring_style(step.ring, theme),
+        ring_style(step.ring, pal, theme),
     ));
     Line::from(spans)
 }
 
 /// The plan screen: header / optional situation / plan / hints, in panes.
 fn render_plan(f: &mut Frame, app: &App, area: Rect, theme: Theme) {
+    let pal = Palette::new(app.high_contrast);
     let has_situation = !app.plan.situation.is_empty();
     let constraints = if has_situation {
         vec![
             Constraint::Length(3), // header
             Constraint::Length(app.plan.situation.len() as u16 + 2), // situation
-            Constraint::Min(3),    // plan
+            Constraint::Min(3),    // plan (fills the rest)
             Constraint::Length(2), // hints + notice
         ]
     } else {
@@ -111,9 +156,9 @@ fn render_plan(f: &mut Frame, app: &App, area: Rect, theme: Theme) {
     // Header.
     let header = Paragraph::new(Line::from(Span::styled(
         "Given the suite's state — do these, in this order.",
-        theme.dim(),
+        body(pal, theme),
     )))
-    .block(pane("Conductor", theme));
+    .block(titled_block("Conductor", pal, theme));
     f.render_widget(header, chunks[0]);
 
     // Situation (optional) + plan + hints land in shifting indices.
@@ -122,61 +167,94 @@ fn render_plan(f: &mut Frame, app: &App, area: Rect, theme: Theme) {
             .plan
             .situation
             .iter()
-            .map(|s| Line::from(Span::styled(s.clone(), theme.dim())))
+            .map(|s| Line::from(Span::styled(s.clone(), body(pal, theme))))
             .collect();
         let sit = Paragraph::new(lines)
             .wrap(Wrap { trim: true })
-            .block(pane("The situation", theme));
+            .block(titled_block("The situation", pal, theme));
         f.render_widget(sit, chunks[1]);
         (2, 3)
     } else {
         (1, 2)
     };
 
-    // Plan.
+    // Plan. Each step is its title row + its command row, then `density.gap()`
+    // blank spacer rows so bigger settings physically space the steps out.
+    let gap = app.density.gap();
     let rows: Vec<Line> = app
         .plan
         .steps
         .iter()
         .enumerate()
         .flat_map(|(i, step)| {
-            let mut v = vec![step_line(i + 1, step, i == app.cursor, theme)];
+            let mut v = vec![step_line(i + 1, step, i == app.cursor, pal, theme)];
             if let Some(cmd) = &step.command {
                 v.push(Line::from(Span::styled(
                     format!("       {cmd}"),
-                    theme.dim(),
+                    body(pal, theme),
                 )));
+            }
+            for _ in 0..gap {
+                v.push(Line::from(""));
             }
             v
         })
         .collect();
     let title = format!("The plan — {} steps", app.plan.steps.len());
-    let plan = Paragraph::new(rows).block(pane(&title, theme));
+    let plan = Paragraph::new(rows).block(titled_block(&title, pal, theme));
     f.render_widget(plan, chunks[plan_idx]);
 
-    // Hints + transient notice (notice takes the line when set).
+    // Hints + transient notice (notice takes the line when set). Bright in both
+    // modes so the foot strip never reads as faint grey.
     let hint_line = match &app.notice {
-        Some(msg) => Line::from(Span::styled(msg.clone(), theme.status_error())),
-        None => Line::from(Span::styled(HINT, theme.dim())),
+        Some(msg) => Line::from(Span::styled(
+            msg.clone(),
+            if pal.active() { pal.ok() } else { theme.status_error() },
+        )),
+        None => Line::from(Span::styled(HINT, body(pal, theme))),
     };
     f.render_widget(Paragraph::new(hint_line), chunks[hints_idx]);
 }
 
 /// The empty "nothing to conduct" screen, framed in a pane (EmptyState draws
 /// text only and expects the caller to frame the region).
-fn render_empty(f: &mut Frame, area: Rect, theme: Theme) {
+fn render_empty(f: &mut Frame, app: &App, area: Rect, theme: Theme) {
+    let pal = Palette::new(app.high_contrast);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3)])
         .split(area);
-    let block = pane("Conductor", theme);
+    let block = titled_block("Conductor", pal, theme);
     let inner = block.inner(chunks[0]);
     f.render_widget(block, chunks[0]);
-    EmptyState {
-        message: "nothing to conduct",
-        hint: Some("the suite is healthy and every feed is current"),
+
+    if pal.active() {
+        // EmptyState styles via the shared theme (dim); in high contrast draw our
+        // own bright centred lines instead so the "all clear" message is bold.
+        let lines = vec![
+            Line::from(Span::styled("nothing to conduct", pal.title())),
+            Line::from(""),
+            Line::from(Span::styled(
+                "the suite is healthy and every feed is current",
+                pal.text(),
+            )),
+        ];
+        let para = Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center);
+        // Vertically centre by padding from the top.
+        let pad = inner.height.saturating_sub(3) / 2;
+        let centred = Rect {
+            y: inner.y + pad,
+            height: inner.height.saturating_sub(pad),
+            ..inner
+        };
+        f.render_widget(para, centred);
+    } else {
+        EmptyState {
+            message: "nothing to conduct",
+            hint: Some("the suite is healthy and every feed is current"),
+        }
+        .render(f, inner, theme);
     }
-    .render(f, inner, theme);
 }
 
 /// The single draw entry the runtime calls each frame.
@@ -184,7 +262,7 @@ pub fn render(f: &mut Frame, app: &App, theme: Theme) {
     let area = f.area();
 
     if app.plan.steps.is_empty() {
-        render_empty(f, area, theme);
+        render_empty(f, app, area, theme);
         return;
     }
 
@@ -253,6 +331,92 @@ mod tests {
             out.push_str(cell.symbol());
         }
         out
+    }
+
+    /// Count cells in the rendered buffer that carry the DIM modifier — the
+    /// thing that hurts weak vision. High contrast must produce ZERO.
+    fn dim_cell_count(app: &App) -> usize {
+        use ratatui::style::Modifier;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("test backend");
+        let theme = Theme::with_color(true);
+        terminal.draw(|f| render(f, app, theme)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        buffer
+            .content
+            .iter()
+            .filter(|c| c.modifier.contains(Modifier::DIM))
+            .count()
+    }
+
+    #[test]
+    fn high_contrast_renders_no_dim_cells() {
+        let app = App::new(sample()); // high_contrast on by default
+        assert!(app.high_contrast);
+        assert_eq!(
+            dim_cell_count(&app),
+            0,
+            "high-contrast mode must not paint any dim/grey cells"
+        );
+    }
+
+    #[test]
+    fn turning_high_contrast_off_uses_the_shared_dim_theme() {
+        let mut app = App::new(sample());
+        app.high_contrast = false;
+        // The plain suite theme uses dim for commands/hints, so some dim cells
+        // should now appear — proving the toggle actually switches palettes.
+        assert!(
+            dim_cell_count(&app) > 0,
+            "with high contrast off, the shared theme's dim text should render"
+        );
+    }
+
+    /// Render into a TALL buffer (so density spacers aren't clipped) and flatten.
+    fn render_tall(app: &App) -> String {
+        let backend = TestBackend::new(80, 60);
+        let mut terminal = Terminal::new(backend).expect("test backend");
+        let theme = Theme::with_color(true);
+        terminal.draw(|f| render(f, app, theme)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let width = buffer.area.width as usize;
+        let mut out = String::new();
+        for (i, cell) in buffer.content.iter().enumerate() {
+            if i % width == 0 && i != 0 {
+                out.push('\n');
+            }
+            out.push_str(cell.symbol());
+        }
+        out
+    }
+
+    /// The 0-based row index of the first line containing `needle` in the
+    /// rendered (tall) frame, or None.
+    fn row_of(app: &App, needle: &str) -> Option<usize> {
+        render_tall(app)
+            .lines()
+            .position(|l| l.contains(needle))
+    }
+
+    #[test]
+    fn huge_density_pushes_later_steps_further_down_than_compact() {
+        use super::super::app::Density;
+        // Density inserts blank spacer rows between steps. Borders make a literal
+        // "blank line" count unreliable, so instead assert that a LATER step is
+        // drawn on a lower row under Huge than under Compact — the visible effect
+        // of the extra spacing. "bulwark show" is the last (Ring-1) step's command.
+        let mut compact = App::new(sample());
+        compact.density = Density::Compact;
+        let mut huge = App::new(sample());
+        huge.density = Density::Huge;
+
+        let last_needle = "bulwark show deploy-prod.sh";
+        let compact_row = row_of(&compact, last_needle).expect("compact shows the last step");
+        let huge_row = row_of(&huge, last_needle).expect("huge shows the last step");
+        assert!(
+            huge_row > compact_row,
+            "huge density must push later steps down (compact_row={compact_row}, huge_row={huge_row})"
+        );
     }
 
     #[test]
