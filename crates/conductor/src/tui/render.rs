@@ -21,16 +21,17 @@ use crate::run::confirm_command;
 /// The keybinding rows for the help overlay. Kept next to the real key handling
 /// (in `app::step`) so help can't drift from the bindings.
 pub const HELP_ROWS: &[(&str, &str)] = &[
-    ("enter", "run the step (changes-state steps confirm first)"),
+    ("↑ / ↓ · j / k", "move between steps"),
+    ("1-9", "jump to that step"),
+    ("enter", "run the step (changes-state confirm first)"),
     ("s", "skip the current step"),
-    ("a", "advance focus without running"),
     ("r", "hand off to the rexops cockpit"),
     ("?", "toggle this help"),
     ("q / Esc", "quit"),
 ];
 
 /// The one-line key-hint strip shown at the foot of the plan screen.
-const HINT: &str = "enter run · s skip · a advance · r rexops · ? help · q quit";
+const HINT: &str = "↑/↓ move · enter run · s skip · r rexops · ? help · q quit";
 
 /// The glyph for a step. The focused step overrides this with `▸`.
 fn glyph(status: StepStatus, focused: bool) -> char {

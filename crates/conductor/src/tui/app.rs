@@ -88,6 +88,19 @@ impl App {
             self.cursor += 1;
         }
     }
+
+    /// Move focus up one step, clamped at the first step.
+    fn retreat(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    /// Jump focus to the 1-indexed step `n` (so `1` is the first step). A number
+    /// past the last step — or `0` — is ignored (the cursor stays put).
+    fn jump_to(&mut self, n: usize) {
+        if n >= 1 && n <= self.plan.steps.len() {
+            self.cursor = n - 1;
+        }
+    }
 }
 
 /// Apply one key to the state, using `spawner` for any run. Pure with respect to
@@ -119,8 +132,27 @@ pub fn step(app: &mut App, key: KeyEvent, spawner: &dyn Spawner) -> Action {
             app.screen = Screen::Help;
             Action::Redraw
         }
+        // Move focus down/up: arrows or vim j/k. `a` also advances (kept for
+        // muscle memory from the old hand-rolled TUI).
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.advance();
+            Action::Redraw
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.retreat();
+            Action::Redraw
+        }
         KeyCode::Char('a') => {
             app.advance();
+            Action::Redraw
+        }
+        // Number keys jump straight to that step (1 = first). Out-of-range is
+        // ignored by `jump_to`. Conductor has a single screen, so unlike RexOps
+        // numbers address steps, not screens.
+        KeyCode::Char(c @ '1'..='9') => {
+            if let Some(n) = c.to_digit(10) {
+                app.jump_to(n as usize);
+            }
             Action::Redraw
         }
         KeyCode::Char('s') => {
@@ -333,6 +365,69 @@ mod tests {
     fn esc_quits_from_plan() {
         let mut app = App::new(sample());
         assert_eq!(step(&mut app, esc(), &FakeSpawner::new()), Action::Quit);
+    }
+
+    fn code(c: KeyCode) -> KeyEvent {
+        KeyEvent::new(c, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn down_arrow_and_j_move_cursor_down_without_running() {
+        let mut app = App::new(sample());
+        let sp = FakeSpawner::new();
+        step(&mut app, code(KeyCode::Down), &sp);
+        assert_eq!(app.cursor, 1);
+        step(&mut app, k('j'), &sp);
+        assert_eq!(app.cursor, 2);
+        assert!(sp.calls.borrow().is_empty(), "navigation must not spawn");
+    }
+
+    #[test]
+    fn up_arrow_and_k_move_cursor_up_without_running() {
+        let mut app = App::new(sample());
+        app.cursor = 2;
+        let sp = FakeSpawner::new();
+        step(&mut app, code(KeyCode::Up), &sp);
+        assert_eq!(app.cursor, 1);
+        step(&mut app, k('k'), &sp);
+        assert_eq!(app.cursor, 0);
+        assert!(sp.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn cursor_does_not_move_past_the_ends() {
+        let mut app = App::new(sample());
+        let sp = FakeSpawner::new();
+        // already at top: Up stays at 0
+        step(&mut app, code(KeyCode::Up), &sp);
+        assert_eq!(app.cursor, 0);
+        // walk to the last step, then Down stays clamped
+        let last = app.plan.steps.len() - 1;
+        app.cursor = last;
+        step(&mut app, code(KeyCode::Down), &sp);
+        assert_eq!(app.cursor, last, "Down at the last step must clamp");
+    }
+
+    #[test]
+    fn number_keys_jump_to_that_step() {
+        let mut app = App::new(sample());
+        let sp = FakeSpawner::new();
+        step(&mut app, k('3'), &sp);
+        assert_eq!(app.cursor, 2, "'3' focuses the 3rd step (0-indexed 2)");
+        step(&mut app, k('1'), &sp);
+        assert_eq!(app.cursor, 0, "'1' focuses the 1st step");
+        assert!(sp.calls.borrow().is_empty(), "jumping must not spawn");
+    }
+
+    #[test]
+    fn out_of_range_number_is_ignored() {
+        let mut app = App::new(sample()); // 6 steps
+        app.cursor = 1;
+        let sp = FakeSpawner::new();
+        step(&mut app, k('9'), &sp); // no 9th step
+        assert_eq!(app.cursor, 1, "a number past the last step does nothing");
+        step(&mut app, k('0'), &sp); // there is no step 0
+        assert_eq!(app.cursor, 1, "'0' is not a step");
     }
 
     #[test]
