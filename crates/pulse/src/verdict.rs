@@ -492,7 +492,7 @@ fn source_freshness(
     }
 
     match binaries.iter().find(|b| b.name == key) {
-        Some(b) if b.present => Source::Stale,
+        Some(b) if b.present => Source::Current,
         _ => Source::Missing,
     }
 }
