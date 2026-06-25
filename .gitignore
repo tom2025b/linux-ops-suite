@@ -8,3 +8,4 @@ Thumbs.db
 # Compiled installer binary (build artifact)
 /linux-ops-install
 .claude/
+snapshot
