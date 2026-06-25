@@ -82,6 +82,29 @@ impl SuiteState {
         self.feeds.iter().any(|f| f.freshness != Freshness::Current)
     }
 
+    /// Names of feeds that are STALE — present and readable but past their
+    /// freshness threshold. These are the feeds a `workstate snapshot` refresh
+    /// genuinely fixes, so the "refresh" remedy is honest only for these.
+    pub fn stale_feeds(&self) -> Vec<&'static str> {
+        self.feeds
+            .iter()
+            .filter(|f| f.freshness == Freshness::Stale)
+            .map(|f| f.name)
+            .collect()
+    }
+
+    /// Names of feeds that are UNAVAILABLE — absent, unreadable, or an
+    /// unsupported version. Re-running `workstate snapshot` will NOT clear these
+    /// (the producer isn't yielding usable data), so they need a DIFFERENT remedy
+    /// than "refresh" — which is exactly why they're reported separately.
+    pub fn unavailable_feeds(&self) -> Vec<&'static str> {
+        self.feeds
+            .iter()
+            .filter(|f| f.freshness == Freshness::Unavailable)
+            .map(|f| f.name)
+            .collect()
+    }
+
     /// The suite binaries missing from `$PATH` (rule 2's precondition).
     pub fn missing_binaries(&self) -> Vec<&BinaryStatus> {
         self.binaries.iter().filter(|b| !b.present).collect()
