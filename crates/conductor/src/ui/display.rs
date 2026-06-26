@@ -53,7 +53,11 @@ pub fn workstate_status(config: &Config, ws: &Workstate) {
     };
     println!("{} {}", bold(config, "workstate"), state);
     println!("  built {}s ago", ws.age_secs());
-    println!("  {} tools · {} findings", ws.tools.len(), ws.findings.len());
+    println!(
+        "  {} tools · {} findings",
+        ws.tools.len(),
+        ws.findings.len()
+    );
 }
 
 /// One finding in detail.

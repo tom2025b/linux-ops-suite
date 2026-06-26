@@ -3,7 +3,7 @@ source: crates/pulse/src/view.rs
 expression: "view_grid(View::Feeds, \"\", 80, 18)"
 ---
 ╭ pulse · FEEDS ───────────────────────────────────────────────────────────────╮
-│ ● workstate  ● bulwark  ◐ proto  ◐ toolfoundry  ? vault                      │
+│ ● workstate  ● bulwark  ● proto  ● toolfoundry  ? vault                      │
 │                                                                              │
 │ snapshot built 2026-06-14T12:00:00Z                                          │
 │                                                                              │
