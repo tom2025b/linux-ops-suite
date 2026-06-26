@@ -1,22 +1,28 @@
-//! JSON handling for state: read and write `Workstate` snapshots on disk.
+//! Read and write the canonical Workstate snapshot, via the shared schema crate.
+//!
+//! Conductor defines no snapshot model of its own: it loads and validates the
+//! single canonical artifact through `workstate_schema` (so the contract can't
+//! drift), and the only thing it ever writes is a rewind backup/restore of that
+//! same artifact (see `commands::rewind`).
 
 use std::path::Path;
 
-use crate::core::error::Result;
-use crate::state::workstate::Workstate;
+use workstate_schema::{load_snapshot, write_snapshot, LoadError, Snapshot};
 
-/// Load a snapshot from `path`.
-pub fn load(path: &Path) -> Result<Workstate> {
-    let bytes = std::fs::read(path)?;
-    Ok(serde_json::from_slice(&bytes)?)
+use crate::core::error::{Error, Result};
+
+/// Load and validate the canonical snapshot at `path`, mapping the schema crate's
+/// typed [`LoadError`] onto conductor's error type.
+pub fn load(path: &Path) -> Result<Snapshot> {
+    load_snapshot(path).map_err(|e| match e {
+        LoadError::NotFound { .. } => Error::NotFound("workstate snapshot".into()),
+        LoadError::Io { source, .. } => Error::Io(source),
+        other => Error::Snapshot(other.to_string()),
+    })
 }
 
-/// Write `workstate` to `path`, creating parent directories as needed.
-pub fn save(path: &Path, workstate: &Workstate) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let json = serde_json::to_vec_pretty(workstate)?;
-    std::fs::write(path, json)?;
-    Ok(())
+/// Atomically write `snapshot` to `path` — used only by rewind capture/restore,
+/// which copy the canonical snapshot to/from conductor's restore-point store.
+pub fn save(path: &Path, snapshot: &Snapshot) -> Result<()> {
+    write_snapshot(snapshot, path).map_err(Error::Io)
 }

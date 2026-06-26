@@ -5,29 +5,28 @@
 //! single source of truth, deserialized through Workstate's own `Snapshot`
 //! type so the contract cannot drift.
 
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use workstate::model::normalized::FindingInventory;
-use workstate::model::provenance::FeedStatus;
-use workstate::model::snapshot::SCHEMA_VERSION;
-use workstate::Snapshot;
+use workstate_schema::model::normalized::FindingInventory;
+use workstate_schema::model::provenance::FeedStatus;
+use workstate_schema::{LoadError, Snapshot};
 
 use crate::error::BridgeError;
 
-/// The shared suite location of the compiled snapshot:
-/// `$XDG_DATA_HOME/rexops/feeds/workstate.snapshot.json`, falling back to
-/// `~/.local/share/rexops/feeds/...`. This MUST mirror Workstate's
-/// `default_output_path()` (and RexOps's `WorkstateAdapter::standard_path()`)
-/// exactly — it is the contract for where the snapshot lives.
+/// The shared suite location of the compiled snapshot. Delegates to the ONE
+/// definition of that path — `workstate_schema::default_output_path()`
+/// (`$XDG_DATA_HOME/rexops/feeds/workstate.snapshot.json`, fallback
+/// `~/.local/share/...`) — so the bridge can never drift from where the producer
+/// actually writes. Only the `None` case (no `$XDG_DATA_HOME`/`$HOME`) is mapped
+/// onto the bridge's own error type.
 pub fn default_snapshot_path() -> Result<PathBuf, BridgeError> {
-    xdg_data_home()
-        .map(|base| base.join("rexops/feeds/workstate.snapshot.json"))
-        .ok_or(BridgeError::NoDefaultPath { what: "snapshot" })
+    workstate_schema::default_output_path().ok_or(BridgeError::NoDefaultPath { what: "snapshot" })
 }
 
-/// `$XDG_DATA_HOME`, falling back to `~/.local/share`. `None` only when
-/// neither `$XDG_DATA_HOME` nor `$HOME` is set.
+/// `$XDG_DATA_HOME`, falling back to `~/.local/share`. `None` only when neither
+/// `$XDG_DATA_HOME` nor `$HOME` is set. Used for the bridge's OWN output feed path
+/// (`workstate/feeds/toolbox-bridge.json`), which is not part of the snapshot
+/// contract — the snapshot's location comes from `workstate_schema`.
 pub(crate) fn xdg_data_home() -> Option<PathBuf> {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -36,46 +35,36 @@ pub(crate) fn xdg_data_home() -> Option<PathBuf> {
 
 /// Read and validate the Workstate snapshot at `path`.
 ///
-/// Validation order follows CONTRACT_RULES.md: parse to a generic JSON value,
-/// check `schema_version` FIRST, and only then deserialize into the typed
-/// `Snapshot`. Checking the version against the raw value (not the typed
-/// struct) means a future v4 snapshot whose shape no longer matches our
-/// `Snapshot` type still produces the honest "unsupported schema_version 4"
-/// message instead of a confusing field-level parse error.
+/// Delegates to the ONE canonical reader, `workstate_schema::load_snapshot`
+/// (read → check `schema_version` → typed parse), mapping its typed [`LoadError`]
+/// onto the bridge's own [`BridgeError`] so the CLI keeps its existing,
+/// operator-facing error wording. The read logic and the version gate live in the
+/// schema crate now, so the bridge cannot drift from the producer.
 pub fn load_snapshot(path: &Path) -> Result<Snapshot, BridgeError> {
-    let display = path.display().to_string();
-
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        // Missing snapshot is the expected first-run state, with a known fix.
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            return Err(BridgeError::SnapshotNotFound(display));
-        }
-        Err(e) => {
-            return Err(BridgeError::SnapshotIo {
-                path: display,
-                source: e,
-            });
-        }
-    };
-
-    let value: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| BridgeError::SnapshotParse {
-            path: display.clone(),
-            reason: e.to_string(),
-        })?;
-
-    let found = value.get("schema_version").and_then(|v| v.as_i64());
-    if found != Some(i64::from(SCHEMA_VERSION)) {
-        return Err(BridgeError::UnsupportedSchema {
-            found,
-            supported: SCHEMA_VERSION,
-        });
-    }
-
-    serde_json::from_value(value).map_err(|e| BridgeError::SnapshotParse {
-        path: display,
-        reason: e.to_string(),
+    workstate_schema::load_snapshot(path).map_err(|e| match e {
+        LoadError::NotFound { path } => BridgeError::SnapshotNotFound(path.display().to_string()),
+        LoadError::Io { path, source } => BridgeError::SnapshotIo {
+            path: path.display().to_string(),
+            source,
+        },
+        LoadError::UnsupportedVersion {
+            found, supported, ..
+        } => BridgeError::UnsupportedSchema {
+            // The schema crate reports the declared version as u64; the bridge's
+            // error type predates that and carries i64 — widen losslessly.
+            found: found.map(|v| v as i64),
+            supported,
+        },
+        LoadError::Malformed { path, reason } => BridgeError::SnapshotParse {
+            path: path.display().to_string(),
+            reason,
+        },
+        // LoadError is #[non_exhaustive]: a variant from a newer schema crate
+        // degrades to a parse-style error rather than breaking the build.
+        other => BridgeError::SnapshotParse {
+            path: path.display().to_string(),
+            reason: other.to_string(),
+        },
     })
 }
 

@@ -11,10 +11,14 @@ description = "Command-line front-end for the Linux Ops Suite's state: take and 
 name = "conductor"
 path = "src/main.rs"
 
-# Lean on purpose, same philosophy as the other suite crates: conductor only
-# reads and writes the suite's JSON state files. The hard deps are the CLI
-# parser and serde for the snapshot envelope — no network, no async.
+# Lean on purpose, same philosophy as the other suite crates. Conductor is a pure
+# CONSUMER of the canonical Workstate snapshot: it reads it through workstate-schema
+# (the shared contract) and defines no snapshot model of its own. clap parses the
+# CLI; serde_json renders --json output; chrono reads the snapshot's built_at. No
+# network, no async.
 [dependencies]
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+workstate-schema = { workspace = true }
+chrono = { workspace = true }

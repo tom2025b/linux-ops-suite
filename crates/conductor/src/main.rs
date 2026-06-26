@@ -3,7 +3,6 @@
 mod cli;
 mod commands;
 mod core;
-mod state;
 mod ui;
 
 use std::process::ExitCode;

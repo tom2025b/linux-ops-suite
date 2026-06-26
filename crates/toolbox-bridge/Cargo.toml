@@ -8,14 +8,12 @@ repository.workspace = true
 description = "Bridges Bulwark findings from the Workstate snapshot into a ScriptVault sidecar feed. Bulwark -> Workstate -> ScriptVault; no direct tool-to-tool calls."
 
 [dependencies]
-# The official Workstate library: the bridge deserializes snapshot.json through
-# Workstate's own `Snapshot`/`Finding` types so the contract cannot drift.
-# Pinned by rev like every other cross-repo suite dependency.
-#
-# Pinned to Workstate v4 (path/risk/owner promoted to first-class `Finding`
-# fields; the passthrough `rest` bag removed). This is the merge commit on
-# workstate `main`.
-workstate = { git = "https://github.com/tom2025b/workstate", rev = "b0c9bb929a13387888b84132613f1da46184613c" }
+# The Workstate snapshot CONTRACT crate. The bridge is a pure reader: it
+# deserializes the snapshot through workstate-schema's own `Snapshot`/`Finding`
+# types and reads it via the shared `load_snapshot`, so the format and the read
+# path cannot drift from the producer. A reader needs only the contract crate,
+# not the full `workstate` producer.
+workstate-schema = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
@@ -24,3 +22,8 @@ clap = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+# The integration test drives the REAL producer (SnapshotBuilder + ingest adapters)
+# to compile a snapshot from fixtures, then runs the bridge against it — so the test
+# needs the full `workstate` producer crate. The library itself depends only on
+# `workstate-schema`. Pinned to the same rev as workstate-schema.
+workstate = { git = "https://github.com/tom2025b/workstate", rev = "48c58c74acf88c8ae30ff21b4e032243ba66f8c3" }

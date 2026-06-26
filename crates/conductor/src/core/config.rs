@@ -19,9 +19,13 @@ impl Config {
         }
     }
 
-    /// The current workstate snapshot file.
+    /// The canonical Workstate snapshot — the single source of truth conductor
+    /// reads. It lives at Workstate's own published location (via workstate-schema),
+    /// NOT under conductor's data dir: conductor consumes what Workstate writes. The
+    /// `--data-dir` override governs only conductor's own rewind store below.
     pub fn workstate_path(&self) -> PathBuf {
-        self.data_dir.join("workstate").join("snapshot.json")
+        workstate_schema::default_output_path()
+            .unwrap_or_else(|| self.data_dir.join("rexops/feeds/workstate.snapshot.json"))
     }
 
     /// The directory holding rewind restore points.

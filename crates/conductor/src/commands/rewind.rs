@@ -1,4 +1,9 @@
-//! `rewind` — capture, list, and restore snapshot copies.
+//! `rewind` — capture, list, and restore copies of the canonical snapshot.
+//!
+//! Capture copies the current canonical snapshot into conductor's own restore-point
+//! store; restore copies one back over the canonical snapshot. Restore is the one
+//! deliberate operator action where conductor writes the canonical path — a
+//! recovery, not a competing producer.
 
 use crate::cli::RewindCmd;
 use crate::commands::snapshot;
@@ -14,27 +19,29 @@ pub fn run(cmd: RewindCmd, config: &Config) -> Result<()> {
     }
 }
 
-/// Copy the current snapshot into a restore point named by its timestamp.
+/// Copy the current snapshot into a restore point named by its build timestamp.
 fn capture(config: &Config) -> Result<()> {
     let path = config.workstate_path();
     if !path.exists() {
         return Err(Error::NotFound("workstate snapshot".into()));
     }
-    let ws = snapshot::load(&path)?;
-    let id = ws.built_at.to_string();
-    snapshot::save(&config.rewind_dir().join(format!("{id}.json")), &ws)?;
+    let snap = snapshot::load(&path)?;
+    let id = snap.built_at.timestamp().to_string();
+    snapshot::save(&config.rewind_dir().join(format!("{id}.json")), &snap)?;
     display::message(config, &format!("captured restore point {id}"));
     Ok(())
 }
 
-/// Replace the current snapshot with a saved restore point.
+/// Replace the canonical snapshot with a saved restore point.
 fn restore(config: &Config, id: &str) -> Result<()> {
-    let path = config.rewind_dir().join(format!("{id}.json"));
-    if !path.exists() {
+    let backup = config.rewind_dir().join(format!("{id}.json"));
+    if !backup.exists() {
         return Err(Error::NotFound(format!("restore point {id}")));
     }
-    let ws = snapshot::load(&path)?;
-    snapshot::save(&config.workstate_path(), &ws)?;
+    let snap = snapshot::load(&backup)?;
+    // The one place conductor writes the canonical path: a deliberate roll-back to
+    // a previously-captured snapshot.
+    snapshot::save(&config.workstate_path(), &snap)?;
     display::message(config, &format!("restored {id}"));
     Ok(())
 }

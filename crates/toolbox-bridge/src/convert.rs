@@ -16,7 +16,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use workstate::model::normalized::Finding;
+use workstate_schema::model::normalized::Finding;
 
 /// Suffix ScriptVault uses for sidecar files; paths already pointing at a
 /// sidecar are never themselves annotated.
@@ -206,7 +206,7 @@ pub fn is_bridge_tag(tag: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use workstate::model::normalized::{FindingId, Severity};
+    use workstate_schema::model::normalized::{FindingId, Severity};
 
     /// A finding with the allowlisted fields Bulwark's workstate-feed carries.
     /// As of Workstate v4 these are first-class `Finding` fields (path/risk/owner),

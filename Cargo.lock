@@ -200,9 +200,11 @@ dependencies = [
 name = "conductor"
 version = "0.2.0"
 dependencies = [
+ "chrono",
  "clap",
  "serde",
  "serde_json",
+ "workstate-schema",
 ]
 
 [[package]]
@@ -701,6 +703,7 @@ dependencies = [
 name = "pulse"
 version = "0.2.0"
 dependencies = [
+ "chrono",
  "crossterm",
  "insta",
  "ratatui",
@@ -708,6 +711,7 @@ dependencies = [
  "serde_json",
  "suite-core",
  "suite-ui",
+ "workstate-schema",
 ]
 
 [[package]]
@@ -1115,6 +1119,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "workstate",
+ "workstate-schema",
 ]
 
 [[package]]
@@ -1557,10 +1562,22 @@ dependencies = [
 
 [[package]]
 name = "workstate"
-version = "0.1.1"
-source = "git+https://github.com/tom2025b/workstate?rev=b0c9bb929a13387888b84132613f1da46184613c#b0c9bb929a13387888b84132613f1da46184613c"
+version = "0.1.2"
+source = "git+https://github.com/tom2025b/workstate?rev=48c58c74acf88c8ae30ff21b4e032243ba66f8c3#48c58c74acf88c8ae30ff21b4e032243ba66f8c3"
 dependencies = [
  "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "workstate-schema",
+]
+
+[[package]]
+name = "workstate-schema"
+version = "0.1.0"
+source = "git+https://github.com/tom2025b/workstate?rev=48c58c74acf88c8ae30ff21b4e032243ba66f8c3#48c58c74acf88c8ae30ff21b4e032243ba66f8c3"
+dependencies = [
  "chrono",
  "serde",
  "serde_json",

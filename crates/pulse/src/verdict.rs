@@ -95,11 +95,15 @@ impl Readings {
     /// Read every suite contract under `dir` once. Never fails: each reader is
     /// individually fault-tolerant.
     pub fn load(dir: &DataDir) -> Self {
+        // One read of the single source of truth (the Workstate snapshot); every
+        // view below is DERIVED from it. Pulse no longer reads any raw producer
+        // feed — if it needs a datum, the datum lives in the snapshot.
+        let snap = sources::load(dir);
         Readings {
-            freshness: sources::read_freshness(dir),
-            rexops: sources::read_rexops(dir),
-            bulwark: sources::read_bulwark(dir),
-            jobs: sources::read_jobs(dir),
+            freshness: sources::freshness(snap.as_ref()),
+            rexops: sources::suite_view(snap.as_ref()),
+            bulwark: sources::bulwark(snap.as_ref()),
+            jobs: sources::jobs(snap.as_ref()),
             binaries: sources::read_binaries(),
             now: unix_now(),
         }

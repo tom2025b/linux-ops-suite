@@ -11,6 +11,7 @@ use std::process::Command;
 
 use workstate::compile::SnapshotBuilder;
 use workstate::ingest::bulwark::BulwarkFeed;
+use workstate::ingest::proto::ProtoFeed;
 use workstate::ingest::scriptvault::ScriptVaultFeed;
 use workstate::ingest::toolfoundry::ToolFoundryFeed;
 use workstate::write_snapshot;
@@ -27,15 +28,10 @@ const FIXTURE: &str = concat!(
 /// Missing, which must never bother the bridge.
 fn compile_snapshot(bulwark_path: &str, out: &Path) {
     let builder = SnapshotBuilder::new(
-        BulwarkFeed {
-            path: bulwark_path.to_string(),
-        },
-        ScriptVaultFeed {
-            path: "/nonexistent/scriptvault.json".to_string(),
-        },
-        ToolFoundryFeed {
-            path: "/nonexistent/toolfoundry.json".to_string(),
-        },
+        BulwarkFeed::from_path(bulwark_path.to_string()),
+        ScriptVaultFeed::from_path("/nonexistent/scriptvault.json".to_string()),
+        ToolFoundryFeed::from_path("/nonexistent/toolfoundry.json".to_string()),
+        ProtoFeed::from_path("/nonexistent/proto.json".to_string()),
     );
     write_snapshot(&builder.build(), out).expect("write snapshot fixture");
 }

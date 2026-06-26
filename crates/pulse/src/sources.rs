@@ -1,27 +1,25 @@
-//! Reading the suite's file contracts for Pulse.
+//! Deriving Pulse's view from the one Workstate snapshot.
 //!
-//! Pulse is a passive reader (see PULSE_DESIGN.md): it consumes published
-//! artifacts and never mutates a producer or regenerates a feed. Each reader
-//! here loads one contract from disk, and every one is **fault-tolerant by
-//! design** — a missing, unreadable, empty, malformed, or wrong-major file
-//! resolves to "unavailable"/`None` and never panics. That mirrors the suite
-//! rule that a missing optional feed must never crash a consumer
-//! (`docs/CONTRACT_RULES.md`), and it is what lets Pulse render the *Incomplete*
-//! verdict honestly instead of erroring out.
+//! Pulse is a passive reader: it loads the single canonical snapshot Workstate
+//! publishes and DERIVES everything it shows from it — freshness, attention,
+//! per-source presence, and protocol-run outcomes. It never reads a raw producer
+//! feed (Bulwark/Proto/ScriptVault/ToolFoundry) directly; if Pulse needs a datum,
+//! that datum must be in the snapshot. The snapshot is read through
+//! `workstate_schema` (its own `Snapshot` type, the canonical path, and the
+//! validating loader), so the contract cannot drift.
 //!
-//! Paths follow `docs/INTEGRATION_MAP.md` ("Expected output paths"), rooted at
-//! `$XDG_DATA_HOME` (fallback `~/.local/share`). `$PULSE_DATA_DIR` overrides the
-//! root wholesale, which is how the tests point Pulse at a fixture directory.
-//!
-//! serde ignores unknown fields by default, so additive contract changes (same
-//! major) need no change here — also a contract rule.
+//! Every derivation is fault-tolerant: a missing, unreadable, malformed, or
+//! wrong-version snapshot yields empty/`None` views and never panics — which is
+//! what lets Pulse render the *Incomplete* verdict honestly instead of erroring.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use serde::Deserialize;
+use workstate_schema::model::normalized::{JobOutcome as WsJobOutcome, Severity as WsSeverity};
+use workstate_schema::model::provenance::FeedStatus;
+use workstate_schema::Snapshot;
 
-/// The resolved on-disk layout Pulse reads from. Built once from the
-/// environment; all reader functions take paths derived from it.
+/// The resolved on-disk layout Pulse reads from, built once from the environment.
+/// There is now exactly ONE artifact: the Workstate snapshot.
 pub struct DataDir {
     root: PathBuf,
 }
@@ -38,90 +36,48 @@ impl DataDir {
         DataDir { root }
     }
 
-    /// Workstate's suite snapshot, as RexOps reads it.
-    /// `…/rexops/feeds/workstate.snapshot.json`.
-    pub fn workstate_snapshot(&self) -> PathBuf {
-        self.root.join("rexops/feeds/workstate.snapshot.json")
-    }
-
-    /// RexOps's assembled suite snapshot. The integration map lists this output
-    /// as "self/report" with no fixed path, so Pulse reads the natural location
-    /// next to its other rexops state.
-    pub fn rexops_snapshot(&self) -> PathBuf {
-        self.root.join("rexops/snapshot.json")
-    }
-
-    /// Bulwark's Workstate feed. `…/workstate/feeds/bulwark.json`.
-    pub fn bulwark_feed(&self) -> PathBuf {
-        self.root.join("workstate/feeds/bulwark.json")
-    }
-
-    /// Directory of Proto session records, one JSON per run.
-    /// `…/proto/sessions/`.
-    pub fn proto_sessions(&self) -> PathBuf {
-        self.root.join("proto/sessions")
+    /// The canonical Workstate snapshot path under this root. Delegates to
+    /// `workstate_schema` so Pulse never re-spells where the snapshot lives.
+    pub fn snapshot_path(&self) -> PathBuf {
+        workstate_schema::snapshot_path_under(&self.root)
     }
 }
 
-/// Read a file and parse it as `T`, returning `None` on *any* failure (absent,
-/// unreadable, empty, malformed). This is the single choke point that makes
-/// every reader fault-tolerant.
-fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
-    let bytes = std::fs::read(path).ok()?;
-    serde_json::from_slice(&bytes).ok()
+/// Load and validate the Workstate snapshot, or `None` on any failure (absent,
+/// unreadable, malformed, or a schema version this build doesn't understand). This
+/// is the ONE read Pulse performs; every view below is derived from its result.
+pub fn load(dir: &DataDir) -> Option<Snapshot> {
+    workstate_schema::load_snapshot(&dir.snapshot_path()).ok()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Freshness — Workstate snapshot
+// Freshness — per-section status of the snapshot
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// One source's freshness as Pulse cares about it. Collapses the snapshot's
-/// richer per-section status into the three buckets the verdict needs.
+/// One source's freshness as Pulse cares about it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Freshness {
     Current,
     Stale,
-    /// Present but unusable (unsupported version) or absent entirely.
+    /// Present but unusable (unsupported/missing version, failed), or absent.
     Unavailable,
 }
 
-/// Workstate snapshot, only the fields Pulse needs. Each section reports its own
-/// `status`; the rest of each section is ignored (unknown fields are fine).
-#[derive(Deserialize)]
-struct WorkstateSnapshot {
-    /// When the snapshot was built (RFC3339). Drives the screen's "age".
-    #[serde(default)]
-    built_at: Option<String>,
-    #[serde(default)]
-    scripts: Option<Section>,
-    #[serde(default)]
-    tools: Option<Section>,
-    #[serde(default)]
-    findings: Option<Section>,
-}
-
-#[derive(Deserialize)]
-struct Section {
-    /// `"Fresh"`, `"Stale"`, or an object like `{"UnsupportedVersion": {...}}`.
-    /// Deserialized as a free `Value` so the object-variant form never fails.
-    status: serde_json::Value,
-}
-
-impl Section {
-    fn freshness(&self) -> Freshness {
-        match &self.status {
-            serde_json::Value::String(s) if s == "Fresh" => Freshness::Current,
-            serde_json::Value::String(s) if s == "Stale" => Freshness::Stale,
-            // Any object variant (UnsupportedVersion, MissingData, …) or unknown
-            // string means the section can't be trusted.
-            _ => Freshness::Unavailable,
-        }
+/// Collapse a section's `FeedStatus` into Pulse's three buckets. Only a clean,
+/// recent read is `Current`; a known-old read is `Stale`; everything else
+/// (unsupported/missing version, source mismatch, failed, missing, or a
+/// freshness-unknown read we can't vouch for) is `Unavailable`.
+fn section_freshness(status: &FeedStatus) -> Freshness {
+    match status {
+        FeedStatus::Fresh => Freshness::Current,
+        FeedStatus::Stale => Freshness::Stale,
+        _ => Freshness::Unavailable,
     }
 }
 
-/// The freshness picture from Workstate: the snapshot's build time and the
-/// freshness of each named section. Absent snapshot => empty + `None` age, which
-/// the verdict reads as the whole suite view being unavailable.
+/// The freshness picture: the snapshot's build time and the freshness of each
+/// named section. Absent snapshot => empty + `None` age, which the verdict reads
+/// as the whole suite view being unavailable.
 #[derive(Clone)]
 pub struct SnapshotFreshness {
     pub built_at: Option<String>,
@@ -146,33 +102,28 @@ impl SnapshotFreshness {
     }
 }
 
-/// Read Workstate snapshot freshness. Always returns a value: a missing file
-/// yields an empty section list (no sections == nothing current).
-pub fn read_freshness(dir: &DataDir) -> SnapshotFreshness {
-    let Some(snap): Option<WorkstateSnapshot> = read_json(&dir.workstate_snapshot()) else {
+/// Derive freshness from the snapshot. The data-bearing tool sections
+/// (scripts/tools/findings) drive the freshness strip; jobs/proto presence is
+/// surfaced via [`suite_view`] instead, matching Pulse's prior behavior.
+pub fn freshness(snap: Option<&Snapshot>) -> SnapshotFreshness {
+    let Some(s) = snap else {
         return SnapshotFreshness {
             built_at: None,
             sections: Vec::new(),
         };
     };
-    let mut sections = Vec::new();
-    if let Some(s) = &snap.scripts {
-        sections.push(("scripts", s.freshness()));
-    }
-    if let Some(s) = &snap.tools {
-        sections.push(("tools", s.freshness()));
-    }
-    if let Some(s) = &snap.findings {
-        sections.push(("findings", s.freshness()));
-    }
     SnapshotFreshness {
-        built_at: snap.built_at,
-        sections,
+        built_at: Some(s.built_at.to_rfc3339()),
+        sections: vec![
+            ("scripts", section_freshness(&s.scripts.status)),
+            ("tools", section_freshness(&s.tools.status)),
+            ("findings", section_freshness(&s.findings.status)),
+        ],
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Findings / attention — RexOps snapshot (aggregator) + Bulwark feed
+// Attention & presence — derived from the snapshot's sections
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Severity of an attention item, in escalation order.
@@ -184,183 +135,167 @@ pub enum Severity {
     Critical,
 }
 
-impl Severity {
-    fn parse(s: &str) -> Option<Self> {
-        // Case-insensitive so a producer emitting "Critical"/"CRITICAL" still
-        // maps correctly instead of falling through to the unknown path.
-        match s.trim().to_ascii_lowercase().as_str() {
-            "low" => Some(Severity::Low),
-            "medium" => Some(Severity::Medium),
-            "high" => Some(Severity::High),
-            "critical" => Some(Severity::Critical),
-            _ => None,
-        }
+/// Map the snapshot's richer `Severity` onto Pulse's escalation scale. An absent
+/// or unrecognized signal (`Unrated`/`Unknown`, or any future bucket) escalates to
+/// `High`, never sinks to `Low`: on a security dashboard an unclassified value must
+/// surface, not vanish below the attention threshold.
+fn map_severity(s: WsSeverity) -> Severity {
+    match s {
+        WsSeverity::Critical => Severity::Critical,
+        WsSeverity::High => Severity::High,
+        WsSeverity::Medium => Severity::Medium,
+        WsSeverity::Low | WsSeverity::Info => Severity::Low,
+        _ => Severity::High,
     }
 }
 
-/// One thing worth the operator's attention, normalized across producers.
+/// One thing worth the operator's attention, normalized across sources.
 #[derive(Clone)]
 pub struct Attention {
-    /// What is affected (the producer's item id / name).
+    /// What is affected (the finding subject / tool name).
     pub what: String,
     /// Why it matters (short reason).
     pub why: String,
-    /// Which source reported it.
+    /// Which source it came from.
     pub source: String,
     pub severity: Severity,
 }
 
-/// RexOps snapshot: the suite-level aggregator. Provides both per-source
-/// availability and pre-aggregated attention items, so when present it is
-/// Pulse's richest single input.
-#[derive(Deserialize)]
-struct RexopsSnapshot {
-    #[serde(default)]
-    generated_at: Option<String>,
-    #[serde(default)]
-    sources: std::collections::BTreeMap<String, RexopsSource>,
-    #[serde(default)]
-    attention: Vec<RexopsAttention>,
+/// Security findings (Bulwark) at High/Critical, surfaced as attention. Low/medium
+/// inventory noise stays out of the verdict. Shared by [`suite_view`] and
+/// [`bulwark`].
+fn findings_attention(s: &Snapshot) -> Vec<Attention> {
+    let Some(inv) = s.findings.data.as_ref() else {
+        return Vec::new();
+    };
+    inv.findings
+        .iter()
+        .filter_map(|f| {
+            let severity = map_severity(f.severity);
+            if severity < Severity::High {
+                return None;
+            }
+            let what = f
+                .name
+                .clone()
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| f.id.0.clone());
+            let why = f
+                .description
+                .clone()
+                .filter(|d| !d.is_empty())
+                .unwrap_or_else(|| "flagged by bulwark".to_string());
+            Some(Attention {
+                what,
+                why,
+                source: "bulwark".to_string(),
+                severity,
+            })
+        })
+        .collect()
 }
 
-#[derive(Deserialize)]
-struct RexopsSource {
-    #[serde(default)]
-    present: bool,
+/// Tools (ToolFoundry) that need attention: a failing health ratio, or a status
+/// the producer marked "attention". Surfaced as High so they reach the verdict.
+fn tools_attention(s: &Snapshot) -> Vec<Attention> {
+    let Some(inv) = s.tools.data.as_ref() else {
+        return Vec::new();
+    };
+    inv.tools
+        .iter()
+        .filter_map(|t| {
+            let health_failing = t.health_total > 0 && t.health_passed < t.health_total;
+            let flagged = t.status.trim().eq_ignore_ascii_case("attention");
+            if !health_failing && !flagged {
+                return None;
+            }
+            let what = if t.display_name.trim().is_empty() {
+                t.id.0.clone()
+            } else {
+                t.display_name.clone()
+            };
+            let why = if health_failing {
+                format!("health {}/{} passing", t.health_passed, t.health_total)
+            } else {
+                "needs attention".to_string()
+            };
+            Some(Attention {
+                what,
+                why,
+                source: "toolfoundry".to_string(),
+                severity: Severity::High,
+            })
+        })
+        .collect()
 }
 
-#[derive(Deserialize)]
-struct RexopsAttention {
-    #[serde(default)]
-    tool: String,
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    reason: String,
-    #[serde(default)]
-    severity: String,
-}
-
-/// What RexOps tells us, already normalized. Absent => `None` everywhere, which
-/// the verdict treats as "the aggregator isn't running" (an Incomplete signal).
+/// The suite-level view, derived from the snapshot: per-source presence plus the
+/// merged attention list (security findings + tool health). `None` when there is
+/// no snapshot at all, which the verdict reads as the suite view being unavailable.
+///
+/// Named for historical reasons: it replaces the old RexOps-aggregator feed that
+/// Pulse used to read separately. The data now comes entirely from the Workstate
+/// snapshot, so there is no second aggregate to drift from.
 #[derive(Clone)]
 pub struct RexopsView {
     pub generated_at: Option<String>,
-    /// (source name, present?) for the sources RexOps tracked.
+    /// (source name, present?) for each producer the snapshot carries a section for.
     pub sources: Vec<(String, bool)>,
     pub attention: Vec<Attention>,
 }
 
-pub fn read_rexops(dir: &DataDir) -> Option<RexopsView> {
-    let snap: RexopsSnapshot = read_json(&dir.rexops_snapshot())?;
-    let sources = snap
-        .sources
-        .into_iter()
-        .map(|(name, s)| (name, s.present))
-        .collect();
-    let attention = snap
-        .attention
-        .into_iter()
-        .map(|a| Attention {
-            what: if a.id.is_empty() {
-                a.tool.clone()
-            } else {
-                a.id
-            },
-            why: a.reason,
-            source: a.tool,
-            // An unrecognized severity escalates to High, not Low: on a security
-            // dashboard an unknown value (a new severity the producer added, a
-            // typo) must surface, never silently sink below the attention
-            // threshold.
-            severity: Severity::parse(&a.severity).unwrap_or(Severity::High),
-        })
-        .collect();
+/// Build the suite view from the snapshot. A section is "present" when it carries
+/// data (a Fresh/Stale/FreshnessUnknown read); a Missing/Failed/unsupported
+/// section reads as absent.
+pub fn suite_view(snap: Option<&Snapshot>) -> Option<RexopsView> {
+    let s = snap?;
+    let sources = vec![
+        ("workstate".to_string(), true),
+        ("scriptvault".to_string(), s.scripts.data.is_some()),
+        ("toolfoundry".to_string(), s.tools.data.is_some()),
+        ("bulwark".to_string(), s.findings.data.is_some()),
+        ("proto".to_string(), s.jobs.data.is_some()),
+    ];
+    let mut attention = findings_attention(s);
+    attention.extend(tools_attention(s));
     Some(RexopsView {
-        generated_at: snap.generated_at,
+        generated_at: Some(s.built_at.to_rfc3339()),
         sources,
         attention,
     })
 }
 
-/// Bulwark Workstate feed: a flat inventory of items with a severity/risk each.
-/// Pulse reads it as a *fallback* source of findings when RexOps hasn't already
-/// aggregated them, and as a freshness/presence signal for Bulwark itself.
-#[derive(Deserialize)]
-struct BulwarkFeed {
-    #[serde(default)]
-    items: Vec<BulwarkItem>,
-}
-
-#[derive(Deserialize)]
-struct BulwarkItem {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    severity: String,
-    #[serde(default)]
-    description: String,
-}
-
+/// Bulwark's contribution on its own: its security findings as attention plus a
+/// presence flag. Kept as a distinct view for the source-confidence strip and as
+/// the attention fallback used when there is no suite view at all.
 #[derive(Clone)]
 pub struct BulwarkView {
-    /// Items at `high` or `critical`, surfaced as attention. Low/medium
-    /// inventory noise is left for the Attention drill-down, not the verdict.
     pub attention: Vec<Attention>,
-    /// Whether the feed was present at all (drives Bulwark's source marker).
     pub present: bool,
 }
 
-pub fn read_bulwark(dir: &DataDir) -> BulwarkView {
-    let Some(feed): Option<BulwarkFeed> = read_json(&dir.bulwark_feed()) else {
+pub fn bulwark(snap: Option<&Snapshot>) -> BulwarkView {
+    let Some(s) = snap else {
         return BulwarkView {
             attention: Vec::new(),
             present: false,
         };
     };
-    let attention = feed
-        .items
-        .into_iter()
-        .filter_map(|it| {
-            // Unknown severity escalates to High (never silently dropped), so a
-            // new or misspelled value from bulwark still surfaces here rather
-            // than vanishing before the High threshold.
-            let sev = Severity::parse(&it.severity).unwrap_or(Severity::High);
-            if sev < Severity::High {
-                return None;
-            }
-            Some(Attention {
-                what: if it.name.is_empty() { it.id } else { it.name },
-                why: if it.description.is_empty() {
-                    "flagged by bulwark".to_string()
-                } else {
-                    it.description
-                },
-                source: "bulwark".to_string(),
-                severity: sev,
-            })
-        })
-        .collect();
     BulwarkView {
-        attention,
-        present: true,
+        attention: findings_attention(s),
+        present: s.findings.data.is_some(),
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Jobs — Proto sessions (and RexOps job rollup if present)
+// Jobs — Proto protocol runs from the snapshot's jobs section
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// A run's outcome, derived from a Proto session record.
+/// A run's outcome, as Pulse displays it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum JobOutcome {
-    /// Every step has an outcome and none failed.
     Passed,
-    /// At least one step failed.
     Failed,
-    /// Still in progress (no `finished_at`, or a step is pending).
     Running,
 }
 
@@ -370,96 +305,45 @@ pub struct Job {
     pub outcome: JobOutcome,
 }
 
-/// Proto session record (v1), the fields Pulse needs to classify the run. Both
-/// the per-step `status` form (the real session schema) and a top-level
-/// `status`/`failed` form (older feed shape) are tolerated.
-#[derive(Deserialize)]
-struct ProtoSession {
-    #[serde(default)]
-    protocol_title: Option<String>,
-    #[serde(default)]
-    finished_at: Option<String>,
-    #[serde(default)]
-    steps: Vec<ProtoStep>,
-    /// Older/feed shape fallbacks; ignored when `steps` is present.
-    #[serde(default)]
-    status: Option<String>,
-    #[serde(default)]
-    failed: Option<u32>,
-}
-
-#[derive(Deserialize)]
-struct ProtoStep {
-    #[serde(default)]
-    status: String,
-}
-
-impl ProtoSession {
-    fn outcome(&self) -> JobOutcome {
-        if !self.steps.is_empty() {
-            if self.steps.iter().any(|s| s.status == "failed") {
-                return JobOutcome::Failed;
-            }
-            let unfinished =
-                self.finished_at.is_none() || self.steps.iter().any(|s| s.status == "pending");
-            return if unfinished {
-                JobOutcome::Running
-            } else {
-                JobOutcome::Passed
-            };
-        }
-        // Feed-shape fallback.
-        match self.status.as_deref() {
-            Some("complete") if self.failed.unwrap_or(0) > 0 => JobOutcome::Failed,
-            Some("complete") => JobOutcome::Passed,
-            _ => JobOutcome::Running,
-        }
+/// Map the snapshot's job outcome onto Pulse's. A non-terminal/unknown outcome
+/// fails closed to `Running`, never `Passed`.
+fn map_outcome(o: WsJobOutcome) -> JobOutcome {
+    match o {
+        WsJobOutcome::Passed => JobOutcome::Passed,
+        WsJobOutcome::Failed => JobOutcome::Failed,
+        _ => JobOutcome::Running,
     }
 }
 
-/// Read every Proto session file and classify each run. Unreadable individual
-/// files are skipped, not fatal; a missing directory yields an empty list.
-pub fn read_jobs(dir: &DataDir) -> Vec<Job> {
-    let sessions = dir.proto_sessions();
-    let Ok(entries) = std::fs::read_dir(&sessions) else {
+/// The protocol runs from the snapshot's jobs section (Proto). Workstate already
+/// classified each run's outcome, so Pulse just maps it onto its own type.
+pub fn jobs(snap: Option<&Snapshot>) -> Vec<Job> {
+    let Some(inv) = snap.and_then(|s| s.jobs.data.as_ref()) else {
         return Vec::new();
     };
-    let mut jobs = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
-            continue;
-        }
-        let Some(s): Option<ProtoSession> = read_json(&path) else {
-            continue;
-        };
-        let title = s
-            .protocol_title
-            .clone()
-            .unwrap_or_else(|| "protocol run".to_string());
-        jobs.push(Job {
-            title,
-            outcome: s.outcome(),
-        });
-    }
-    jobs
+    inv.jobs
+        .iter()
+        .map(|j| Job {
+            title: j.title.clone(),
+            outcome: map_outcome(j.outcome),
+        })
+        .collect()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Environment / binary checks  (the would-be rex-doctor, done locally)
+// Environment / binary checks
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// One suite binary and whether it is on `$PATH`. There is no `rex-doctor`
-/// producer in the suite, so Pulse performs these env probes itself — they are
-/// purely local `which`-style lookups that need no external feed.
+/// producer in the suite, so Pulse performs these env probes itself — purely local
+/// `which`-style lookups that need no external feed.
 #[derive(Clone, Copy)]
 pub struct BinaryCheck {
     pub name: &'static str,
     pub present: bool,
 }
 
-/// The suite binaries Pulse expects an operator to have installed. Mirrors the
-/// launchable tools the integration map documents.
+/// The suite binaries Pulse expects an operator to have installed.
 const SUITE_BINARIES: &[&str] = &["bulwark", "proto", "rexops", "scriptvault", "toolfoundry"];
 
 /// Probe each suite binary on `$PATH`. Pure filesystem lookups; no subprocess is
@@ -475,9 +359,7 @@ pub fn read_binaries() -> Vec<BinaryCheck> {
         .collect()
 }
 
-/// Whether `name` resolves to an executable on `$PATH`. A `which(1)` done
-/// in-process (delegated to suite-core): scan `$PATH` for an executable file,
-/// no fork.
+/// Whether `name` resolves to an executable on `$PATH` (in-process, no fork).
 fn which(name: &str) -> bool {
     suite_core::path::which(name)
 }
@@ -485,87 +367,146 @@ fn which(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use chrono::{TimeZone, Utc};
+    use workstate_schema::model::normalized::{
+        Finding, FindingId, FindingInventory, Job as WsJob, JobId, JobInventory, Tool, ToolId,
+        ToolInventory,
+    };
+    use workstate_schema::model::provenance::{FeedId, Provenance, Section};
 
-    /// A throwaway data dir under the system temp, unique per test, cleaned on
-    /// drop. Lets readers hit real files without touching the user's data.
-    struct TempData {
-        dir: PathBuf,
-    }
-
-    impl TempData {
-        fn new(tag: &str) -> Self {
-            let mut dir = std::env::temp_dir();
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos();
-            dir.push(format!("pulse-test-{tag}-{nanos}"));
-            std::fs::create_dir_all(&dir).unwrap();
-            TempData { dir }
-        }
-        fn data(&self) -> DataDir {
-            DataDir {
-                root: self.dir.clone(),
-            }
-        }
-        fn write(&self, rel: &str, body: &str) {
-            let p = self.dir.join(rel);
-            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            let mut f = std::fs::File::create(p).unwrap();
-            f.write_all(body.as_bytes()).unwrap();
+    fn prov() -> Provenance {
+        Provenance {
+            feed_id: FeedId("x".to_string()),
+            fetched_at: None,
+            source_observed_at: None,
+            dropped_records: 0,
         }
     }
 
-    impl Drop for TempData {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.dir);
+    fn finding(id: &str, name: Option<&str>, sev: WsSeverity, desc: Option<&str>) -> Finding {
+        Finding {
+            id: FindingId(id.to_string()),
+            name: name.map(str::to_string),
+            rule_id: None,
+            description: desc.map(str::to_string),
+            severity: sev,
+            raw_severity: None,
+            category: None,
+            location: "unknown".to_string(),
+            path: None,
+            risk: None,
+            owner: None,
         }
+    }
+
+    fn tool(id: &str, display: &str, status: &str, passed: u32, total: u32) -> Tool {
+        Tool {
+            id: ToolId(id.to_string()),
+            display_name: display.to_string(),
+            owner: String::new(),
+            project: String::new(),
+            lifecycle_state: String::new(),
+            status: status.to_string(),
+            review_due: None,
+            review_after: None,
+            review_due_flag: false,
+            drifted: false,
+            health_passed: passed,
+            health_total: total,
+            manifest_path: String::new(),
+        }
+    }
+
+    fn data_section<T>(status: FeedStatus, data: T) -> Section<T> {
+        Section {
+            status,
+            provenance: prov(),
+            data: Some(data),
+        }
+    }
+
+    /// A representative v5 snapshot: scripts Missing, tools Stale (one
+    /// health-failing tool), findings Fresh (one critical + one low), jobs Fresh
+    /// (passed/failed/running).
+    fn sample() -> Snapshot {
+        let tools = ToolInventory {
+            as_of: "2026-06-14".to_string(),
+            tool_count: 1,
+            attention_count: 0,
+            tools: vec![tool("backup-home", "Backup Home", "ok", 1, 3)],
+            dropped_records: 0,
+        };
+        let findings = FindingInventory {
+            generated_at: "2026-06-14".to_string(),
+            findings: vec![
+                finding(
+                    "deploy-prod.sh",
+                    Some("deploy-prod.sh"),
+                    WsSeverity::Critical,
+                    Some("AWS access key ID detected"),
+                ),
+                finding("noise.sh", None, WsSeverity::Low, Some("style nit")),
+            ],
+            dropped_records: 0,
+        };
+        let jobs = JobInventory {
+            generated_at: "2026-06-14".to_string(),
+            jobs: vec![
+                WsJob {
+                    id: JobId("r1".to_string()),
+                    title: "Nightly backup".to_string(),
+                    outcome: WsJobOutcome::Passed,
+                },
+                WsJob {
+                    id: JobId("r2".to_string()),
+                    title: "Deploy".to_string(),
+                    outcome: WsJobOutcome::Failed,
+                },
+                WsJob {
+                    id: JobId("r3".to_string()),
+                    title: "Live".to_string(),
+                    outcome: WsJobOutcome::Running,
+                },
+            ],
+            dropped_records: 0,
+        };
+        Snapshot::new(
+            Utc.with_ymd_and_hms(2026, 6, 14, 12, 0, 0).unwrap(),
+            Section::missing(FeedId("scriptvault".to_string())),
+            data_section(FeedStatus::Stale, tools),
+            data_section(FeedStatus::Fresh, findings),
+            data_section(FeedStatus::Fresh, jobs),
+        )
+    }
+
+    fn unique(tag: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("pulse-{tag}-{}-{}", std::process::id(), nanos))
     }
 
     #[test]
-    fn missing_files_never_panic_and_read_as_unavailable() {
-        let t = TempData::new("missing");
-        let d = t.data();
-        let fresh = read_freshness(&d);
-        assert!(fresh.sections.is_empty());
-        assert!(fresh.built_at.is_none());
-        assert!(read_rexops(&d).is_none());
-        assert!(!read_bulwark(&d).present);
-        assert!(read_jobs(&d).is_empty());
+    fn no_snapshot_is_empty_everything() {
+        assert!(freshness(None).sections.is_empty());
+        assert!(freshness(None).built_at.is_none());
+        assert!(suite_view(None).is_none());
+        assert!(!bulwark(None).present);
+        assert!(jobs(None).is_empty());
     }
 
     #[test]
-    fn malformed_json_reads_as_unavailable() {
-        let t = TempData::new("malformed");
-        t.write("rexops/feeds/workstate.snapshot.json", "{ not json ");
-        t.write("rexops/snapshot.json", "garbage");
-        let d = t.data();
-        assert!(read_freshness(&d).sections.is_empty());
-        assert!(read_rexops(&d).is_none());
-    }
-
-    #[test]
-    fn workstate_freshness_maps_section_status() {
-        let t = TempData::new("fresh");
-        t.write(
-            "rexops/feeds/workstate.snapshot.json",
-            r#"{
-              "schema_version": 4,
-              "built_at": "2026-06-14T12:00:00Z",
-              "scripts":  { "status": "Fresh" },
-              "tools":    { "status": "Stale" },
-              "findings": { "status": { "UnsupportedVersion": { "found": null, "supported": 1 } } }
-            }"#,
-        );
-        let f = read_freshness(&t.data());
-        assert_eq!(f.built_at.as_deref(), Some("2026-06-14T12:00:00Z"));
+    fn freshness_maps_each_section_status() {
+        let s = sample();
+        let f = freshness(Some(&s));
+        assert_eq!(f.built_at.as_deref(), Some("2026-06-14T12:00:00+00:00"));
         assert_eq!(
             f.sections,
             vec![
-                ("scripts", Freshness::Current),
+                ("scripts", Freshness::Unavailable), // Missing
                 ("tools", Freshness::Stale),
-                ("findings", Freshness::Unavailable),
+                ("findings", Freshness::Current), // Fresh
             ]
         );
         assert!(f.any_stale());
@@ -573,30 +514,19 @@ mod tests {
     }
 
     #[test]
-    fn rexops_attention_is_normalized_and_sorted_by_severity() {
-        let t = TempData::new("rexops");
-        t.write(
-            "rexops/snapshot.json",
-            r#"{
-              "schema_version": 1,
-              "source_tool": "rexops",
-              "generated_at": "2026-06-14T00:00:00Z",
-              "sources": {
-                "workstate": { "present": true,  "last_seen": "x" },
-                "scriptvault": { "present": false, "last_seen": null }
-              },
-              "attention": [
-                { "tool": "toolfoundry", "id": "backup-home", "reason": "health failing", "severity": "high" },
-                { "tool": "bulwark", "id": "deploy-prod.sh", "reason": "AWS key", "severity": "critical" }
-              ]
-            }"#,
-        );
-        let v = read_rexops(&t.data()).expect("present");
-        assert_eq!(v.generated_at.as_deref(), Some("2026-06-14T00:00:00Z"));
+    fn suite_view_reports_presence_and_merged_attention() {
+        let s = sample();
+        let v = suite_view(Some(&s)).expect("snapshot present");
+        let present = |name: &str| v.sources.iter().any(|(n, p)| n == name && *p);
+        let absent = |name: &str| v.sources.iter().any(|(n, p)| n == name && !*p);
+        assert!(present("workstate"));
+        assert!(absent("scriptvault")); // scripts section Missing
+        assert!(present("toolfoundry")); // tools has data
+        assert!(present("bulwark")); // findings has data
+        assert!(present("proto")); // jobs has data
+
+        // Attention merges security findings + tool health; the low finding is filtered.
         assert_eq!(v.attention.len(), 2);
-        // sources carried through with presence.
-        assert!(v.sources.iter().any(|(n, p)| n == "workstate" && *p));
-        assert!(v.sources.iter().any(|(n, p)| n == "scriptvault" && !*p));
         let crit = v
             .attention
             .iter()
@@ -604,117 +534,82 @@ mod tests {
             .unwrap();
         assert_eq!(crit.what, "deploy-prod.sh");
         assert_eq!(crit.source, "bulwark");
+        let health = v
+            .attention
+            .iter()
+            .find(|a| a.source == "toolfoundry")
+            .unwrap();
+        assert_eq!(health.what, "Backup Home");
+        assert_eq!(health.severity, Severity::High);
     }
 
     #[test]
     fn bulwark_only_surfaces_high_and_critical() {
-        let t = TempData::new("bulwark");
-        t.write(
-            "workstate/feeds/bulwark.json",
-            r#"{
-              "schema_version": 1, "source_tool": "bulwark",
-              "generated_at": "2026-06-06T12:34:56Z", "item_count": 3,
-              "items": [
-                { "name": "low.sh",  "severity": "low",      "description": "noise" },
-                { "name": "hi.sh",   "severity": "high",     "description": "exec bit on secret" },
-                { "name": "crit.sh", "severity": "critical", "description": "private key committed" }
-              ]
-            }"#,
-        );
-        let v = read_bulwark(&t.data());
-        assert!(v.present);
-        assert_eq!(v.attention.len(), 2);
-        assert!(v.attention.iter().all(|a| a.severity >= Severity::High));
+        let s = sample();
+        let b = bulwark(Some(&s));
+        assert!(b.present);
+        assert_eq!(b.attention.len(), 1); // the critical; the low finding is filtered
+        assert!(b.attention.iter().all(|a| a.severity >= Severity::High));
     }
 
     #[test]
-    fn unknown_or_uppercase_severity_escalates_not_drops() {
-        // L6 regression: an unrecognized severity string must surface as High,
-        // never silently sink to Low (rexops path) or be dropped (bulwark path).
-        // Also covers case-insensitive parsing of a known value.
-        let t = TempData::new("sevquirk");
-        t.write(
-            "rexops/snapshot.json",
-            r#"{
-              "schema_version": 1, "source_tool": "rexops",
-              "generated_at": "2026-06-20T00:00:00Z",
-              "sources": {},
-              "attention": [
-                { "tool": "bulwark", "id": "weird.sh", "reason": "novel severity", "severity": "urgent" },
-                { "tool": "bulwark", "id": "caps.sh",  "reason": "shouted", "severity": "CRITICAL" }
-              ]
-            }"#,
-        );
-        let rx = read_rexops(&t.data()).expect("present");
-        let weird = rx.attention.iter().find(|a| a.what == "weird.sh").unwrap();
-        assert_eq!(weird.severity, Severity::High, "unknown -> High, not Low");
-        let caps = rx.attention.iter().find(|a| a.what == "caps.sh").unwrap();
-        assert_eq!(caps.severity, Severity::Critical, "CRITICAL parses");
-
-        // Bulwark path: an unknown severity must still pass the High filter.
-        t.write(
-            "workstate/feeds/bulwark.json",
-            r#"{
-              "schema_version": 1, "source_tool": "bulwark",
-              "generated_at": "2026-06-20T00:00:00Z", "item_count": 1,
-              "items": [
-                { "name": "mystery.sh", "severity": "weird-new-level", "description": "unknown sev" }
-              ]
-            }"#,
-        );
-        let bw = read_bulwark(&t.data());
+    fn unrated_or_unknown_severity_escalates_not_drops() {
+        // An unrated/unknown finding severity must surface as High, never be dropped
+        // below the attention threshold.
+        let mut s = sample();
+        if let Some(inv) = s.findings.data.as_mut() {
+            inv.findings = vec![finding(
+                "mystery.sh",
+                None,
+                WsSeverity::Unrated,
+                Some("no severity signal"),
+            )];
+        }
+        let b = bulwark(Some(&s));
         assert_eq!(
-            bw.attention.len(),
+            b.attention.len(),
             1,
-            "unknown severity must not be dropped"
+            "unrated must escalate to High, not drop"
         );
-        assert!(bw.attention[0].severity >= Severity::High);
+        assert_eq!(b.attention[0].severity, Severity::High);
+        assert_eq!(b.attention[0].what, "mystery.sh");
     }
 
     #[test]
-    fn proto_sessions_classify_outcomes() {
-        let t = TempData::new("proto");
-        // passed: finished, no failed steps
-        t.write(
-            "proto/sessions/a.json",
-            r#"{ "schema_version":1,"source_tool":"proto","generated_at":"x",
-                 "protocol_id":"p","protocol_title":"Passed Run","started_at":"x",
-                 "finished_at":"y",
-                 "steps":[{"step_id":"1","status":"passed"},{"step_id":"2","status":"acknowledged"}] }"#,
-        );
-        // failed: a failed step
-        t.write(
-            "proto/sessions/b.json",
-            r#"{ "schema_version":1,"source_tool":"proto","generated_at":"x",
-                 "protocol_id":"p","protocol_title":"Failed Run","started_at":"x",
-                 "finished_at":"y",
-                 "steps":[{"step_id":"1","status":"failed"}] }"#,
-        );
-        // running: no finished_at, a pending step
-        t.write(
-            "proto/sessions/c.json",
-            r#"{ "schema_version":1,"source_tool":"proto","generated_at":"x",
-                 "protocol_id":"p","protocol_title":"Live Run","started_at":"x",
-                 "steps":[{"step_id":"1","status":"passed"},{"step_id":"2","status":"pending"}] }"#,
-        );
-        // a non-json file is ignored
-        t.write("proto/sessions/notes.txt", "ignore me");
+    fn jobs_map_outcomes_from_the_snapshot() {
+        let s = sample();
+        let js = jobs(Some(&s));
+        assert_eq!(js.len(), 3);
+        let by = |title: &str| js.iter().find(|j| j.title == title).unwrap().outcome;
+        assert_eq!(by("Nightly backup"), JobOutcome::Passed);
+        assert_eq!(by("Deploy"), JobOutcome::Failed);
+        assert_eq!(by("Live"), JobOutcome::Running);
+    }
 
-        let mut jobs = read_jobs(&t.data());
-        jobs.sort_by(|a, b| a.title.cmp(&b.title));
-        assert_eq!(jobs.len(), 3);
-        let by = |title: &str| jobs.iter().find(|j| j.title == title).unwrap().outcome;
-        assert_eq!(by("Passed Run"), JobOutcome::Passed);
-        assert_eq!(by("Failed Run"), JobOutcome::Failed);
-        assert_eq!(by("Live Run"), JobOutcome::Running);
+    #[test]
+    fn load_missing_or_malformed_reads_as_none() {
+        // A root with no snapshot at all.
+        let missing = DataDir {
+            root: unique("missing"),
+        };
+        assert!(load(&missing).is_none());
+
+        // A malformed snapshot at the canonical path reads as None (never panics).
+        let root = unique("malformed");
+        let path = workstate_schema::snapshot_path_under(&root);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{ not json").unwrap();
+        let bad = DataDir { root: root.clone() };
+        assert!(load(&bad).is_none());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn binary_checks_cover_the_suite_and_detect_a_real_binary() {
         let checks = read_binaries();
         assert_eq!(checks.len(), SUITE_BINARIES.len());
-        // `which` should find `sh`, which every PATH has — sanity-check the probe
-        // logic itself without depending on suite tools being installed.
+        // `which` finds `sh` (every PATH has it) and rejects a nonsense name —
+        // sanity-checking the probe without depending on suite tools being installed.
         assert!(which("sh"));
         assert!(!which("definitely-not-a-real-binary-xyzzy"));
     }

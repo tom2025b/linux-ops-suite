@@ -1,58 +1,74 @@
-//! `workstate` — write, re-stamp, and report the state snapshot.
+//! `workstate` — refresh the canonical snapshot (via the producer) and report it.
+//!
+//! Conductor does NOT compile or write the snapshot itself: Workstate is the single
+//! producer. `refresh` invokes the `workstate` binary (which writes the canonical
+//! snapshot), and `status` reads that snapshot back through the shared loader.
 
 use crate::cli::WorkstateCmd;
 use crate::commands::snapshot;
 use crate::core::config::Config;
-use crate::core::error::Result;
-use crate::state::workstate::Workstate;
+use crate::core::error::{Error, Result};
 use crate::ui::display;
 
 pub fn run(cmd: WorkstateCmd, config: &Config) -> Result<()> {
     match cmd {
-        WorkstateCmd::Snapshot => snapshot_cmd(config),
-        WorkstateCmd::Refresh => refresh(config),
+        // Both "snapshot" and "refresh" mean the same thing now: ask the producer
+        // to recompile the canonical snapshot. Two names kept for muscle memory.
+        WorkstateCmd::Snapshot | WorkstateCmd::Refresh => refresh(config),
         WorkstateCmd::Status => status(config),
     }
 }
 
-/// Write a fresh snapshot, preserving any findings already on disk.
-fn snapshot_cmd(config: &Config) -> Result<()> {
-    let mut ws = load_or_empty(config);
-    ws.restamp();
-    snapshot::save(&config.workstate_path(), &ws)?;
-    display::workstate_saved(config, &ws);
-    Ok(())
-}
-
-/// Re-stamp the snapshot as current.
+/// Regenerate the canonical snapshot by invoking the Workstate producer, then show
+/// the result.
 fn refresh(config: &Config) -> Result<()> {
-    let mut ws = load_or_empty(config);
-    ws.restamp();
-    snapshot::save(&config.workstate_path(), &ws)?;
-    display::message(config, "workstate refreshed");
+    run_producer()?;
+    let path = config.workstate_path();
+    if config.json {
+        display::print_json(&snapshot::load(&path)?)?;
+    } else {
+        display::message(
+            config,
+            &format!("workstate refreshed -> {}", path.display()),
+        );
+    }
     Ok(())
 }
 
-/// Report freshness and counts.
+/// Report freshness and counts for the canonical snapshot.
 fn status(config: &Config) -> Result<()> {
     let path = config.workstate_path();
     if !path.exists() {
         display::message(
             config,
-            "no workstate snapshot yet — run: conductor workstate snapshot",
+            "no workstate snapshot yet — run: conductor workstate refresh",
         );
         return Ok(());
     }
-    let ws = snapshot::load(&path)?;
+    let snap = snapshot::load(&path)?;
     if config.json {
-        display::print_json(&ws)?;
+        display::print_json(&snap)?;
     } else {
-        display::workstate_status(config, &ws);
+        display::workstate_status(config, &snap);
     }
     Ok(())
 }
 
-/// The current snapshot, or a fresh empty one if none exists yet.
-fn load_or_empty(config: &Config) -> Workstate {
-    snapshot::load(&config.workstate_path()).unwrap_or_else(|_| Workstate::empty())
+/// Resolve and spawn the Workstate producer (it writes the canonical snapshot to
+/// its own default path). The binary is `workstate` on `$PATH`, overridable via
+/// `CONDUCTOR_WORKSTATE_BIN` for a build that isn't installed.
+fn run_producer() -> Result<()> {
+    let bin = std::env::var("CONDUCTOR_WORKSTATE_BIN")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "workstate".to_string());
+    let status = std::process::Command::new(&bin).status().map_err(|e| {
+        Error::Snapshot(format!(
+            "could not run `{bin}`: {e}\ninstall workstate or set CONDUCTOR_WORKSTATE_BIN"
+        ))
+    })?;
+    if !status.success() {
+        return Err(Error::Snapshot(format!("`{bin}` exited with {status}")));
+    }
+    Ok(())
 }
