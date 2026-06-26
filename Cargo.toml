@@ -41,3 +41,9 @@ minijinja = "2"
 include_dir = "0.7"
 toml = "0.8"
 tempfile = "3"
+
+# Workstate snapshot CONTRACT crate — the single source of truth for the snapshot
+# format, the canonical path, and the load/write functions. Every consumer reads
+# the snapshot through this and nothing else. Pinned by rev like every cross-repo
+# suite dependency.
+workstate-schema = { git = "https://github.com/tom2025b/workstate", rev = "48c58c74acf88c8ae30ff21b4e032243ba66f8c3" }

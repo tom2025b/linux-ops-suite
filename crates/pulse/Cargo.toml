@@ -15,11 +15,13 @@ path = "src/main.rs"
 # crossterm) owns the theme, panes, overlays, the terminal guard, and
 # display-width truncation, so Pulse stops hand-rolling ANSI/termios. TTY and
 # $PATH helpers still come from suite-core (the shared, dependency-free helper
-# crate). The one JSON concession: Pulse reads four suite contracts (Workstate
-# snapshot, RexOps snapshot, Proto sessions, Bulwark feed), so it uses the
-# workspace's serde/serde_json rather than hand-rolling a parser — serde also
-# ignores unknown fields by default, exactly what CONTRACT_RULES.md requires. No
-# network.
+# crate).
+#
+# Pulse reads exactly ONE artifact: the Workstate snapshot, through workstate-schema
+# (its `Snapshot` type + canonical path + validating loader). Everything it shows —
+# freshness, attention, per-source presence, protocol-run outcomes — is DERIVED from
+# that snapshot; it never reads a raw producer feed. serde/serde_json remain for the
+# few small local models elsewhere in the binary. No network.
 [dependencies]
 suite-core = { workspace = true }
 suite-ui = { workspace = true }
@@ -27,6 +29,10 @@ ratatui = { workspace = true }
 crossterm = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+workstate-schema = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
+# Tests construct an in-memory Snapshot (whose built_at is a chrono DateTime) to
+# exercise the derivations without touching disk.
+chrono = { workspace = true }

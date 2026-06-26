@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/workstate.snapshot.schema.json",
-  "title": "Workstate snapshot (v4)",
-  "description": "The single versioned artifact Workstate compiles and RexOps consumes as its source of truth. Envelope { schema_version, built_at } wrapping three Section<T> objects (scripts, tools, findings). Modeled from workstate/src/model/snapshot.rs plus the normalized inventory types, cross-checked against the live RexOps fixture. Workstate is strictly read-only and never mutates source tools.",
+  "title": "Workstate snapshot (v5)",
+  "description": "The single versioned artifact Workstate compiles and RexOps consumes as its source of truth. Envelope { schema_version, built_at } wrapping four Section<T> objects (scripts, tools, findings, jobs). Modeled from workstate/src/model/snapshot.rs plus the normalized inventory types, cross-checked against the live RexOps fixture. Workstate is strictly read-only and never mutates source tools.",
   "$comment": "SEAMS (intentional, documented): (1) tools[].review_due remains date-or-null but currently stays null for RexOps compatibility; ToolFoundry's concrete lifecycle review date is the additive tools[].review_after field and the live due signal is review_due_flag. (2) tools.tool_count / attention_count are producer-reported summaries, advisory only, not cross-checked against tools[].length. (3) Record objects allow additionalProperties because producers preserve unmodeled upstream keys: Script flattens them inline (serde flatten). Finding does NOT: as of v4 it carries an explicit field allowlist with no passthrough 'rest' bag, so an unmodeled Bulwark wire field (which can hold matched secrets/PII) never reaches the snapshot. (4) section.data is null when a section is Missing/Failed/UnsupportedVersion — graceful degradation, not an error. (5) v4 adds provenance.dropped_records (count of records normalization dropped for want of a usable id/subject) and a FreshnessUnknown status (a clean read whose source age is unknown, not mislabeled Fresh). Obsolete v1 fields (source_tool, projects[], top-level generated_at) are intentionally absent; additionalProperties:true at the root means a stray legacy key degrades rather than hard-failing, matching consumer leniency.",
   "type": "object",
   "required": ["schema_version"],
@@ -10,8 +10,8 @@
   "properties": {
     "schema_version": {
       "type": "integer",
-      "const": 4,
-      "description": "Major contract version. RexOps gates on this FIRST; only v4 is consumed."
+      "const": 5,
+      "description": "Major contract version. RexOps gates on this FIRST; only v5 is consumed."
     },
     "built_at": {
       "type": "string",
@@ -19,7 +19,8 @@
     },
     "scripts": { "$ref": "#/definitions/scriptsSection" },
     "tools": { "$ref": "#/definitions/toolsSection" },
-    "findings": { "$ref": "#/definitions/findingsSection" }
+    "findings": { "$ref": "#/definitions/findingsSection" },
+    "jobs": { "$ref": "#/definitions/jobsSection" }
   },
   "definitions": {
     "provenance": {
@@ -217,6 +218,42 @@
                       "path": { "type": ["string", "null"], "description": "v4: filesystem path of the scanned script (Bulwark `path`), if present. Omitted when absent. Downstream consumers (toolbox-bridge) key sidecars by this." },
                       "risk": { "type": ["string", "null"], "description": "v4: Bulwark's free-form risk label, if present. Omitted when absent." },
                       "owner": { "type": ["string", "null"], "description": "v4: owning user/team (Bulwark `owner`), if present. Omitted when absent." }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "jobsSection": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "provenance": { "$ref": "#/definitions/provenance" },
+        "data": {
+          "description": "JobInventory, or null when Missing/Failed/UnsupportedVersion.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "generated_at": { "type": "string" },
+                "dropped_records": { "type": "integer", "minimum": 0, "default": 0, "description": "v5: runs dropped during normalization (no usable id). Mirrors provenance.dropped_records." },
+                "jobs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "title", "outcome"],
+                    "additionalProperties": false,
+                    "$comment": "v5: Job is an EXPLICIT allowlist (deny_unknown_fields) — id, title, outcome only. Proto's raw step counts/timestamps are NOT persisted; the adapter derives outcome from status + failed.",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "title": { "type": "string", "description": "Protocol title; 'protocol run' when the feed gave none." },
+                      "outcome": { "type": "string", "enum": ["passed", "failed", "running"], "description": "Derived: failed>0 -> failed; complete & no failures -> passed; else running." }
                     }
                   }
                 }

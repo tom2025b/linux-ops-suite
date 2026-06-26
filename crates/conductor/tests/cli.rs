@@ -1,10 +1,21 @@
 //! End-to-end CLI tests: run the built `conductor` binary against a temp data
 //! dir and assert the human + JSON output and exit codes. `--data-dir` and
 //! `--no-color` keep this deterministic and color-free.
+//!
+//! Every snapshot-derived fixture is ONE canonical v5 Workstate snapshot, written
+//! through `workstate_schema` (the single source of truth) — the same artifact the
+//! producer emits and conductor reads, so these tests exercise the real contract,
+//! not a hand-rolled shape. Tripwire drift stays a separate file (it is not in the
+//! snapshot contract yet).
 
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
+
+use chrono::{TimeZone, Utc};
+use workstate_schema::model::normalized::{Finding, FindingId, FindingInventory, Severity};
+use workstate_schema::model::provenance::{FeedId, FeedStatus, Provenance, Section};
+use workstate_schema::Snapshot;
 
 fn bin() -> PathBuf {
     // Cargo exposes the built binary path to integration tests.
@@ -29,6 +40,67 @@ const SUITE_BINARIES: &[&str] = &[
     "rexops",
 ];
 
+/// Provenance stub for a fixture section (no timestamps; tests don't assert age).
+fn prov(feed: &str) -> Provenance {
+    Provenance {
+        feed_id: FeedId(feed.into()),
+        fetched_at: None,
+        source_observed_at: None,
+        dropped_records: 0,
+    }
+}
+
+/// A Fresh section carrying optional `data` — the default state for a feed a test
+/// doesn't care about, so it never spuriously trips the stale/unavailable refresh.
+fn fresh<T>(feed: &str, data: Option<T>) -> Section<T> {
+    Section {
+        status: FeedStatus::Fresh,
+        provenance: prov(feed),
+        data,
+    }
+}
+
+/// One canonical Bulwark finding for a fixture.
+fn finding(id: &str, reason: &str, sev: Severity) -> Finding {
+    Finding {
+        id: FindingId(id.into()),
+        name: None,
+        rule_id: None,
+        description: Some(reason.into()),
+        severity: sev,
+        raw_severity: None,
+        category: None,
+        location: "unknown".into(),
+        path: None,
+        risk: None,
+        owner: None,
+    }
+}
+
+/// Build a v5 snapshot: every feed Fresh except `tools`, which goes Stale when
+/// `tools_stale` (the trigger for the rule-1 refresh step), plus `findings`.
+fn snapshot_with(tools_stale: bool, findings: Vec<Finding>) -> Snapshot {
+    let mut tools = fresh("toolfoundry", None);
+    if tools_stale {
+        tools.status = FeedStatus::Stale;
+    }
+    let findings = fresh(
+        "bulwark",
+        Some(FindingInventory {
+            generated_at: "2026-06-14T12:00:00Z".into(),
+            findings,
+            dropped_records: 0,
+        }),
+    );
+    Snapshot::new(
+        Utc.with_ymd_and_hms(2026, 6, 14, 12, 0, 0).unwrap(),
+        fresh("scriptvault", None),
+        tools,
+        findings,
+        fresh("proto", None),
+    )
+}
+
 impl TempRoot {
     fn new(tag: &str) -> Self {
         let mut dir = std::env::temp_dir();
@@ -47,6 +119,13 @@ impl TempRoot {
             .unwrap()
             .write_all(body.as_bytes())
             .unwrap();
+    }
+
+    /// Publish a canonical snapshot at the path conductor reads (defined by
+    /// `workstate_schema`, so the test never re-spells it).
+    fn write_snapshot(&self, snap: &Snapshot) {
+        let path = workstate_schema::snapshot_path_under(&self.dir);
+        workstate_schema::write_snapshot(snap, &path).unwrap();
     }
 
     /// A `bin/` dir under this root holding an executable stub for every suite
@@ -115,14 +194,10 @@ fn bare_invocation_defaults_to_status() {
 #[test]
 fn stale_feed_and_finding_produce_an_ordered_plan() {
     let t = TempRoot::new("plan");
-    t.write(
-        "rexops/feeds/workstate.snapshot.json",
-        r#"{ "built_at":"2026-06-14T12:00:00Z", "tools": { "status": "Stale" } }"#,
-    );
-    t.write(
-        "rexops/snapshot.json",
-        r#"{ "attention": [ { "tool":"bulwark","id":"deploy-prod.sh","reason":"AWS key","severity":"critical" } ] }"#,
-    );
+    t.write_snapshot(&snapshot_with(
+        true,
+        vec![finding("deploy-prod.sh", "AWS key", Severity::Critical)],
+    ));
     let out = run(&t, &["status"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -136,10 +211,12 @@ fn stale_feed_and_finding_produce_an_ordered_plan() {
 #[test]
 fn json_status_is_the_suite_envelope_with_ids() {
     let t = TempRoot::new("json");
-    t.write(
-        "rexops/snapshot.json",
-        r#"{ "attention": [ { "tool":"bulwark","id":"x.sh","reason":"k","severity":"high" } ] }"#,
-    );
+    // No stale feed (every section Fresh) → no refresh step, so the safety capture
+    // that guards the investigate step is the first step.
+    t.write_snapshot(&snapshot_with(
+        false,
+        vec![finding("x.sh", "k", Severity::High)],
+    ));
     let out = run(&t, &["status", "--json"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -153,13 +230,14 @@ fn json_status_is_the_suite_envelope_with_ids() {
 #[test]
 fn drift_correlation_is_visible_end_to_end() {
     let t = TempRoot::new("drift");
-    t.write(
-        "rexops/snapshot.json",
-        r#"{ "attention": [
-              { "tool":"bulwark","id":"crit.sh","reason":"k","severity":"critical" },
-              { "tool":"bulwark","id":"deploy-prod.sh","reason":"key","severity":"high" }
-            ] }"#,
-    );
+    t.write_snapshot(&snapshot_with(
+        false,
+        vec![
+            finding("crit.sh", "k", Severity::Critical),
+            finding("deploy-prod.sh", "key", Severity::High),
+        ],
+    ));
+    // Drift is NOT in the snapshot contract yet — still its own file.
     t.write("tripwire/drift.json", r#"{ "paths": ["deploy-prod.sh"] }"#);
     let out = run(&t, &["status"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -183,10 +261,7 @@ fn health_runs_and_exits_zero() {
 #[test]
 fn plan_verb_prints_steps_without_situation() {
     let t = TempRoot::new("planverb");
-    t.write(
-        "rexops/feeds/workstate.snapshot.json",
-        r#"{ "tools": { "status": "Stale" } }"#,
-    );
+    t.write_snapshot(&snapshot_with(true, vec![]));
     let out = run(&t, &["plan"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -198,10 +273,7 @@ fn plan_verb_prints_steps_without_situation() {
 fn dump_view_plan_renders_steps_for_a_stale_feed_state() {
     let t = TempRoot::new("dumpplan");
     // A stale workstate feed → a refresh step in the plan.
-    t.write(
-        "rexops/feeds/workstate.snapshot.json",
-        r#"{ "built_at":"2026-06-14T12:00:00Z", "tools": { "status": "Stale" } }"#,
-    );
+    t.write_snapshot(&snapshot_with(true, vec![]));
     let out = run(&t, &["--dump-view", "plan"]);
     assert!(
         out.status.success(),
@@ -219,7 +291,7 @@ fn dump_view_plan_renders_steps_for_a_stale_feed_state() {
 
 #[test]
 fn dump_view_healthy_says_nothing_to_conduct_when_all_clear() {
-    // Empty data dir: no feeds, no findings → empty plan → healthy screen.
+    // Empty data dir: no snapshot, no findings → empty plan → healthy screen.
     // run() already points PATH at stub_bin_dir, so all 8 bins are "present"
     // and the wiring-gap rule stays dormant.
     let t = TempRoot::new("dumphealthy");
@@ -237,10 +309,7 @@ fn dump_view_healthy_says_nothing_to_conduct_when_all_clear() {
 fn bare_non_tty_falls_back_to_status_not_the_tui() {
     // Output is captured (not a TTY), so bare conductor must print status text.
     let t = TempRoot::new("barenontty");
-    t.write(
-        "rexops/feeds/workstate.snapshot.json",
-        r#"{ "built_at":"2026-06-14T12:00:00Z", "tools": { "status": "Stale" } }"#,
-    );
+    t.write_snapshot(&snapshot_with(true, vec![]));
     let out = run(&t, &[]);
     assert!(
         out.status.success(),
@@ -287,10 +356,7 @@ fn dump_view_confirm_renders_the_ring2_modal() {
     // A stale feed yields a Ring-2 refresh step at the top; the confirm view
     // renders its modal deterministically (no PTY).
     let t = TempRoot::new("confirm-dump");
-    t.write(
-        "rexops/feeds/workstate.snapshot.json",
-        r#"{ "built_at":"2026-06-14T12:00:00Z", "tools": { "status": "Stale" } }"#,
-    );
+    t.write_snapshot(&snapshot_with(true, vec![]));
     let out = run(&t, &["--dump-view", "confirm"]);
     assert!(out.status.success());
     let text = String::from_utf8_lossy(&out.stdout);

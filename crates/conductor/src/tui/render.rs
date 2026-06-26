@@ -101,7 +101,14 @@ fn ring_style(ring: Ring, pal: Palette, theme: Theme) -> Style {
 /// bold and the focused row gets a strong reverse bar.
 fn step_line(n: usize, step: &Step, focused: bool, pal: Palette, theme: Theme) -> Line<'static> {
     let rail = if focused {
-        Span::styled("▌ ", if pal.active() { pal.accent() } else { theme.selected_rail() })
+        Span::styled(
+            "▌ ",
+            if pal.active() {
+                pal.accent()
+            } else {
+                theme.selected_rail()
+            },
+        )
     } else {
         Span::raw("  ")
     };
@@ -119,7 +126,11 @@ fn step_line(n: usize, step: &Step, focused: bool, pal: Palette, theme: Theme) -
         Span::styled(step.title.clone(), title_style),
     ];
     if let Some(note) = &step.annotation {
-        let accent = if pal.active() { pal.accent() } else { theme.accent_bar() };
+        let accent = if pal.active() {
+            pal.accent()
+        } else {
+            theme.accent_bar()
+        };
         spans.push(Span::styled(format!("  ← {note}"), accent));
     }
     spans.push(Span::raw("  "));
@@ -136,10 +147,10 @@ fn render_plan(f: &mut Frame, app: &App, area: Rect, theme: Theme) {
     let has_situation = !app.plan.situation.is_empty();
     let constraints = if has_situation {
         vec![
-            Constraint::Length(3), // header
+            Constraint::Length(3),                                   // header
             Constraint::Length(app.plan.situation.len() as u16 + 2), // situation
-            Constraint::Min(3),    // plan (fills the rest)
-            Constraint::Length(2), // hints + notice
+            Constraint::Min(3),                                      // plan (fills the rest)
+            Constraint::Length(2),                                   // hints + notice
         ]
     } else {
         vec![
@@ -209,7 +220,11 @@ fn render_plan(f: &mut Frame, app: &App, area: Rect, theme: Theme) {
     let hint_line = match &app.notice {
         Some(msg) => Line::from(Span::styled(
             msg.clone(),
-            if pal.active() { pal.ok() } else { theme.status_error() },
+            if pal.active() {
+                pal.ok()
+            } else {
+                theme.status_error()
+            },
         )),
         None => Line::from(Span::styled(HINT, body(pal, theme))),
     };
@@ -393,9 +408,7 @@ mod tests {
     /// The 0-based row index of the first line containing `needle` in the
     /// rendered (tall) frame, or None.
     fn row_of(app: &App, needle: &str) -> Option<usize> {
-        render_tall(app)
-            .lines()
-            .position(|l| l.contains(needle))
+        render_tall(app).lines().position(|l| l.contains(needle))
     }
 
     #[test]
@@ -461,7 +474,10 @@ mod tests {
             text.contains("nothing to conduct"),
             "empty state copy:\n{text}"
         );
-        assert!(!text.contains("The plan"), "no plan pane when empty:\n{text}");
+        assert!(
+            !text.contains("The plan"),
+            "no plan pane when empty:\n{text}"
+        );
     }
 
     #[test]
@@ -496,10 +512,7 @@ mod tests {
     #[test]
     fn help_rows_describe_changes_state_gate() {
         // The help content must not drift from the gate behaviour.
-        let joined: String = HELP_ROWS
-            .iter()
-            .map(|(k, d)| format!("{k} {d} "))
-            .collect();
+        let joined: String = HELP_ROWS.iter().map(|(k, d)| format!("{k} {d} ")).collect();
         assert!(joined.contains("run"));
         assert!(
             joined.to_lowercase().contains("confirm")

@@ -220,12 +220,18 @@ pub fn step(app: &mut App, key: KeyEvent, spawner: &dyn Spawner) -> Action {
         // unshifted keycaps so the user doesn't need to hold Shift.)
         KeyCode::Char('+') | KeyCode::Char('=') => {
             app.density = app.density.larger();
-            app.notice = Some(format!("text size: {} (+/- to adjust)", app.density.label()));
+            app.notice = Some(format!(
+                "text size: {} (+/- to adjust)",
+                app.density.label()
+            ));
             Action::Redraw
         }
         KeyCode::Char('-') | KeyCode::Char('_') => {
             app.density = app.density.smaller();
-            app.notice = Some(format!("text size: {} (+/- to adjust)", app.density.label()));
+            app.notice = Some(format!(
+                "text size: {} (+/- to adjust)",
+                app.density.label()
+            ));
             Action::Redraw
         }
         // Toggle the high-contrast palette.
@@ -259,8 +265,9 @@ pub fn step(app: &mut App, key: KeyEvent, spawner: &dyn Spawner) -> Action {
             // with no cockpit.)
             if crate::sources::is_on_path("rexops") {
                 if let Err(e) = spawner.spawn(&["rexops".to_string()]) {
-                    app.notice =
-                        Some(format!("rexops handoff failed ({e}); press a key to redraw"));
+                    app.notice = Some(format!(
+                        "rexops handoff failed ({e}); press a key to redraw"
+                    ));
                 }
             } else {
                 app.notice = Some("rexops is not on PATH".to_string());
@@ -591,7 +598,10 @@ mod tests {
         assert_eq!(action, Action::Redraw);
         assert_eq!(app.screen, Screen::Confirm);
         assert_eq!(app.plan.steps[0].status, StepStatus::Pending);
-        assert!(sp.calls.borrow().is_empty(), "opening confirm must not spawn");
+        assert!(
+            sp.calls.borrow().is_empty(),
+            "opening confirm must not spawn"
+        );
     }
 
     #[test]

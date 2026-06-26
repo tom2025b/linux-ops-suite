@@ -40,31 +40,24 @@ impl Palette {
 
     /// A pane title / header. Bright cyan + bold so every box header pops.
     pub fn title(self) -> Style {
-        Style::new()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+        Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD)
     }
 
     /// The accent used for borders + the selection rail: bright cyan, bold.
     pub fn accent(self) -> Style {
-        Style::new()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+        Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD)
     }
 
     /// The focused row's highlight: a strong reverse-video bar (works on any
     /// background and is unmistakable), bold.
     pub fn selection(self) -> Style {
-        Style::new()
-            .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+        Style::new().add_modifier(Modifier::BOLD | Modifier::REVERSED)
     }
 
     /// A "changes state" / caution tag — bright yellow + bold (a warning hue,
     /// not red, since it's a heads-up, not a failure).
     pub fn caution(self) -> Style {
-        Style::new()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
+        Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD)
     }
 
     /// A failure / error line — bright red + bold.
@@ -74,9 +67,7 @@ impl Palette {
 
     /// A done/success accent — bright green + bold.
     pub fn ok(self) -> Style {
-        Style::new()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
+        Style::new().fg(Color::Green).add_modifier(Modifier::BOLD)
     }
 }
 
@@ -89,7 +80,14 @@ mod tests {
         let p = Palette::new(true);
         // The whole point: text/title/accent carry bold and a bright fg, never
         // the DIM modifier that hurts weak vision.
-        for s in [p.text(), p.title(), p.accent(), p.caution(), p.error(), p.ok()] {
+        for s in [
+            p.text(),
+            p.title(),
+            p.accent(),
+            p.caution(),
+            p.error(),
+            p.ok(),
+        ] {
             assert!(
                 !s.add_modifier.contains(Modifier::DIM),
                 "high-contrast styles must never be dim: {s:?}"

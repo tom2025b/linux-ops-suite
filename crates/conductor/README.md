@@ -13,9 +13,11 @@ owns it. It never writes a live file itself.
 
 ## What it does
 
-- Reads every suite contract (Workstate snapshot, RexOps aggregate, Bulwark
-  feed, Proto sessions, an optional tripwire drift file) **fault-tolerantly** —
-  a missing or malformed feed becomes "unavailable", never a crash.
+- Reads the **one canonical Workstate snapshot** through `workstate-schema` (the
+  shared contract — the single source of truth for feed freshness, findings, and
+  jobs), plus two non-snapshot inputs (binary presence on `$PATH`, and an optional
+  tripwire drift file), all **fault-tolerantly** — a missing or malformed input
+  becomes "unavailable", never a crash.
 - Derives a **deterministic, ordered plan** from built-in rules: refresh stale
   data first, capture a safety point before changes, investigate the worst
   findings (drift-correlated ones first), review failed jobs.
@@ -90,10 +92,10 @@ plan/step across runs.
   "schema_version": 1,
   "source_tool": "conductor",
   "plan_id": "plan-2f0a…",
-  "situation": ["workstate snapshot is stale — refresh before trusting feeds"],
+  "situation": ["workstate snapshot is stale (tools) — refresh before trusting feeds"],
   "step_count": 2,
   "steps": [
-    { "id": "refresh-stale-data", "title": "refresh stale data",
+    { "id": "refresh-stale-data", "title": "refresh suite snapshot",
       "command": "workstate snapshot", "ring": "changes state" },
     { "id": "investigate-deploy-prod-sh", "title": "investigate deploy-prod.sh",
       "command": "bulwark show deploy-prod.sh", "ring": "read-only",
@@ -104,13 +106,15 @@ plan/step across runs.
 
 ## Where it reads
 
-Under `$XDG_DATA_HOME` (fallback `~/.local/share`), per
-`docs/INTEGRATION_MAP.md`:
+Under `$XDG_DATA_HOME` (fallback `~/.local/share`):
 
-- `rexops/feeds/workstate.snapshot.json` — feed freshness + build time
-- `rexops/snapshot.json` — aggregated findings (richest input)
-- `workstate/feeds/bulwark.json` — findings fallback (high/critical)
-- `proto/sessions/*.json` — failed jobs
-- `tripwire/drift.json` — optional; enables the drift × finding correlation
+- `rexops/feeds/workstate.snapshot.json` — the **single canonical Workstate
+  snapshot**, read through `workstate-schema`. Every snapshot-derived fact — feed
+  freshness, findings, and failed jobs — comes from this one artifact, so the
+  contract can't drift and conductor tracks the schema version automatically.
+- `tripwire/drift.json` — optional, not yet part of the snapshot contract; enables
+  the drift × finding correlation. The one input still read as its own file.
+- `$PATH` — probed for the suite binaries (live environment state, not snapshot
+  data); drives the wiring-gap rule.
 
 See `CONDUCTOR_DESIGN.md` at the repo root for the full design.

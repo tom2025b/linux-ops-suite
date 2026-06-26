@@ -16,12 +16,16 @@ path = "src/main.rs"
 name = "conductor"
 path = "src/lib.rs"
 
-# Conductor reads the suite's contract files (serde_json), probes $PATH, derives a
-# plan, and renders it. Its isatty/XDG/$PATH helpers come from suite-core (the
-# shared, dependency-free helper crate); chrono supplies only the "checked Nm ago"
-# stamp. No network, no async.
+# Conductor reads the ONE canonical Workstate snapshot through workstate-schema
+# (the shared contract — the single source of truth for all snapshot data), probes
+# $PATH, derives a plan, and renders it. It defines no snapshot model of its own.
+# Its isatty/XDG/$PATH helpers come from suite-core (the shared, dependency-free
+# helper crate); chrono supplies only the "checked Nm ago" stamp. serde/serde_json
+# render the --json envelope and read the one non-snapshot input still on disk
+# (tripwire drift, not yet in the contract). No network, no async.
 [dependencies]
 suite-core = { workspace = true }
+workstate-schema = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

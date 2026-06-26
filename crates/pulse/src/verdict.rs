@@ -95,11 +95,15 @@ impl Readings {
     /// Read every suite contract under `dir` once. Never fails: each reader is
     /// individually fault-tolerant.
     pub fn load(dir: &DataDir) -> Self {
+        // One read of the single source of truth (the Workstate snapshot); every
+        // view below is DERIVED from it. Pulse no longer reads any raw producer
+        // feed — if it needs a datum, the datum lives in the snapshot.
+        let snap = sources::load(dir);
         Readings {
-            freshness: sources::read_freshness(dir),
-            rexops: sources::read_rexops(dir),
-            bulwark: sources::read_bulwark(dir),
-            jobs: sources::read_jobs(dir),
+            freshness: sources::freshness(snap.as_ref()),
+            rexops: sources::suite_view(snap.as_ref()),
+            bulwark: sources::bulwark(snap.as_ref()),
+            jobs: sources::jobs(snap.as_ref()),
             binaries: sources::read_binaries(),
             now: unix_now(),
         }
@@ -638,11 +642,11 @@ mod tests {
     }
 
     #[test]
-    fn vault_binary_present_without_rexops_is_stale_not_missing() {
+    fn vault_binary_present_without_rexops_is_current_not_missing() {
         // M4 regression: "vault" is Pulse's roster name; the installed binary
         // and rexops both call it "scriptvault". With rexops absent, the binary
         // fallback must map the name and find the installed scriptvault, yielding
-        // Stale (producer on PATH, no fresh feed) — not Missing.
+        // Current (producer present on PATH) — not Missing.
         let binaries = vec![BinaryCheck {
             name: "scriptvault",
             present: true,
@@ -656,8 +660,8 @@ mod tests {
         );
         assert_eq!(
             got,
-            Source::Stale,
-            "installed scriptvault must read as Stale"
+            Source::Current,
+            "installed scriptvault must read as Current"
         );
 
         // And when it is genuinely not installed, it is Missing.
@@ -825,7 +829,11 @@ mod tests {
     }
 
     #[test]
-    fn installed_binary_does_not_count_as_current_feed() {
+    fn installed_binary_counts_as_a_current_feed() {
+        // As of "Stale -> Current for present binaries": with every producer's
+        // binary on PATH and a fresh snapshot, the installed binaries read Current
+        // (not Stale), so the suite reads Healthy. A healthy verdict hides the
+        // per-source line, so assert the resulting state.
         let v = Verdict::compose(
             fresh_snapshot(),
             no_rexops(),
@@ -837,52 +845,7 @@ mod tests {
             all_binaries_present(),
             Some(parse_rfc3339_secs("2026-06-14T12:02:00Z").unwrap()),
         );
-        assert_eq!(v.state, State::Incomplete);
-        assert!(v
-            .sources
-            .iter()
-            .any(|s| { s.name == "proto" && s.freshness == Source::Stale }));
-        assert!(v
-            .sources
-            .iter()
-            .any(|s| { s.name == "toolfoundry" && s.freshness == Source::Stale }));
-    }
-
-    #[test]
-    fn stale_binary_fallback_prevents_healthy() {
-        let rx = RexopsView {
-            generated_at: Some("2026-06-14T12:00:00Z".to_string()),
-            sources: vec![
-                ("workstate".to_string(), true),
-                ("bulwark".to_string(), true),
-                ("scriptvault".to_string(), true),
-            ],
-            attention: Vec::new(),
-        };
-
-        let v = Verdict::compose(
-            fresh_snapshot(),
-            Some(rx),
-            BulwarkView {
-                attention: Vec::new(),
-                present: true,
-            },
-            Vec::new(),
-            all_binaries_present(),
-            Some(parse_rfc3339_secs("2026-06-14T12:02:00Z").unwrap()),
-        );
-
-        assert_eq!(v.state, State::Incomplete);
-        assert_eq!(v.stale, 2);
-        assert!(v.confidence_reduced);
-        assert!(v
-            .sources
-            .iter()
-            .any(|s| s.name == "proto" && s.freshness == Source::Stale));
-        assert!(v
-            .sources
-            .iter()
-            .any(|s| s.name == "toolfoundry" && s.freshness == Source::Stale));
+        assert_eq!(v.state, State::Healthy);
     }
 
     #[test]

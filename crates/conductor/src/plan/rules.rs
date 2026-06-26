@@ -15,10 +15,19 @@ use crate::state::{Severity, SuiteState};
 /// rather than "refresh stale data" because the trigger may be unavailability,
 /// not staleness — the situation lines say precisely which, and only promise a
 /// fix for the stale ones.
-pub(super) fn refresh_stale_feeds(_state: &SuiteState) -> Option<Step> {
-    // TEMPORARY SPIKE - Disabled stale check so we can test the rest of Conductor
-    None
+pub(super) fn refresh_stale_feeds(state: &SuiteState) -> Option<Step> {
+    if state.has_stale_or_unavailable_feed() {
+        Some(Step::new(
+            "refresh-stale-data",
+            "refresh suite snapshot",
+            Some("workstate snapshot".to_string()),
+            Ring::ChangesState,
+        ))
+    } else {
+        None
+    }
 }
+
 /// Rule 2 — wiring gaps. Each suite binary missing from `$PATH` becomes an Info
 /// step naming the one command that fixes it. Informational because conductor
 /// can't install for you.
@@ -40,7 +49,7 @@ pub(super) fn wiring_gaps(state: &SuiteState) -> Vec<Step> {
 /// Rule 4 + 5 — investigate findings, worst first, with the drift-correlated one
 /// pulled to the front and annotated. Returns the ordered investigate steps.
 pub(super) fn investigate_findings(state: &SuiteState) -> Vec<Step> {
-    // findings arrive already sorted worst-first (sources::read_findings).
+    // findings arrive already sorted worst-first (sources::findings_of).
     let drifted: Vec<&str> = state.drift.iter().map(|d| d.path.as_str()).collect();
 
     let mut correlated: Vec<Step> = Vec::new();
@@ -153,7 +162,7 @@ mod tests {
         }
     }
 
-    /// sources::read_findings sorts worst-first; emulate that contract in tests
+    /// sources::findings_of sorts worst-first; emulate that contract in tests
     /// that depend on input order.
     fn sort_findings(s: &mut SuiteState) {
         s.findings.sort_by_key(|f| std::cmp::Reverse(f.severity));

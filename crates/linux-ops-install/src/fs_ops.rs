@@ -23,7 +23,6 @@ use crate::ui::{dry_run, ok, skip, step};
 use crate::verify::verify_download;
 use crate::Cli;
 use crate::GITHUB_OWNER;
-use crate::REX_LAUNCHER;
 
 #[derive(Debug)]
 pub(crate) struct InstallPaths {
@@ -95,28 +94,6 @@ pub(crate) fn install_tool(
     install_binary(&binary, &destination)?;
     ok(format!("{} -> {}", tool.binary, destination.display()));
 
-    Ok(())
-}
-
-pub(crate) fn install_rex_launcher(cli: &Cli, paths: &InstallPaths) -> Result<(), InstallError> {
-    let destination = paths.bin_dir.join("rex");
-    step("Installing rex launcher");
-
-    if cli.dry_run {
-        dry_run(format!(
-            "write embedded launcher to {}",
-            destination.display()
-        ));
-        return Ok(());
-    }
-
-    create_dir_all(&paths.bin_dir, "create install directory")?;
-    fs::write(&destination, REX_LAUNCHER).map_err(|source| InstallError::Io {
-        context: format!("write {}", destination.display()),
-        source,
-    })?;
-    set_executable(&destination)?;
-    ok(format!("rex -> {}", destination.display()));
     Ok(())
 }
 
