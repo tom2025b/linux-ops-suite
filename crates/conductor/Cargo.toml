@@ -2,23 +2,42 @@
 name = "conductor"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Command-line front-end for the Linux Ops Suite's state: take and restore workstate snapshots (rewind), and inspect findings and drift (bulwark), with human or JSON output."
+description = "The Linux Ops Suite's guided operator: reads the suite's own state, derives a short ordered runbook (do these things, in this order), and walks the operator through it — delegating every step to the tool that owns it. Read-only by default; it never writes a live file itself."
 
 [[bin]]
 name = "conductor"
 path = "src/main.rs"
 
-# Lean on purpose, same philosophy as the other suite crates. Conductor is a pure
-# CONSUMER of the canonical Workstate snapshot: it reads it through workstate-schema
-# (the shared contract) and defines no snapshot model of its own. clap parses the
-# CLI; serde_json renders --json output; chrono reads the snapshot's built_at. No
-# network, no async.
+[lib]
+name = "conductor"
+path = "src/lib.rs"
+
+# Conductor reads the ONE canonical Workstate snapshot through workstate-schema
+# (the shared contract — the single source of truth for all snapshot data), probes
+# $PATH, derives a plan, and renders it. It defines no snapshot model of its own.
+# Its isatty/XDG/$PATH helpers come from suite-core (the shared, dependency-free
+# helper crate); chrono supplies only the "checked Nm ago" stamp. serde/serde_json
+# render the --json envelope and read the one non-snapshot input still on disk
+# (tripwire drift, not yet in the contract). No network, no async.
 [dependencies]
+suite-core = { workspace = true }
+workstate-schema = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-workstate-schema = { workspace = true }
 chrono = { workspace = true }
+
+# Shared suite-wide TUI: the same ratatui-based chrome (Theme/pane/overlays + the
+# Tui terminal guard) that RexOps/Pulse/ScriptVault render from, so Conductor's
+# interactive view matches the rest of the suite. Workspace path dep — no git pin
+# (that is only for repos outside this workspace).
+suite-ui = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
