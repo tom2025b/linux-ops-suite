@@ -13,15 +13,13 @@ mod verify;
 
 use crate::error::{FailureSummary, InstallError};
 use crate::fs_ops::{
-    check_prereqs, install_rex_launcher, install_tool, install_wrappers_and_aliases, path_contains,
-    InstallPaths,
+    check_prereqs, install_tool, install_wrappers_and_aliases, path_contains, InstallPaths,
 };
 use crate::platform::Platform;
 use crate::release::{report_install_error, TOOLS};
 use crate::ui::{print_banner, print_mode, print_path_guidance};
 
 const GITHUB_OWNER: &str = "tom2025b";
-const REX_LAUNCHER: &str = include_str!("../../../bin/rex");
 
 /// Install and prepare Linux Ops Suite components.
 #[derive(Debug, Parser)]
@@ -89,7 +87,6 @@ fn run(cli: &Cli) -> Result<(), InstallError> {
         }
     }
 
-    install_rex_launcher(cli, &paths)?;
     install_wrappers_and_aliases(cli, &paths)?;
     print_path_guidance(&paths);
 
