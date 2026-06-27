@@ -45,14 +45,14 @@ jobs:
         run: >
           cargo build --release --locked --target ${{ matrix.target }}
           -p toolbox-bridge -p rex-doctor -p portman -p pulse
-          -p tripwire -p rewind -p conductor -p rex-forge -p proto -p toolfoundry -p bulwark -p rexops-cli
+          -p tripwire -p rewind -p conductor -p rex-forge -p proto -p toolfoundry -p bulwark -p rexops-cli -p scriptvault
 
       - name: Build (cross)
         if: matrix.cross
         run: >
           cross build --release --locked --target ${{ matrix.target }}
           -p toolbox-bridge -p rex-doctor -p portman -p pulse
-          -p tripwire -p rewind -p conductor -p rex-forge -p proto -p toolfoundry -p bulwark -p rexops-cli
+          -p tripwire -p rewind -p conductor -p rex-forge -p proto -p toolfoundry -p bulwark -p rexops-cli -p scriptvault
 
       - name: Package archive + checksum
         id: package
@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
           asset="linux-ops-suite-${{ matrix.target }}"
           bindir="target/${{ matrix.target }}/release"
-          bins="toolbox-bridge rex-doctor portman pulse tripwire rewind conductor rex-forge proto toolfoundry bulwark rexops"
+          bins="toolbox-bridge rex-doctor portman pulse tripwire rewind conductor rex-forge proto toolfoundry bulwark rexops scriptvault"
           staging="$(mktemp -d)"
           for bin in $bins; do
             test -f "$bindir/$bin" || { echo "missing binary: $bindir/$bin"; ls -la "$bindir"; exit 1; }

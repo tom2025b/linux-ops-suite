@@ -24,6 +24,8 @@ members = [
     "crates/rexops-app",
     "crates/rexops-cli",
     "crates/rexops-tui",
+    "crates/scriptvault-core",
+    "crates/scriptvault",
 ]
 
 [workspace.package]
@@ -44,6 +46,7 @@ rexops-core = { path = "crates/rexops-core" }
 rexops-adapters = { path = "crates/rexops-adapters" }
 rexops-app = { path = "crates/rexops-app" }
 rexops-tui = { path = "crates/rexops-tui" }
+scriptvault-core = { path = "crates/scriptvault-core" }
 ratatui = "0.29"
 crossterm = "0.28"
 unicode-width = "0.2"
@@ -66,6 +69,20 @@ libc = "0.2"
 anyhow = "1"
 directories = "6"
 walkdir = "2"
+# ScriptVault's deps (consolidated in-tree). `dirs` is distinct from `directories`
+# above (different crate); ScriptVault uses `dirs`.
+fuzzy-matcher = "0.3"
+globset = "0.4"
+dirs = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap_complete = "4"
+clap_mangen = "0.3"
+arboard = "3"
+syntect = { version = "5", default-features = false, features = [
+    "default-syntaxes",
+    "regex-onig",
+] }
 
 # Workstate snapshot CONTRACT crate — the single source of truth for the snapshot
 # format, the canonical path, and the load/write functions. Every consumer reads

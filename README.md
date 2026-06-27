@@ -9,7 +9,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | Tool | Role | Status |
 |------|------|--------|
 | **[Bulwark](crates/bulwark)** | Read-only scanner + risk classifier | Active |
-| **[ScriptVault](https://github.com/tom2025b/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
+| **[ScriptVault](crates/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
 | **[Toolbox-Bridge](https://github.com/tom2025b/linux-ops-suite)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active |
 | **[ToolFoundry](crates/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
 | **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — compiles the one canonical snapshot (shape/version/path defined by `workstate-schema`) | Active |
@@ -90,7 +90,6 @@ Supported binaries:
 
 From standalone tool repos (each publishes its own GitHub Release):
 
-- `scriptvault`
 - `workstate`
 
 From this umbrella repo (all shipped together in the `linux-ops-suite` release archive):
@@ -107,6 +106,7 @@ From this umbrella repo (all shipped together in the `linux-ops-suite` release a
 - `toolfoundry`
 - `bulwark`
 - `rexops`
+- `scriptvault`
 
 If a repo has no GitHub Release yet, `linux-ops-install` now says that explicitly and prints:
 
@@ -121,18 +121,18 @@ For each tool repo, publish at least one Linux release asset that matches the bi
 
 - Preferred archive: `.tar.gz`
 - Also accepted: `.tgz`, `.tar.xz`, `.zip`
-- Expected executable name inside the archive: exactly the tool binary name, for example `scriptvault` or `workstate`
+- Expected executable name inside the archive: exactly the tool binary name, for example `workstate`
 - Expected naming hints in the asset filename: Linux plus `x86_64` or `amd64`, or `aarch64` or `arm64`
 
 Examples of good asset names:
 
 ```text
-scriptvault-x86_64-unknown-linux-gnu.tar.gz
+workstate-x86_64-unknown-linux-gnu.tar.gz
 workstate-aarch64-unknown-linux-gnu.tar.gz
 linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz
 ```
 
-The `linux-ops-suite` release is the special case: a single `linux-ops-suite-<target>` archive carries **all** the in-workspace tools — `toolbox-bridge`, `rex-doctor`, `portman`, `pulse`, `tripwire`, `rewind`, `conductor`, `rex-forge`, `proto`, `toolfoundry`, `bulwark`, and `rexops` — and the installer extracts each binary by name.
+The `linux-ops-suite` release is the special case: a single `linux-ops-suite-<target>` archive carries **all** the in-workspace tools — `toolbox-bridge`, `rex-doctor`, `portman`, `pulse`, `tripwire`, `rewind`, `conductor`, `rex-forge`, `proto`, `toolfoundry`, `bulwark`, `rexops`, and `scriptvault` — and the installer extracts each binary by name.
 
 ### Cutting releases
 
@@ -143,22 +143,22 @@ git tag v0.3.1
 git push origin v0.3.1   # release.yml builds the x86_64 + aarch64 archives and uploads them
 ```
 
-The standalone tool repos (`scriptvault`, `workstate`) each publish their own release. For one of them:
+The standalone tool repo (`workstate`) publishes its own release:
 
 1. Build the release binary in that repo.
 2. Package the executable into a Linux archive, preferably `.tar.gz`.
 3. Create a GitHub Release and upload the archive.
 
-Example for a tool whose repo and binary are both `scriptvault`:
+Example for a tool whose repo and binary are both `workstate`:
 
 ```bash
 cargo build --release
 mkdir -p dist
-asset="scriptvault-x86_64-unknown-linux-gnu.tar.gz"
-tar -C target/release -czf "dist/$asset" scriptvault
+asset="workstate-x86_64-unknown-linux-gnu.tar.gz"
+tar -C target/release -czf "dist/$asset" workstate
 ( cd dist && sha256sum "$asset" > "$asset.sha256" )   # the installer verifies this, fail-closed
 gh release create vX.Y.Z dist/"$asset" dist/"$asset.sha256" \
-  --repo tom2025b/scriptvault --title "vX.Y.Z" --notes "Linux release"
+  --repo tom2025b/workstate --title "vX.Y.Z" --notes "Linux release"
 ```
 
 To package this repo's in-workspace tools by hand (the `release.yml` workflow does exactly this on a tag):
@@ -267,7 +267,7 @@ of the snapshot empty, and consumers degrade gracefully rather than failing.
 ## Repositories
 
 - Bulwark — lives in this repo: [`crates/bulwark`](crates/bulwark) — Scanner & risk classifier
-- [ScriptVault](https://github.com/tom2025b/scriptvault) — Script launcher
+- ScriptVault — lives in this repo: [`crates/scriptvault`](crates/scriptvault) — Script launcher
 - Toolbox-Bridge — lives in this repo: [`crates/toolbox-bridge`](crates/toolbox-bridge) (Bulwark → Workstate → ScriptVault adapter)
 - ToolFoundry — lives in this repo: [`crates/toolfoundry`](crates/toolfoundry) — Lifecycle & ownership
 - [Workstate](https://github.com/tom2025b/workstate) — State compiler
@@ -290,9 +290,10 @@ crates:
 
 Both are **pure presentation** — no domain logic, no data flow — so they don't
 reintroduce the coupling the file-contracts rule prevents. Bulwark, RexOps, and
-ScriptVault consume `suite-ui` as a **git dependency** pinned to a commit of this repo
-(no `path =` deps), pulling in `thomas-tui` transitively, so each builds from a fresh
-clone without a sibling checkout. See
+ScriptVault consume `suite-ui` as an **in-tree path dependency** (via workspace
+inheritance), pulling in `thomas-tui` transitively. They were pinned git
+dependencies on this repo before being consolidated in-tree; now that they live
+in the same workspace, the path dep is the single source of truth. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#shared-ui-chrome-suite-ui) for the why.
 
 ```bash

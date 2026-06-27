@@ -18,10 +18,6 @@ pub(crate) struct Tool {
 
 pub(crate) const TOOLS: &[Tool] = &[
     Tool {
-        repo: "scriptvault",
-        binary: "scriptvault",
-    },
-    Tool {
         repo: "workstate",
         binary: "workstate",
     },
@@ -85,6 +81,11 @@ pub(crate) const TOOLS: &[Tool] = &[
     Tool {
         repo: "linux-ops-suite",
         binary: "rexops",
+    },
+    // Consolidated in-tree (was a standalone repo): fast TUI script launcher.
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "scriptvault",
     },
 ];
 
