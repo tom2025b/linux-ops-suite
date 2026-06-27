@@ -11,7 +11,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[Bulwark](https://github.com/tom2025b/bulwark)** | Read-only scanner + risk classifier | Active |
 | **[ScriptVault](https://github.com/tom2025b/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
 | **[Toolbox-Bridge](https://github.com/tom2025b/linux-ops-suite)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active |
-| **[ToolFoundry](https://github.com/tom2025b/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
+| **[ToolFoundry](crates/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
 | **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — compiles the one canonical snapshot (shape/version/path defined by `workstate-schema`) | Active |
 | **[Proto](crates/proto)** | Guided protocol / checklist runner — emits session records | Active |
 | **[RexOps](https://github.com/tom2025b/rexops)** | Operations cockpit + suite launcher | Active |
@@ -92,7 +92,6 @@ From standalone tool repos (each publishes its own GitHub Release):
 
 - `bulwark`
 - `scriptvault`
-- `toolfoundry`
 - `workstate`
 - `rexops`
 
@@ -107,6 +106,7 @@ From this umbrella repo (all shipped together in the `linux-ops-suite` release a
 - `conductor`
 - `rex-forge`
 - `proto`
+- `toolfoundry`
 
 If a repo has no GitHub Release yet, `linux-ops-install` now says that explicitly and prints:
 
@@ -143,7 +143,7 @@ git tag v0.3.1
 git push origin v0.3.1   # release.yml builds the x86_64 + aarch64 archives and uploads them
 ```
 
-The standalone tool repos (`bulwark`, `scriptvault`, `toolfoundry`, `workstate`, `rexops`) each publish their own release. For one of them:
+The standalone tool repos (`bulwark`, `scriptvault`, `workstate`, `rexops`) each publish their own release. For one of them:
 
 1. Build the release binary in that repo.
 2. Package the executable into a Linux archive, preferably `.tar.gz`.
@@ -269,7 +269,7 @@ of the snapshot empty, and consumers degrade gracefully rather than failing.
 - [Bulwark](https://github.com/tom2025b/bulwark) — Scanner & risk
 - [ScriptVault](https://github.com/tom2025b/scriptvault) — Script launcher
 - Toolbox-Bridge — lives in this repo: [`crates/toolbox-bridge`](crates/toolbox-bridge) (Bulwark → Workstate → ScriptVault adapter)
-- [ToolFoundry](https://github.com/tom2025b/toolfoundry) — Lifecycle & ownership
+- ToolFoundry — lives in this repo: [`crates/toolfoundry`](crates/toolfoundry) — Lifecycle & ownership
 - [Workstate](https://github.com/tom2025b/workstate) — State compiler
 - Proto — lives in this repo: [`crates/proto`](crates/proto) — Guided protocol / checklist runner
 - [RexOps](https://github.com/tom2025b/rexops) — Suite cockpit

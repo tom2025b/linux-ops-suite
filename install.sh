@@ -46,7 +46,6 @@ ALIASES_FILE="${ALIASES_FILE:-$HOME/.rust_aliases.sh}"
 RUST_TOOLS=(
   "bulwark:bulwark"
   "scriptvault:scriptvault"
-  "toolfoundry:toolfoundry"
   "workstate:workstate"
   "rexops:rexops"
 )
@@ -59,6 +58,7 @@ WORKSPACE_TOOLS=(
   "rex-check:rex-check"
   "conductor:conductor"
   "proto:proto"
+  "toolfoundry:toolfoundry"
 )
 
 # --- flags -------------------------------------------------------------------

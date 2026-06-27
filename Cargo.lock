@@ -1157,6 +1157,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "toolfoundry"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "serde_json",
+ "toolfoundry-core",
+]
+
+[[package]]
+name = "toolfoundry-core"
+version = "0.3.1"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror",
+]
+
+[[package]]
 name = "tripwire"
 version = "0.3.1"
 dependencies = [
