@@ -42,8 +42,9 @@ so the restore is itself undoable).
 
 ### Main use cases
 
-1. **Suite black box.** A cron job runs `rewind capture` after each `rex run`,
-   so there is always a rolling history of the compiled Workstate snapshot and
+1. **Suite black box.** A cron job runs `rewind capture` after each suite refresh
+   (each `workstate` compile), so there is always a rolling history of the
+   compiled Workstate snapshot and
    every producer feed. When something looks wrong, the operator can see exactly
    what changed and when.
 2. **Recover from a bad compile.** Workstate or a producer emits a broken/empty

@@ -1,6 +1,6 @@
 //! Filesystem and install operations: per-tool install orchestration,
-//! download/extract, binary discovery, wrapper + alias generation, the rex
-//! launcher, path resolution, the prerequisite checks, and the RAII temp dir.
+//! download/extract, binary discovery, wrapper + alias generation, path
+//! resolution, the prerequisite checks, and the RAII temp dir.
 
 use std::env;
 use std::ffi::OsStr;

@@ -8,7 +8,7 @@ what's left.
 A personal toolkit of **focused, single-purpose Linux tools** that compose into an
 operations workflow — scan your tools, classify risk, track lifecycle/ownership,
 launch scripts fast, run guided protocols, and roll it all up into one cockpit
-(`rex`). Built for personal use on modest Linux hardware. Keep it simple.
+(**RexOps**). Built for personal use on modest Linux hardware. Keep it simple.
 
 ## Architecture & philosophy
 
@@ -34,17 +34,22 @@ ToolFoundry ─┐
 Bulwark ─────┤  emit *.workstate-feed JSON
 Proto ───────┘
                  │
-            Workstate  ── compiles ──>  snapshot.json (schema v4)
+            Workstate  ── compiles ──>  snapshot.json (schema v5)
                                              │
-                                          RexOps  (cockpit / launcher; `rex run`)
-                          (also reads Bulwark scan + ScriptVault export directly)
+                          ┌──────────────────┼───────────────────┐
+                       RexOps            Conductor              Pulse
+                    (cockpit)        (guided runbook)     (health verdict)
+                  — every consumer reads the one snapshot through workstate-schema —
+                          (RexOps also reads Bulwark scan + ScriptVault export directly)
 
 sidecar loop:  snapshot.json ──> Toolbox-Bridge ──> feeds/toolbox-bridge.json
                (risk/owner sidecar metadata for ScriptVault — via Workstate only)
 ```
 
-`bin/rex` is the reference orchestrator (bash); the real RexOps TUI lives in its
-own repo and will provide the interactive cockpit on the same contracts.
+The all-in-one `rex` launcher (the old bash orchestrator) has been retired: a
+refresh is now explicit and one-way — producers write feeds, `workstate` compiles
+the one snapshot, and any consumer reads it. The RexOps TUI is the interactive
+cockpit, in its own repo on the same contracts.
 
 ## Current state — umbrella
 
@@ -86,7 +91,7 @@ own repo and will provide the interactive cockpit on the same contracts.
 | **Bulwark** | Rust | ~5.6k | `main` | Scanner + risk classifier. Stable. Consumes suite-ui via git dep (`tui` feature). |
 | **ScriptVault** | Rust | ~13.5k | `main` | Largest tool. Consumes suite-ui via git dep (`clap` feature). |
 | **ToolFoundry** | Rust | ~4.4k | `main` | Lifecycle/ownership/health. |
-| **Workstate** | Rust | ~3.2k | `main` | State compiler (snapshot v4). |
+| **Workstate** | Rust | ~3.2k | `main` | State compiler (snapshot v5). Shape/version/path live in the shared `workstate-schema` crate. |
 | **Proto** | Rust | ~6.2k | `main` | Guided protocol/checklist runner. |
 | **RexOps** | Rust | ~7.6k | `main` | Cockpit (cli + tui crates). Consumes suite-ui via git dep. |
 
@@ -142,8 +147,8 @@ git-dependency conversion is landed and pushed across all three consumers.
 
 1. **Continue ScriptVault's phased TUI redesign** (keymap/layout, parameterized
    run, tag browser, palette/bulk, polish) on top of the merged core engine.
-2. **RexOps TUI** — promote from the bash `bin/rex` reference to the real
-   interactive cockpit on the shared contracts + `suite-ui`.
+2. **RexOps TUI** — the interactive cockpit on the shared contracts + `suite-ui`
+   (the old bash `rex` reference launcher has been retired).
 3. **Suite-wide consistency** — re-bump the `suite-ui` git-dep rev in consumers
    whenever the shared crate changes (one PR per consumer); keep contract schemas
    and their example payloads in lockstep as tools evolve.

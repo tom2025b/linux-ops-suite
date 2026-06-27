@@ -525,6 +525,15 @@ Two registrations, both following the existing pattern exactly:
 
 ## Phasing
 
+> **Status (v0.3.0): all three phases have shipped.** This section is the original
+> roadmap, kept for the design rationale. As of the 0.3.0 release Conductor is the
+> full tool described above: the read-only triplet (`status`/`health`/`plan`/`--json`),
+> the interactive TUI (bare `conductor`, Phase 2), and the `orchestrate` driver with
+> per-step confirmation (Phase 3) are all implemented in `crates/conductor`. Conductor
+> reads the suite's state through the canonical Workstate snapshot via the
+> `workstate-schema` crate (the single source of truth) and owns no snapshot model of
+> its own. Read the phases below as *how it was built*, not as outstanding work.
+
 Tight v1, with the highest-risk surface deferred behind the read-only triplet —
 the same staging Rewind used (ship reads first; the one writing path lands last
 with the heaviest gate).

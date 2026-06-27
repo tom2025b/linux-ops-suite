@@ -56,8 +56,9 @@ pub(crate) fn print_path_guidance(paths: &InstallPaths) {
         paths.aliases_file.display()
     );
     println!();
-    println!("Then run a full suite refresh:");
-    println!("    rex run");
+    println!("Then refresh the suite snapshot:");
+    println!("    workstate    # compiles the canonical snapshot");
+    println!("    (see the README \"Running a full suite refresh\" for the producers -> snapshot -> consumer flow)");
 }
 
 pub(crate) fn step(message: impl AsRef<str>) {

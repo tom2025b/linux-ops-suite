@@ -6,9 +6,9 @@
 # "contracts HQ", not a monorepo: each tool lives in its own repo (except the
 # small workspace crates like toolbox-bridge, which live right here). So this
 # orchestrator clones (or updates) every tool repo, builds it, and puts the
-# binaries on your PATH — then installs the `rex` launcher and per-tool
-# `r-<tool>` wrapper scripts + shell aliases. The whole suite is Rust; the
-# only prerequisites are git and cargo.
+# binaries on your PATH — then installs the per-tool `r-<tool>` wrapper
+# scripts + shell aliases. The whole suite is Rust; the only prerequisites
+# are git and cargo.
 #
 # Usage:
 #   ./install.sh                 # clone/update + build everything that's missing
@@ -37,7 +37,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUITE_SRC_DIR="${SUITE_SRC_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 
 # Install targets.
-BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"          # cargo install + rex + wrappers
+BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"          # cargo install + wrappers
 WRAPPER_DIR="${WRAPPER_DIR:-$HOME/bin}"          # r-<tool> wrappers (user convention)
 ALIASES_FILE="${ALIASES_FILE:-$HOME/.rust_aliases.sh}"
 
@@ -300,18 +300,6 @@ WRAP
   done
 }
 
-# --- rex launcher ------------------------------------------------------------
-
-install_rex() {
-  selected "rex" || { [ -n "$ONLY" ] && return 0; }
-  local src="${SCRIPT_DIR}/bin/rex"
-  [ -f "$src" ] || { warn "bin/rex not found in umbrella repo — skipping launcher"; return 0; }
-  step "Installing rex launcher"
-  run mkdir -p "$BIN_DIR"
-  run install -m 0755 "$src" "${BIN_DIR}/rex"
-  ok "rex → ${BIN_DIR}/rex"
-}
-
 # --- PATH guidance (never edits the rc) --------------------------------------
 
 print_path_guidance() {
@@ -331,7 +319,8 @@ print_path_guidance() {
     say "    [ -f \"$ALIASES_FILE\" ] && source \"$ALIASES_FILE\""
   fi
   say ""
-  say "  Then run a full suite refresh:  ${C_BOLD}rex run${C_RST}"
+  say "  Then refresh the suite snapshot:  ${C_BOLD}workstate${C_RST}  ${C_DIM}(compiles the canonical snapshot)${C_RST}"
+  say "  See the README \"Running a full suite refresh\" for the producers → snapshot → consumer flow."
 }
 
 # --- main --------------------------------------------------------------------
@@ -355,7 +344,6 @@ main() {
     install_workspace_tool "$crate" "$bin" || true
   done
 
-  install_rex
   install_wrappers_and_aliases
   print_path_guidance
 }

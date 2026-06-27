@@ -46,4 +46,4 @@ tempfile = "3"
 # format, the canonical path, and the load/write functions. Every consumer reads
 # the snapshot through this and nothing else. Pinned by rev like every cross-repo
 # suite dependency.
-workstate-schema = { git = "https://github.com/tom2025b/workstate", rev = "48c58c74acf88c8ae30ff21b4e032243ba66f8c3" }
+workstate-schema = { git = "https://github.com/tom2025b/workstate", rev = "4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724" }

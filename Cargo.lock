@@ -209,7 +209,7 @@ dependencies = [
  "suite-core",
  "suite-ui",
  "tempfile",
- "workstate-schema",
+ "workstate-schema 0.1.0 (git+https://github.com/tom2025b/workstate?rev=4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724)",
 ]
 
 [[package]]
@@ -716,7 +716,7 @@ dependencies = [
  "serde_json",
  "suite-core",
  "suite-ui",
- "workstate-schema",
+ "workstate-schema 0.1.0 (git+https://github.com/tom2025b/workstate?rev=4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724)",
 ]
 
 [[package]]
@@ -1124,7 +1124,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "workstate",
- "workstate-schema",
+ "workstate-schema 0.1.0 (git+https://github.com/tom2025b/workstate?rev=4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724)",
 ]
 
 [[package]]
@@ -1575,7 +1575,19 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "workstate-schema",
+ "workstate-schema 0.1.0 (git+https://github.com/tom2025b/workstate?rev=48c58c74acf88c8ae30ff21b4e032243ba66f8c3)",
+]
+
+[[package]]
+name = "workstate-schema"
+version = "0.1.0"
+source = "git+https://github.com/tom2025b/workstate?rev=4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724#4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]

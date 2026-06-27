@@ -40,4 +40,4 @@ rex-doctor --json
 
 ## How it fits into the suite
 
-rex-doctor is the suite's pre-flight check. Before `rex run` produces or compiles anything, rex-doctor confirms the tools are installed, on `PATH`, and version-compatible — so a broken refresh is diagnosed as a setup problem, not a data problem. It pairs with `rex-check` (the commit/hazard gate) as the suite's health and safety tooling.
+rex-doctor is the suite's pre-flight check. Before `workstate` compiles the snapshot (or any tool runs), rex-doctor confirms the tools are installed, on `PATH`, and version-compatible — so a broken refresh is diagnosed as a setup problem, not a data problem. It pairs with `rex-check` (the commit/hazard gate) as the suite's health and safety tooling.
