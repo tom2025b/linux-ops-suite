@@ -7,16 +7,25 @@ How tools produce and consume data across the suite. Contracts live in
 
 | Producer | Output | Consumer | Format | Schema | Status |
 |---|---|---|---|---|---|
-| Workstate | snapshot | Toolbox-Bridge | JSON | [workstate.snapshot](../contracts/workstate.snapshot.schema.json) | **now** |
+| Workstate | snapshot | Toolbox-Bridge | JSON (via `workstate-schema`) | [workstate.snapshot](../contracts/workstate.snapshot.schema.json) | **now** |
 | Toolbox-Bridge | `workstate-feed` (sidecar metadata) | ScriptVault | JSON | [toolbox-bridge.workstate-feed.v1](../contracts/toolbox-bridge.workstate-feed.v1.schema.json) | **real (v1) — end-to-end** |
 | ToolFoundry | `workstate-feed` | Workstate | JSON | [toolfoundry.workstate-feed.v1](../contracts/toolfoundry.workstate-feed.v1.schema.json) | **real (v1)** |
 | Bulwark | `workstate-feed` | Workstate | JSON | [bulwark.workstate-feed.v1](../contracts/bulwark.workstate-feed.v1.schema.json) | **real (v1)** |
 | Bulwark | scan export | RexOps | JSON | [bulwark.scan](../contracts/bulwark.scan.schema.json) | provisional |
 | ScriptVault | state export | RexOps | JSON | [scriptvault.export](../contracts/scriptvault.export.schema.json) | provisional |
-| Workstate | snapshot | RexOps | JSON | [workstate.snapshot](../contracts/workstate.snapshot.schema.json) | provisional |
+| Workstate | snapshot | RexOps · Conductor · Pulse | JSON (via `workstate-schema`) | [workstate.snapshot](../contracts/workstate.snapshot.schema.json) | **now** |
 | Proto | session record | RexOps | JSON | [proto.session](../contracts/proto.session.schema.json) | **real (v1)** |
 | Proto | `workstate-feed` | Workstate | JSON | [proto.workstate-feed.v1](../contracts/proto.workstate-feed.v1.schema.json) | **real (v1)** |
 | RexOps | suite snapshot | (self/report) | JSON | [rexops.snapshot](../contracts/rexops.snapshot.schema.json) | provisional |
+
+> **The canonical snapshot is read through `workstate-schema`.** The snapshot's
+> shape, its `SCHEMA_VERSION` (currently **5**), and its one on-disk path
+> (`$XDG_DATA_HOME/rexops/feeds/workstate.snapshot.json`) are defined exactly once,
+> in the [`workstate-schema`](https://github.com/tom2025b/workstate) crate — a git
+> dependency pinned by rev. Workstate writes the snapshot *through* it, and every
+> consumer (RexOps, Conductor, Pulse, Toolbox-Bridge) reads it *through* the same
+> crate and nothing else, so the format, version, and path can't drift. The JSON
+> Schema linked above mirrors that Rust contract for non-Rust readers and CI.
 
 ## Commands each producer should expose
 
@@ -54,9 +63,13 @@ Two consequences for a tool that wants to be launchable:
 | Proto | `proto` | On a TTY, shows an interactive protocol **picker** → run; non-TTY prints help (stays scriptable). Installed via `cargo install --path .`. **Registered in the RexOps launcher catalog.** |
 | Workstate / Scripts / Tools | (feed-only) | No executable; RexOps shows "no launch command yet". |
 
+**Conductor** spawns a plan step's owning tool the same way — a real `<id>` on
+`$PATH`, run in the foreground — so the same two requirements apply to any tool
+Conductor should be able to run.
+
 ## Expected output paths
 
-Paths are RexOps's read locations; producers may also print to stdout. Defaults under
+Paths are the consumers' read locations; producers may also print to stdout. Defaults under
 `$XDG_DATA_HOME` (fallback `~/.local/share/`):
 
 | Feed | Suggested path |
@@ -89,6 +102,10 @@ Paths are RexOps's read locations; producers may also print to stdout. Defaults 
   ([example](../examples/proto.workstate-feed.example.json)) into
   `…/workstate/feeds/proto.json`, the same envelope as Bulwark/ToolFoundry, so
   Workstate ingests recent Proto runs the same way it ingests its other feeds.
-- **Planned:** RexOps consuming the feeds above, in the order set by
-  [ROADMAP.md](ROADMAP.md). ScriptVault/Workstate JSON exports are provisional
-  until those tools ship versioned outputs.
+- **Also now:** the canonical snapshot is consumed live by **Conductor** and
+  **Pulse** (both in this workspace) and by **Toolbox-Bridge**, all through
+  `workstate-schema` — the single source of truth for the snapshot's shape,
+  version, and path.
+- **Planned:** RexOps's full cockpit consumption of the provisional raw exports, in
+  the order set by [ROADMAP.md](ROADMAP.md). The ScriptVault export remains
+  provisional until that tool ships a versioned output.

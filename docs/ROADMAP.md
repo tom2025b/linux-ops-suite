@@ -21,4 +21,5 @@ Integrations land in dependency order. Read-only first; mutations last.
   deliberately **left out of the suite docs** until its final role is decided (fold into
   Bulwark, keep as a separate member, or retire). Revisit before Phase 4.
 - Bulwark, ScriptVault, and RexOps contracts are still provisional. ToolFoundry's
-  `workstate-feed` and Workstate's v4 snapshot are real versioned contracts.
+  `workstate-feed` and Workstate's snapshot (the `workstate-schema` contract,
+  currently schema v5) are real versioned contracts.

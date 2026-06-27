@@ -12,7 +12,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[ScriptVault](https://github.com/tom2025b/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
 | **[Toolbox-Bridge](https://github.com/tom2025b/linux-ops-suite)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active |
 | **[ToolFoundry](https://github.com/tom2025b/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
-| **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — emits the v4 snapshot | Active |
+| **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — compiles the one canonical snapshot (shape/version/path defined by `workstate-schema`) | Active |
 | **[Proto](https://github.com/tom2025b/proto)** | Guided protocol / checklist runner — emits session records | Active |
 | **[RexOps](https://github.com/tom2025b/rexops)** | Operations cockpit + suite launcher | Active |
 | **[rex-doctor](crates/rex-doctor)** | Suite diagnostics — checks env/PATH, binaries & versions | Active |
@@ -20,12 +20,14 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[pulse](crates/pulse)** | Calm read-only TUI showing one suite-health verdict | Active |
 | **[tripwire](crates/tripwire)** | File-integrity baseline + drift diff (SHA-256 + metadata) | Active |
 | **[rewind](crates/rewind)** | Suite history + safe rollback — content-addressed captures of suite state, with guarded restore | Active |
+| **[conductor](crates/conductor)** | Guided operator — reads the canonical snapshot and walks you through an ordered runbook | Active |
+| **[rex-forge](crates/rex-forge)** | TUI-first project scaffolder for Rust and Go | Active |
 
 ## Installation
 
 There are two install paths:
 
-- [`crates/linux-ops-install`](crates/linux-ops-install) downloads **prebuilt GitHub Release assets** for the suite tools, installs them to `~/.local/bin`, installs `rex`, writes `~/bin/r-<tool>` wrappers, and appends aliases to `~/.rust_aliases.sh`.
+- [`crates/linux-ops-install`](crates/linux-ops-install) downloads **prebuilt GitHub Release assets** for the suite tools, installs them to `~/.local/bin`, writes `~/bin/r-<tool>` wrappers, and appends aliases to `~/.rust_aliases.sh`.
 - [`install.sh`](install.sh) is the **build-from-source fallback**. It clones or updates each repo, runs `cargo build --release`, and installs the resulting binaries locally.
 
 ### Use `linux-ops-install`
@@ -49,7 +51,7 @@ What `linux-ops-install` does:
 - Queries `https://api.github.com/repos/tom2025b/<repo>/releases/latest` for each tool.
 - Downloads the matching Linux asset, preferring `.tar.gz` when available.
 - **Verifies the download against its published SHA256 checksum before extracting or installing it.** It looks for a sibling `<asset>.sha256` file (or a `SHA256SUMS` manifest) in the release and refuses to install on mismatch — or when no checksum is published at all (every suite release publishes one, so a missing checksum means a broken or tampered release). Requires `sha256sum` (coreutils).
-- Extracts the archive, installs the binary into `~/.local/bin`, installs `rex`, writes `~/bin/r-<tool>`, and updates `~/.rust_aliases.sh`.
+- Extracts the archive, installs the binary into `~/.local/bin`, writes `~/bin/r-<tool>`, and updates `~/.rust_aliases.sh`.
 - Never edits your shell rc files. If `~/.local/bin` or `~/bin` is missing from `PATH`, it prints the exact line to add.
 
 Integrity flags:
@@ -155,7 +157,6 @@ What `install.sh` does:
 - clones or updates each tool repo
 - runs `cargo build --release`
 - copies `target/release/<binary>` into `~/.local/bin`
-- installs `rex`
 - writes `~/bin/r-<tool>` wrappers and aliases
 
 ### After either install path
@@ -167,46 +168,54 @@ export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 [ -f "$HOME/.rust_aliases.sh" ] && source "$HOME/.rust_aliases.sh"
 ```
 
-Then kick off a full suite refresh:
-
-```bash
-rex run
-```
+Then refresh the suite — see [Running a full suite refresh](#running-a-full-suite-refresh) below.
 
 ## How They Work Together
 
-- Data flows **one way** through files (mostly JSON).
-- No tool imports code from another tool.
-- **RexOps** is the front door and top-level consumer — it reads the rolled-up Workstate snapshot and lets you launch the other tools. (ScriptVault is a secondary consumer: it reads the Toolbox-Bridge sidecar feed — see below.)
-- **ToolFoundry** emits `toolfoundry workstate-feed`; the shape is pinned by `contracts/toolfoundry.workstate-feed.v1.schema.json`.
-- **Workstate** compiles the other tools' feeds into one versioned `snapshot.json` (schema v4) that **RexOps** consumes as its source of truth. The shape is pinned by `contracts/workstate.snapshot.schema.json` and validated in both repos' CI.
-- **Toolbox-Bridge** turns Bulwark findings into ScriptVault sidecar metadata *via
-  Workstate only*: it reads the compiled snapshot (never Bulwark directly) and writes
-  a versioned sidecar feed into Workstate's feeds directory for ScriptVault to
-  consume. The shape is pinned by `contracts/toolbox-bridge.workstate-feed.v1.schema.json`.
-- **Proto** reads human-authored protocols (YAML checklists) and emits one `session` JSON per run, pinned by `contracts/proto.session.schema.json`. It is read-only — it guides and records, it never acts on your behalf.
+- Data flows **one way** through files (mostly JSON). No tool imports another tool's domain code.
+- **Producers** emit versioned `workstate-feed` JSON: **ToolFoundry** (`toolfoundry.workstate-feed.v1`), **Bulwark** (`bulwark.workstate-feed.v1`), and **Proto** (`proto.workstate-feed.v1`), each pinned by a schema under `contracts/`.
+- **Workstate** compiles those feeds into **one canonical snapshot** (`workstate.snapshot.json`). Its shape, schema version, and on-disk path are defined exactly once — in the **`workstate-schema`** crate, the suite's single source of truth for the snapshot. Every consumer reads the snapshot *through* that crate and nothing else, so the producer and its consumers can never drift. (The JSON shape is mirrored by `contracts/workstate.snapshot.schema.json` and validated in CI.)
+- **Consumers** all read that one snapshot through `workstate-schema`: **RexOps** (the cockpit + launcher), **Conductor** (a *pure consumer* — it reads the snapshot, derives an ordered runbook, and walks you through it, writing nothing itself), and **Pulse** (a single calm health verdict).
+- **Toolbox-Bridge** is both a consumer and a producer: it reads Bulwark's findings *from the snapshot* (never from Bulwark directly) and writes a versioned sidecar feed (`toolbox-bridge.workstate-feed.v1`) into Workstate's feeds directory for **ScriptVault** to consume.
+- **Proto** reads human-authored protocols (YAML checklists) and emits one `session` JSON per run (`proto.session.schema.json`). It is read-only — it guides and records, it never acts on your behalf.
 
 ## Running a full suite refresh
 
-```bash
-rex run
-```
+The old all-in-one `rex` launcher has been retired. A refresh is now explicit and
+one-way — producers write feeds, Workstate compiles the one snapshot, a consumer
+reads it:
 
-- No arguments needed.
-- Automatically detects the current project folder (git toplevel, falling back to pwd) and passes it to tools that scan or read manifests.
-- First thing you see is the celebration banner ("Rex and Baby Grok built this. Enjoy.") with a cute detailed ASCII baby and fireworks.
-- Then runs the producers and aggregators in contract order: ToolFoundry → Bulwark → Proto → Workstate → Toolbox-Bridge.
-- Producer feeds are written to `$XDG_DATA_HOME/workstate/feeds`, and the compiled Workstate snapshot is written to `$XDG_DATA_HOME/rexops/feeds/workstate.snapshot.json`.
-- Everything is optional and best-effort; missing tools are skipped (graceful degradation).
-- A small status summary is printed from the resulting Workstate v4 snapshot when present.
+1. **Refresh the producer feeds** you have. Each writes a `workstate-feed` into
+   `$XDG_DATA_HOME/workstate/feeds/` — e.g. `bulwark workstate-feed`,
+   `toolfoundry workstate-feed <manifest-dir>`, `proto feed`. See
+   [docs/INTEGRATION_MAP.md](docs/INTEGRATION_MAP.md) for the exact commands and paths.
+2. **Compile the canonical snapshot.** Workstate fans the feeds in and writes one
+   snapshot to `$XDG_DATA_HOME/rexops/feeds/workstate.snapshot.json` — the canonical
+   path defined by `workstate-schema`:
 
-`bin/rex` is the reference implementation (bash). The real RexOps TUI (in its own repo) will eventually provide the interactive cockpit and launcher on top of the same contracts.
+   ```bash
+   workstate
+   ```
+
+3. **Read it with any consumer.** Each reads only that snapshot, through
+   `workstate-schema`:
+
+   ```bash
+   conductor      # a guided, ordered runbook over the snapshot
+   pulse          # one calm suite-health verdict
+   rexops         # the cockpit + launcher
+   ```
+
+Every step is optional and best-effort: a missing producer just leaves its section
+of the snapshot empty, and consumers degrade gracefully rather than failing.
 
 ## Design Principles
 
 - One job per tool
-- File-based contracts over shared code — for logic and data. The lone exception is
-  the shared TUI *chrome* (`thomas-tui` + `suite-ui`); see below.
+- File-based contracts over shared code — for logic and data. Two sanctioned
+  exceptions: the shared TUI *chrome* (`thomas-tui` + `suite-ui`; see below) and the
+  snapshot *contract* crate (`workstate-schema`) — both are pure data/presentation
+  with no domain behaviour, so neither reintroduces cross-tool logic coupling.
 - Read-only by default
 - Low-resource friendly (Linux Mint)
 - Rust-first where it makes sense

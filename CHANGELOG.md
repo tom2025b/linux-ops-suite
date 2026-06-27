@@ -11,6 +11,12 @@ a single entry covers the whole suite.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-26
+
+The **single-source-of-truth** release. The Workstate snapshot contract was
+extracted into a dedicated crate (`workstate-schema`) and adopted across the suite,
+and Conductor was restored as a full guided operator that reads it.
+
 ### Added
 
 - **rex-forge** (`crates/rex-forge`): a TUI-first project scaffolder for Rust and
@@ -23,6 +29,39 @@ a single entry covers the whole suite.
   golden snapshots and a compile gate that builds the generated projects. v0.1
   Go components are stdlib-only (`flag`/`slog`); `cobra`/`viper`/`zap` are
   deferred to v0.2.
+
+### Changed
+
+- **`workstate-schema` is now the single source of truth for the snapshot.** The
+  snapshot's model types, its `SCHEMA_VERSION` (now **v5**, adding a jobs/Proto
+  section), the one canonical path
+  (`$XDG_DATA_HOME/rexops/feeds/workstate.snapshot.json`), and the atomic write /
+  validating load all live in one crate, consumed as a git dependency pinned by
+  rev. The format, version, and path are declared in exactly one place, so the
+  producer and its consumers can no longer drift.
+- **The canonical snapshot is read suite-wide through `workstate-schema`.** Pulse,
+  Conductor, and Toolbox-Bridge now read the one snapshot through the shared
+  contract and nothing else — no tool re-declares the snapshot's shape, re-derives
+  its path, or re-implements the version check.
+- **Conductor restored as the full guided operator.** Bare `conductor` (and
+  `conductor orchestrate`) opens the interactive driver on a TTY and walks you
+  through the ordered plan: read-only steps run on `enter`, and a state-changing
+  (Ring-2) step runs only after an explicit confirm of its exact command. Conductor
+  still writes nothing itself; piped / non-TTY / `--json` runs print `status`.
+
+### Removed
+
+- **The `rex` launcher was removed.** `bin/rex` (the old all-in-one bash
+  orchestrator) is gone, and `linux-ops-install` no longer embeds or installs it.
+  A refresh is now explicit: producers write feeds → `workstate` compiles the one
+  snapshot → a consumer reads it.
+
+### Docs
+
+- The README, `crates/conductor/README.md`, and the `docs/` set (ARCHITECTURE,
+  INTEGRATION_MAP, AGENT, ROADMAP, dataflow) were updated to describe
+  `workstate-schema` as the single source of truth, Conductor as a pure consumer of
+  the canonical snapshot, and the retirement of `rex`.
 
 ## [0.2.0] - 2026-06-20
 
@@ -94,7 +133,8 @@ was extracted and rolled across the suite.
 Initial tagged releases; see the git history for details
 (`git log v0.1.0`, `v0.1.1`, `v0.1.2`).
 
-[Unreleased]: https://github.com/tom2025b/linux-ops-suite/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/tom2025b/linux-ops-suite/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/tom2025b/linux-ops-suite/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tom2025b/linux-ops-suite/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/tom2025b/linux-ops-suite/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/tom2025b/linux-ops-suite/compare/v0.1.0...v0.1.1

@@ -23,7 +23,7 @@ contracts**, never by shared in-process state.
 |---|---|---|
 | `linux-ops-suite` | `thomas-tui`, `suite-ui`, `toolbox-bridge` | Umbrella: the general TUI toolkit (`thomas-tui`) + the suite chrome layered on it (`suite-ui`) + the Rust bridge. Owns `docs/INTEGRATION_MAP.md` and the `contracts/` JSON schemas. |
 | `rexops` | `rexops-core`, `rexops-adapters`, `rexops-app`, `rexops-cli`, `rexops-tui` | RexOps — the operations TUI/CLI. The launcher lives here. |
-| `workstate` | (single crate) | Workstate — the canonical snapshot layer. Ingests per-tool feeds, compiles one `Snapshot`. THE contract type RexOps and the bridge read. |
+| `workstate` | `workstate`, `workstate-schema` | Workstate — the canonical snapshot layer. Ingests per-tool feeds, compiles one `Snapshot`. The `workstate-schema` crate is the single source of truth for that snapshot's shape, version, and path; every consumer (RexOps, Conductor, Pulse, the bridge) reads it through that crate. |
 | `bulwark` | `bulwark`, `bulwark-core` | Bulwark — security scanner; emits a `workstate-feed` + a scan export. |
 | `scriptvault` | `scriptvault`, `scriptvault-core` | ScriptVault — script store/feed; consumes the toolbox-bridge feed as an overlay. |
 | `proto` | (single crate) | Proto — interactive protocol runner; emits session JSON + a `workstate-feed`. |

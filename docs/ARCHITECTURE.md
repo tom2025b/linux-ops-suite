@@ -10,11 +10,14 @@ job, and never reaches into another tool's code.
 
 **This repo is the contract & index headquarters.** It holds the suite README, the
 shared architecture, the integration map, the contract rules, the JSON schemas, and
-example fixtures. It also hosts a small Cargo workspace with three members:
-`thomas-tui`, the general-purpose terminal-UI toolkit; `suite-ui`, the suite's
-common TUI chrome layered on top of it (see
-[Shared UI chrome](#shared-ui-chrome-suite-ui) below); and `toolbox-bridge`, the
-thin Workstate-mediated adapter between Bulwark and ScriptVault.
+example fixtures. It also hosts a Cargo workspace that builds the suite's shared
+libraries and the tools that live here: `thomas-tui` (the general-purpose
+terminal-UI toolkit) and `suite-ui` (the suite's common TUI chrome layered on it —
+see [Shared UI chrome](#shared-ui-chrome-suite-ui) below); `suite-core` (a
+dependency-free env/path/fmt foundation); `toolbox-bridge` (the thin
+Workstate-mediated adapter between Bulwark and ScriptVault); and several
+single-purpose tools — `conductor`, `pulse`, `rewind`, `tripwire`, `portman`,
+`rex-doctor`, `rex-check`, `rex-forge`, and the `linux-ops-install` installer.
 
 It is **not**:
 
@@ -32,24 +35,34 @@ It is **not**:
 | **ScriptVault** | Human-facing script search, preview, favorites/recents, and launch. |
 | **Toolbox-Bridge** | Converts Bulwark findings — read from the Workstate snapshot, never from Bulwark — into ScriptVault sidecar metadata, published as a versioned Workstate feed. Pure Rust, dry-run-capable, atomic writes. |
 | **ToolFoundry** | Tool lifecycle, ownership, health, drift, manifests. Source of truth for lifecycle. |
-| **Workstate** | Read-only project/repository health. Never mutates repos. (Architecture phase.) |
-| **RexOps** | The only suite-level consumer/orchestrator. Summarizes health/attention and launches. |
+| **Workstate** | Compiles the producers' feeds into the one canonical snapshot. The `workstate-schema` crate is the single source of truth for the snapshot's shape, version, and path. Read-only — never mutates repos. |
+| **RexOps** | A suite-level consumer + launcher. Reads the canonical snapshot (through `workstate-schema`) and summarizes health/attention. |
+| **Conductor** | Guided operator. Reads the canonical snapshot (through `workstate-schema`), derives an ordered runbook, and walks you through it — delegating each step to the tool that owns it. Writes nothing itself. |
+| **Pulse** | Calm read-only health TUI. Reads exactly one artifact — the canonical snapshot — through `workstate-schema`, and renders a single suite-health verdict. |
 
 ## One-way data flow
 
-Data moves in **one direction**: producers write files, consumers read them.
+Data moves in **one direction**: producers write files, consumers read them. The
+hub is the **one canonical snapshot** — every consumer reads it through the shared
+`workstate-schema` contract and nothing else.
 
 ```
-Bulwark ───────────────── workstate-feed JSON ──────▶ Workstate
-ToolFoundry ───────────── workstate-feed JSON ──────▶ Workstate
-Workstate ──snapshot──▶ Toolbox-Bridge ──sidecar feed──▶ ScriptVault
-Bulwark ───────────────── scan JSON ───────────────▶ RexOps
-ScriptVault ───────────── export JSON ──────────────▶ RexOps
-Workstate ─────────────── snapshot JSON ────────────▶ RexOps
+   Bulwark ┐
+ToolFoundry ├─ workstate-feed JSON ─▶ Workstate ─▶ the one canonical snapshot
+      Proto ┘                        (compiler)    workstate.snapshot.json
+                                                   (shape/version/path defined
+                                                    by workstate-schema)
+                                                         │
+                  ┌───────────────┬────────────────┬────┴───────────┐
+                  ▼               ▼                ▼                ▼
+               RexOps         Conductor          Pulse        Toolbox-Bridge
+             (cockpit +       (guided           (health        ─ sidecar feed ─▶
+              launcher)        runbook)          verdict)        ScriptVault
 ```
 
-RexOps reads; it does not write back into any tool. Specialist tools never read
-RexOps. There are no cycles.
+Every consumer reads the snapshot through `workstate-schema`; none reads another
+tool directly. Consumers never write back into a producer, and specialist tools
+never read a consumer. There are no cycles.
 
 ## Why file-based contracts
 
@@ -67,14 +80,20 @@ every such dependency to pass through a versioned, documented file contract — 
 reviewable and stable. The cost (a little duplication) is deliberately accepted. This
 remains the default: tools talk through file contracts, not code.
 
-One narrow carve-out: Toolbox-Bridge deserializes the snapshot through Workstate's
-published `Snapshot` serde types (a git dependency pinned by rev). Those types ARE
-the file contract in Rust form — pure data shapes, no behaviour — so consuming them
-prevents producer/consumer drift instead of creating logic coupling.
+One narrow carve-out: the **`workstate-schema`** crate — Workstate's published
+snapshot contract (the `Snapshot` model types, the `SCHEMA_VERSION` consumers gate
+on, the one canonical path, and the atomic write / validating load), consumed as a
+git dependency pinned by rev. It is the **single source of truth** for the snapshot:
+the producer writes *through* it and every consumer (RexOps, Conductor, Pulse,
+Toolbox-Bridge) reads *through* it, so the format, version, and path are declared in
+exactly one place and cannot drift. It is pure data shapes plus the read/write of the
+file contract in Rust form — no domain behaviour — so consuming it prevents
+producer/consumer drift instead of creating logic coupling.
 
 ## Shared UI chrome (`suite-ui`)
 
-There is exactly **one** sanctioned exception to "no shared code": `suite-ui`, the
+Besides the `workstate-schema` snapshot contract described above, the other
+sanctioned exception to "no shared code" is `suite-ui`, the
 crate in [`crates/suite-ui`](../crates/suite-ui) that holds the suite's common TUI
 *chrome* — the theme/palette (cyan/amber accents + a single `NO_COLOR` gate), the
 rounded pane styling, health-status styles, the common overlays (help sheet,
@@ -130,15 +149,18 @@ Consumers depend on `suite-ui` (pinned by git rev); `thomas-tui` is pulled in
 transitively. The same "pure presentation, no domain data flow" reasoning above
 applies to both layers — neither carries suite data or couples two tools' logic.
 
-## How RexOps consumes exports
+## How consumers read the snapshot
 
-RexOps reads each producer's export from its expected path (see
-[INTEGRATION_MAP.md](INTEGRATION_MAP.md)), checks `schema_version`, ignores unknown
-fields, and merges the results into its cockpit view. It treats every producer as
-**optional**.
+Every consumer reads the **one canonical snapshot** through `workstate-schema`,
+which resolves the canonical path, validates `schema_version`, and hands back typed
+data — so a consumer never re-derives the snapshot's shape or location, and unknown
+future fields are ignored rather than fatal. RexOps additionally merges a couple of
+still-provisional raw exports into its cockpit view (see
+[INTEGRATION_MAP.md](INTEGRATION_MAP.md)). Every input is treated as **optional**.
 
 ## Graceful degradation
 
-If a producer's file is missing, stale, unreadable, or an unknown major version, RexOps
-**does not fail**. It marks that producer as unavailable and renders everything else.
-The suite is always usable with whatever subset of tools is currently present.
+If the snapshot (or one of its sections) is missing, stale, unreadable, or an unknown
+major version, a consumer **does not fail**: `workstate-schema` reports it as
+unavailable and the consumer renders everything else. The suite is always usable with
+whatever subset of tools is currently present.

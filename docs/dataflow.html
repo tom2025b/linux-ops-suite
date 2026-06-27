@@ -127,12 +127,12 @@
 <body>
 <div class="wrap">
   <h1>Linux Ops Suite — Data Flow</h1>
-  <p class="subtitle">One-way, file-based contracts. Producers emit JSON · Workstate compiles · RexOps consumes.</p>
+  <p class="subtitle">One-way, file-based contracts. Producers emit JSON · Workstate compiles · consumers read the canonical snapshot.</p>
 
   <div class="colheads">
     <div class="colhead">Producers</div>
-    <div class="colhead">Compiler · source of truth</div>
-    <div class="colhead">Consumer · cockpit</div>
+    <div class="colhead">Compiler · source of truth (workstate-schema)</div>
+    <div class="colhead">Consumers · read the snapshot</div>
   </div>
 
   <div class="stage">
@@ -184,10 +184,10 @@
 
       <!-- CONSUMER -->
       <div class="node consumer">
-        <span class="badge">cockpit</span>
-        <div class="name">RexOps</div>
-        <div class="desc">reads snapshot.json · launcher · <code>rex run</code></div>
-        <div class="repo">never talks to tools directly</div>
+        <span class="badge">consumers</span>
+        <div class="name">RexOps · Conductor · Pulse</div>
+        <div class="desc">read the canonical snapshot via <code>workstate-schema</code></div>
+        <div class="repo">never talk to tools directly</div>
       </div>
     </div>
 
@@ -195,7 +195,7 @@
     <div class="edge-label" style="left:37%; top:15%;"> <span class="k">toolfoundry.workstate-feed.v1</span></div>
     <div class="edge-label" style="left:37%; top:50%;"> <span class="k">bulwark.workstate-feed.v1</span></div>
     <div class="edge-label" style="left:37%; top:85%;"> <span class="k">proto.workstate-feed.v1</span></div>
-    <div class="edge-label" style="left:80%; top:46%;"> snapshot.json <span class="muted">· v3</span></div>
+    <div class="edge-label" style="left:80%; top:46%;"> workstate.snapshot.json <span class="muted">· schema v5</span></div>
   </div>
 
   <!-- SIDECAR LOOP -->
@@ -225,7 +225,7 @@
       <ul style="list-style:none; padding:0;">
         <li><span class="swatch s-producer"></span>Producer — own repo, read-only, emits a feed</li>
         <li><span class="swatch s-compiler"></span>Compiler — the only thing that reads feeds</li>
-        <li><span class="swatch s-consumer"></span>Consumer — reads the snapshot only</li>
+        <li><span class="swatch s-consumer"></span>Consumers — read the canonical snapshot via workstate-schema</li>
         <li><span class="swatch s-side"></span>Sidecar loop — snapshot-derived risk-tag path</li>
       </ul>
     </div>
@@ -235,7 +235,7 @@
         <li>One-way, file-based contracts — <span class="muted">no tool imports another’s code; JSON only.</span></li>
         <li>Shapes pinned by JSON Schemas in the umbrella <code>contracts/</code> dir, validated in CI.</li>
         <li>Workstate is the single compiler — fans in 3, fans out 1.</li>
-        <li>RexOps only ever reads <code>snapshot.json</code>.</li>
+        <li>Consumers read only the canonical snapshot (via <code>workstate-schema</code>) — never another tool directly.</li>
       </ul>
     </div>
   </div>

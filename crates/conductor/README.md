@@ -1,15 +1,17 @@
 # conductor
 
-The Linux Ops Suite's **guided operator**. Conductor reads the suite's own state
-files, derives a short **ordered runbook** — *do these things, in this order* —
-and (in later phases) walks you through it, delegating each step to the tool that
-owns it. It never writes a live file itself.
+The Linux Ops Suite's **guided operator**. Conductor reads the one canonical
+Workstate snapshot, derives a short **ordered runbook** — *do these things, in this
+order* — and walks you through it interactively, delegating each step to the tool
+that owns it. It never writes a live file itself.
 
-> **Phase 2 (current build)** adds the interactive TUI: bare `conductor` opens
-> the plan on a real TTY, walks you through it step by step, and hands off each
-> action to the tool that owns it. Piped or non-TTY invocations still print
-> `status` — no behavior change for scripts. Phase 3 adds the `orchestrate`
-> driver and Ring-2 (state-changing) confirmation.
+> Conductor is the full guided operator: bare `conductor` (or `conductor
+> orchestrate`) opens the interactive driver on a real TTY and walks you through
+> the plan step by step — read-only steps run on `enter`, and a state-changing
+> (Ring-2) step runs only after you explicitly confirm its exact command.
+> Conductor still writes nothing itself; every change is a confirmed spawn of the
+> tool that owns it. Piped / non-TTY / `--json` invocations print `status`, so
+> scripts keep working.
 
 ## What it does
 
@@ -30,13 +32,14 @@ Conductor never mutates state with its own code. Every step is classified by a
 
 - `read-only` — would run a sibling that only reads (Ring 1).
 - `changes state` — would run a sibling that writes; confirmed before it can run
-  (Ring 2, Phase 3).
+  (Ring 2).
 - `info` — shows a fix command, runs nothing (Ring 0).
 
-**Phase 2** adds Ring-1 spawning — read-only steps hand the terminal to a sibling
-tool and mark `✓` when it exits. **Ring-2 steps (changes-state) are shown but
-not run** in Phase 2: they need the Phase 3 confirm driver. Conductor still
-writes nothing itself.
+In the guided driver, a **read-only** step hands the terminal to a sibling tool and
+marks `✓` when it exits. A **changes-state (Ring-2)** step is shown with its exact
+command and runs only after you explicitly confirm it — a stray `enter` never fires
+a state change. Conductor still writes nothing itself: every change is a confirmed
+spawn of the tool that owns it, with that tool's own safety gate on top.
 
 ## Interactive mode
 
@@ -78,7 +81,8 @@ conductor --data-dir D read suite state from D instead of the XDG default
 ```
 
 Exit codes: `0` ok (including "nothing to conduct"); `3` conductor itself could
-not run (no data dir). `1`/`2` are reserved for the guided runner.
+not run (no data dir). `1`/`2` come from the guided runner (a step that ran failed /
+you quit with steps still pending) — see the guided-run exit codes above.
 
 ### JSON envelope
 
