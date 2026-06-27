@@ -26,10 +26,6 @@ pub(crate) const TOOLS: &[Tool] = &[
         binary: "scriptvault",
     },
     Tool {
-        repo: "toolfoundry",
-        binary: "toolfoundry",
-    },
-    Tool {
         repo: "workstate",
         binary: "workstate",
     },
@@ -79,6 +75,11 @@ pub(crate) const TOOLS: &[Tool] = &[
     Tool {
         repo: "linux-ops-suite",
         binary: "proto",
+    },
+    // Consolidated in-tree (was a standalone repo): producer of the toolfoundry feed.
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "toolfoundry",
     },
 ];
 

@@ -1,0 +1,18 @@
+[package]
+name = "toolfoundry"
+version.workspace = true
+# edition 2024 (kept; mixed editions are legal — see crates/proto for the note).
+edition = "2024"
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lifecycle and ownership CLI for Personal Linux Ops Suite tool manifests"
+readme = "README.md"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }
+toolfoundry-core = { workspace = true }

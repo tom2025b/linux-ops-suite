@@ -15,6 +15,8 @@ members = [
     "crates/conductor",
     "crates/rex-forge",
     "crates/proto",
+    "crates/toolfoundry",
+    "crates/toolfoundry-core",
 ]
 
 [workspace.package]
@@ -29,6 +31,7 @@ repository = "https://github.com/tom2025b/linux-ops-suite"
 suite-core = { path = "crates/suite-core" }
 suite-ui = { path = "crates/suite-ui" }
 thomas-tui = { path = "crates/thomas-tui" }
+toolfoundry-core = { path = "crates/toolfoundry-core" }
 ratatui = "0.29"
 crossterm = "0.28"
 unicode-width = "0.2"

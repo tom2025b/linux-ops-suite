@@ -1,0 +1,16 @@
+[package]
+name = "toolfoundry-core"
+version.workspace = true
+edition = "2024"
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core manifest, lifecycle, install, catalog, and Workstate export logic for ToolFoundry"
+
+[dependencies]
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }

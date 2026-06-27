@@ -1,0 +1,48 @@
+schema_version: 1
+kind: Tool
+
+identity:
+  id: backup-home
+  display_name: Backup Home
+  summary: Back up selected home directories to external storage.
+  kind: script
+  tags: [backup, filesystem, personal-ops]
+
+ownership:
+  owner: tom
+  maintainer: tom
+  project: backupsage
+  repo: https://github.com/tom2025b/backupsage
+  local_path: ~/projects/backupsage
+  criticality: high
+
+source:
+  language: bash
+  primary_file: ~/projects/backupsage/bin/backup-home
+  build: none
+
+install:
+  method: symlink
+  artifact_path: ~/projects/backupsage/bin/backup-home
+  target_path: ~/.local/bin/backup-home
+  requires_sudo: false
+
+links:
+  managed: true
+  desired:
+    - source: ~/projects/backupsage/bin/backup-home
+      target: ~/.local/bin/backup-home
+
+health:
+  checks:
+    - id: target-exists
+      type: file_exists
+      path: ~/.local/bin/backup-home
+    - id: executable
+      type: executable
+      path: ~/projects/backupsage/bin/backup-home
+
+lifecycle:
+  state: active
+  review_after: "2026-09-01"
+  replacement: null

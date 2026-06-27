@@ -1,0 +1,189 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tom2025b/toolfoundry/schemas/tool-manifest.v1.schema.json",
+  "title": "ToolFoundry tool manifest (v1)",
+  "description": "Human-authored desired-state manifest for one ToolFoundry-managed tool. This schema intentionally contains only ToolFoundry-owned lifecycle, ownership, source, install, link, and health fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "identity",
+    "ownership",
+    "source",
+    "install",
+    "links",
+    "health",
+    "lifecycle"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Manifest schema major version."
+    },
+    "kind": {
+      "type": "string",
+      "const": "Tool"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "summary", "kind", "tags"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z]([a-z0-9-]*[a-z0-9])?$",
+          "description": "Stable kebab-case tool id (a single lowercase letter is also valid)."
+        },
+        "display_name": { "type": "string" },
+        "summary": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["script", "binary", "project", "service"]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]([a-z0-9-]*[a-z0-9])?$",
+            "description": "Kebab-case tag, validated identically to the tool id."
+          }
+        }
+      }
+    },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "maintainer",
+        "project",
+        "repo",
+        "local_path",
+        "criticality"
+      ],
+      "properties": {
+        "owner": { "type": "string" },
+        "maintainer": { "type": "string" },
+        "project": { "type": "string" },
+        "repo": { "type": "string" },
+        "local_path": { "type": "string" },
+        "criticality": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "primary_file", "build"],
+      "properties": {
+        "language": { "type": "string" },
+        "primary_file": { "type": "string" },
+        "build": {
+          "type": "string",
+          "enum": ["none", "cargo", "make", "custom"]
+        }
+      }
+    },
+    "install": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "artifact_path", "target_path", "requires_sudo"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["symlink", "copy", "package", "manual"]
+        },
+        "artifact_path": { "type": "string" },
+        "target_path": { "type": "string" },
+        "requires_sudo": { "type": "boolean" }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["managed", "desired"],
+      "properties": {
+        "managed": { "type": "boolean" },
+        "desired": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/desired_link" }
+        }
+      },
+      "if": {
+        "properties": { "managed": { "const": true } }
+      },
+      "then": {
+        "properties": {
+          "desired": { "minItems": 1 }
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checks"],
+      "properties": {
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/health_check" }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "review_after", "replacement"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "experimental",
+            "active",
+            "stale",
+            "risky",
+            "broken",
+            "deprecated",
+            "archived"
+          ]
+        },
+        "review_after": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "replacement": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  },
+  "definitions": {
+    "desired_link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "target"],
+      "properties": {
+        "source": { "type": "string" },
+        "target": { "type": "string" }
+      }
+    },
+    "health_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "path"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["file_exists", "executable"]
+        },
+        "path": { "type": "string" }
+      }
+    }
+  }
+}
