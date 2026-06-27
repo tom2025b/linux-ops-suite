@@ -18,10 +18,6 @@ pub(crate) struct Tool {
 
 pub(crate) const TOOLS: &[Tool] = &[
     Tool {
-        repo: "bulwark",
-        binary: "bulwark",
-    },
-    Tool {
         repo: "scriptvault",
         binary: "scriptvault",
     },
@@ -80,6 +76,11 @@ pub(crate) const TOOLS: &[Tool] = &[
     Tool {
         repo: "linux-ops-suite",
         binary: "toolfoundry",
+    },
+    // Consolidated in-tree (was a standalone repo): read-only inventory CLI + TUI.
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "bulwark",
     },
 ];
 

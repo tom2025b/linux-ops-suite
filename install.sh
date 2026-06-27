@@ -44,7 +44,6 @@ ALIASES_FILE="${ALIASES_FILE:-$HOME/.rust_aliases.sh}"
 # The Rust tools: "repo_name:binary_name". Repo and binary usually match, but
 # keep them separate so a repo whose binary differs is handled correctly.
 RUST_TOOLS=(
-  "bulwark:bulwark"
   "scriptvault:scriptvault"
   "workstate:workstate"
   "rexops:rexops"
@@ -59,6 +58,7 @@ WORKSPACE_TOOLS=(
   "conductor:conductor"
   "proto:proto"
   "toolfoundry:toolfoundry"
+  "bulwark:bulwark"
 )
 
 # --- flags -------------------------------------------------------------------

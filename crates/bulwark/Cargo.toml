@@ -1,0 +1,36 @@
+[package]
+name = "bulwark"
+version.workspace = true
+edition = "2024"
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Read-only, YAML-driven CLI and TUI for inventorying personal Linux tools"
+keywords = ["inventory", "cli", "yaml", "security", "tools"]
+categories = ["command-line-utilities", "filesystem"]
+
+[dependencies]
+anyhow = { workspace = true }
+bulwark-core = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+
+# TUI dependencies (feature-gated so the CLI can be built without pulling in
+# Ratatui when a consumer only wants non-interactive commands).
+# The "tui" feature is on by default for the `bulwark` binary so that
+# `bulwark tui` just works for interactive users.
+ratatui = { workspace = true, optional = true, features = ["crossterm"] }
+crossterm = { workspace = true, optional = true }
+# Shared suite-wide TUI chrome (theme/palette + NO_COLOR gate + rounded panes +
+# overlays), so Bulwark, RexOps, and ScriptVault present the same look from ONE
+# source. Now an in-tree path dependency (crates/suite-ui) via workspace
+# inheritance — was a pinned git dep before this repo was consolidated into the
+# umbrella. Gated behind `tui` so headless/CLI-only builds stay lean.
+suite-ui = { workspace = true, optional = true }
+
+[features]
+default = ["tui"]
+tui = ["dep:ratatui", "dep:crossterm", "dep:suite-ui"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
