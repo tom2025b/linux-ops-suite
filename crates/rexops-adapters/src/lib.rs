@@ -1,0 +1,60 @@
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+#![warn(clippy::all, clippy::pedantic)]
+// Allow a few pedantic lints that are noisy for a small foundation crate with
+// typed errors, constructors, and prose documentation. The spirit of pedantic
+// is still honored (we have no unwraps, we have tests, etc.).
+#![allow(
+    clippy::doc_markdown,
+    clippy::missing_errors_doc,
+    clippy::must_use_candidate,
+    clippy::unnecessary_map_or
+)]
+
+//! rexops-adapters — thin, read-only integration layer for external tools.
+//!
+//! This crate exists so that the rest of RexOps (core, executor, TUI, CLI)
+//! never has to know how to spawn `bulwark`, parse its JSON, or handle the
+//! "binary not installed" case. All of that lives here, behind a tiny,
+//! strongly-typed surface.
+//!
+//! Non-negotiable architectural rules (enforced in this crate):
+//! - No God files. Every .rs stays well under 300 lines (ideally < 200).
+//! - Every fallible public function returns `Result<T, AdapterError>`.
+//! - Zero `unwrap()` / `expect()` in non-test code (denied at the crate root).
+//! - No Tokio, no async, no execution/mutation logic.
+//! - The only thing that ever calls std::process::Command is inside exec.rs.
+//!
+//! Public surface (re-exports):
+//! - AdapterError — the only error type you should ever see from this crate.
+//! - Adapter, AdapterHealth, AdapterOutput — the common vocabulary.
+//! - BulwarkAdapter + Bulwark* types — the first concrete adapter.
+//! - SystemAdapter + SystemInfo — lightweight always-available system info (second adapter).
+//! - WorkstateAdapter + WorkstateInfo — read-only consumer of the Workstate v3 snapshot (source of truth for scripts/tools/findings).
+//! - models: ToolsInfo/Tool, ScriptsInfo/Script, FindingsInfo/ScanItem/Severity/RiskTally — domain types for the three snapshot sections.
+//!
+//! Everything else (exec, the private probe helpers) is `pub(crate)` or private.
+
+mod adapter;
+mod bulwark;
+mod error;
+mod exec;
+pub mod models;
+mod system;
+mod types;
+mod workstate;
+
+// Re-export the public API in a flat, convenient way.
+// Callers should be able to `use rexops_adapters::{BulwarkAdapter, AdapterError};`
+pub use adapter::Adapter;
+pub use bulwark::BulwarkAdapter;
+pub use error::AdapterError;
+pub use models::findings::{FindingsInfo, RiskTally, ScanItem, Severity};
+pub use models::scripts::{Script, ScriptsInfo};
+pub use models::tools::{Tool, ToolsInfo};
+pub use system::{SystemAdapter, SystemInfo};
+pub use types::{AdapterHealth, AdapterOutput};
+pub use workstate::{
+    status_to_freshness, Freshness, Provenance, Section, WorkstateAdapter, WorkstateInfo,
+};
+
+// lib.rs stays as a directory of contents. Behavior lives in the modules above.

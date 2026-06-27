@@ -1,0 +1,34 @@
+[package]
+name = "rexops-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Thin CLI shell for RexOps: clap commands, dispatch, human and JSON output. Delegates all logic to rexops-app (shared config + snapshot builder)."
+# This crate's default binary, so `cargo run -p rexops-cli` is unambiguous.
+default-run = "rexops"
+
+[[bin]]
+name = "rexops"
+path = "src/main.rs"
+
+[dependencies]
+# clap with derive for structopt-style commands — standard for modern Rust CLIs.
+clap = { workspace = true }
+# For --json output of snapshots etc. Core already re-exports what we need.
+serde_json = { workspace = true }
+# For loading the YAML config (as in examples/config.yaml and AppConfig).
+serde_yaml = { workspace = true }
+
+# Thin dependencies — cli owns almost no logic.
+# We depend on rexops-app for the shared load_config / build_snapshot /
+# build_adapter_registry (the former duplication). We still depend on core
+# for the pure data types we format (AdapterHealth, OpsSnapshot, etc.).
+# adapters is no longer needed directly here.
+rexops-core = { workspace = true }
+rexops-app = { workspace = true }
+# The default action (no subcommand) is the interactive TUI. We launch it
+# through rexops-tui's single public entry point (rexops_tui::run) rather than
+# shelling out, so `cargo run` drives the exact same code as `rexops-tui`.
+rexops-tui = { workspace = true }

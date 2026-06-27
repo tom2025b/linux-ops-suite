@@ -1,0 +1,110 @@
+//! system.rs — System info screen.
+//!
+//! Shows health and details for the "system" adapter (from SystemAdapter).
+//! Uses structured system data from the snapshot.
+//!
+//! Simple render: health badge + list of system facts.
+
+use ratatui::{
+    layout::{Constraint, Direction, Layout, Rect},
+    text::{Line, Span},
+    widgets::{Paragraph, Wrap},
+    Frame,
+};
+
+use suite_ui::{pane, pane_blank, EmptyState, Theme};
+
+use crate::app::App;
+use crate::ui::widgets;
+
+/// Render the System screen.
+pub fn render_system(f: &mut Frame, app: &App, area: Rect, theme: Theme) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // header for system
+            Constraint::Min(5),    // details
+        ])
+        .split(area);
+
+    render_system_header(f, app, chunks[0], theme);
+    render_system_details(f, app, chunks[1], theme);
+}
+
+fn render_system_header(f: &mut Frame, app: &App, area: Rect, theme: Theme) {
+    let health = app
+        .snapshot
+        .adapter_health
+        .get("system")
+        .copied()
+        .unwrap_or(rexops_core::AdapterHealth::Unknown);
+    let badge = widgets::render_health_badge(health, theme);
+
+    let header =
+        Paragraph::new(Line::from(vec![Span::raw("System Info "), badge])).block(pane_blank(theme));
+
+    f.render_widget(header, area);
+}
+
+fn render_system_details(f: &mut Frame, app: &App, area: Rect, theme: Theme) {
+    // Genuinely empty: no structured system block and no `system ` notes to fall
+    // back on. That's the whole pane body, so render it as the shared centered
+    // EmptyState (message + what-to-do hint) rather than a top-aligned line. The
+    // hint carries the "press r" guidance, so this branch skips the Tip footer.
+    let has_notes = app.snapshot.notes.iter().any(|n| n.starts_with("system "));
+    if app.snapshot.system.is_none() && !has_notes {
+        let block = pane("Details", theme);
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        EmptyState {
+            message: "No system details yet — press 'r' to probe (or check config).",
+            hint: Some("SystemAdapter provides: hostname, kernel, uptime, disk usage."),
+        }
+        .render(f, inner, theme);
+        return;
+    }
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    if let Some(sys) = &app.snapshot.system {
+        if let Some(h) = &sys.hostname {
+            lines.push(Line::from(format!("hostname: {h}")));
+        }
+        if let Some(k) = &sys.kernel {
+            lines.push(Line::from(format!("kernel: {k}")));
+        }
+        if let Some(u) = &sys.uptime {
+            lines.push(Line::from(format!("uptime: {u}")));
+        }
+        if !sys.disk.is_empty() {
+            lines.push(Line::from("disk:"));
+            for d in sys.disk.iter().take(4) {
+                lines.push(Line::from(format!("  {d}")));
+            }
+        }
+    } else {
+        // Fallback to notes parsing (for older snapshots or if not populated).
+        // The fully-empty case was handled above, so there is at least one note.
+        let system_notes = app
+            .snapshot
+            .notes
+            .iter()
+            .filter(|n| n.starts_with("system "));
+        for note in system_notes {
+            let clean = note.strip_prefix("system ").unwrap_or(note);
+            lines.push(Line::from(format!("• {}", clean)));
+        }
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Tip: Press '1' for Dashboard, '2' for Adapters. 'r' to refresh.",
+        theme.dim(),
+    )));
+
+    let details = Paragraph::new(lines)
+        .wrap(Wrap { trim: true })
+        .block(pane("Details", theme));
+
+    f.render_widget(details, area);
+}

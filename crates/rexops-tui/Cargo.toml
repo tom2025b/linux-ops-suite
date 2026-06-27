@@ -1,0 +1,35 @@
+[package]
+name = "rexops-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Ratatui + crossterm TUI for RexOps. Keyboard-first shell + 5 screens. Calls rexops-app for snapshots; never owns domain logic or execution."
+
+[[bin]]
+name = "rexops-tui"
+path = "src/main.rs"
+
+[dependencies]
+# Ratatui is the maintained tui-rs successor; versions centralized in the umbrella.
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+# For loading the YAML config (as in examples/config.yaml and AppConfig).
+serde_yaml = { workspace = true }
+
+# Thin deps on our own crates. TUI must not duplicate models or adapter concerns.
+# The heavy lifting (config + live snapshot building) now comes from rexops-app.
+rexops-core = { workspace = true }
+rexops-app = { workspace = true }
+
+# Shared suite-wide TUI chrome (theme/palette + rounded panes + overlays), so
+# RexOps and ScriptVault present the same look from one source. Now an in-tree
+# path dependency (crates/suite-ui) via workspace inheritance — was a pinned git
+# dep before RexOps was consolidated into the umbrella.
+suite-ui = { workspace = true }
+
+# Unix-only: cancelling / quitting a job kills the child's whole process GROUP
+# (killpg), so a tool that forks grandchildren leaks nothing to init.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }

@@ -973,6 +973,62 @@ dependencies = [
 ]
 
 [[package]]
+name = "rexops-adapters"
+version = "0.3.1"
+dependencies = [
+ "libc",
+ "rexops-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "rexops-app"
+version = "0.3.1"
+dependencies = [
+ "rexops-adapters",
+ "rexops-core",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
+name = "rexops-cli"
+version = "0.3.1"
+dependencies = [
+ "clap",
+ "rexops-app",
+ "rexops-core",
+ "rexops-tui",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
+name = "rexops-core"
+version = "0.3.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "rexops-tui"
+version = "0.3.1"
+dependencies = [
+ "crossterm",
+ "libc",
+ "ratatui",
+ "rexops-app",
+ "rexops-core",
+ "serde_yaml",
+ "suite-ui",
+]
+
+[[package]]
 name = "rustix"
 version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
