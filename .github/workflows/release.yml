@@ -36,13 +36,23 @@ jobs:
         if: matrix.cross
         run: cargo install cross --locked
 
+      # The in-workspace suite tools — the ones linux-ops-install pulls from THIS
+      # repo's release. Keep this list in sync with
+      # crates/linux-ops-install/src/release.rs (the TOOLS registry) and the
+      # README "Supported binaries" list.
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo build --release --locked -p toolbox-bridge --target ${{ matrix.target }}
+        run: >
+          cargo build --release --locked --target ${{ matrix.target }}
+          -p toolbox-bridge -p rex-doctor -p portman -p pulse
+          -p tripwire -p rewind -p conductor -p rex-forge
 
       - name: Build (cross)
         if: matrix.cross
-        run: cross build --release --locked -p toolbox-bridge --target ${{ matrix.target }}
+        run: >
+          cross build --release --locked --target ${{ matrix.target }}
+          -p toolbox-bridge -p rex-doctor -p portman -p pulse
+          -p tripwire -p rewind -p conductor -p rex-forge
 
       - name: Package archive + checksum
         id: package
@@ -50,9 +60,15 @@ jobs:
           set -euo pipefail
           asset="linux-ops-suite-${{ matrix.target }}"
           bindir="target/${{ matrix.target }}/release"
-          test -f "$bindir/toolbox-bridge" || { echo "missing binary: $bindir/toolbox-bridge"; ls -la "$bindir"; exit 1; }
-          install -m 0755 "$bindir/toolbox-bridge" "toolbox-bridge"
-          tar -czf "$asset.tar.gz" "toolbox-bridge"
+          bins="toolbox-bridge rex-doctor portman pulse tripwire rewind conductor rex-forge"
+          staging="$(mktemp -d)"
+          for bin in $bins; do
+            test -f "$bindir/$bin" || { echo "missing binary: $bindir/$bin"; ls -la "$bindir"; exit 1; }
+            install -m 0755 "$bindir/$bin" "$staging/$bin"
+          done
+          # One umbrella archive holding every in-workspace tool binary; the
+          # installer extracts each one by name (find_binary).
+          tar -czf "$asset.tar.gz" -C "$staging" $bins
           sha256sum "$asset.tar.gz" > "$asset.tar.gz.sha256"
           echo "archive=$asset.tar.gz" >> "$GITHUB_OUTPUT"
           echo "checksum=$asset.tar.gz.sha256" >> "$GITHUB_OUTPUT"

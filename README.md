@@ -23,6 +23,33 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[conductor](crates/conductor)** | Guided operator — reads the canonical snapshot and walks you through an ordered runbook | Active |
 | **[rex-forge](crates/rex-forge)** | TUI-first project scaffolder for Rust and Go | Active |
 
+### Capability matrix
+
+How each tool relates to the suite's data flow — who you invoke directly, who
+emits a `workstate-feed` for Workstate to compile, and who reads the resulting
+snapshot:
+
+| Tool | User runs it? | Produces feed? | Reads snapshot? | Description |
+|------|:---:|:---:|:---:|------|
+| **Bulwark** | ✓ | ✓ | – | Read-only scanner + risk classifier |
+| **ScriptVault** | ✓ | ✓ | – | Fast TUI script launcher (favorites & recents) |
+| **Toolbox-Bridge** | – | ✓ | ✓ | Bridges Bulwark findings → ScriptVault sidecar metadata |
+| **ToolFoundry** | ✓ | ✓ | – | Tool lifecycle, ownership, and health |
+| **Workstate** | ✓ | compiles | writes | Compiles the one canonical snapshot |
+| **Proto** | ✓ | ✓ | – | Guided protocol / checklist runner |
+| **RexOps** | ✓ | – | ✓ | Operations cockpit + suite launcher |
+| **rex-doctor** | ✓ | – | – | Suite diagnostics (env/PATH, binaries, versions) |
+| **portman** | ✓ | – | – | Listening sockets + ownership chain, baseline diff |
+| **pulse** | ✓ | – | ✓ | Calm one-verdict suite-health TUI |
+| **tripwire** | ✓ | – | – | File-integrity baseline + drift diff |
+| **rewind** | ✓ | – | – | Suite history + guarded rollback |
+| **conductor** | ✓ | – | ✓ | Guided operator — ordered runbook from the snapshot |
+| **rex-forge** | ✓ | – | – | TUI-first project scaffolder (Rust/Go) |
+
+Legend: ✓ yes · – no. "Produces feed?" means it emits a `workstate-feed` that
+Workstate ingests; Workstate itself compiles the snapshot, and the consumers read
+it back through `workstate-schema`.
+
 ## Installation
 
 There are two install paths:
@@ -61,13 +88,25 @@ Integrity flags:
 
 Supported binaries:
 
+From standalone tool repos (each publishes its own GitHub Release):
+
 - `bulwark`
 - `scriptvault`
 - `toolfoundry`
 - `workstate`
 - `proto`
 - `rexops`
+
+From this umbrella repo (all shipped together in the `linux-ops-suite` release archive):
+
 - `toolbox-bridge`
+- `rex-doctor`
+- `portman`
+- `pulse`
+- `tripwire`
+- `rewind`
+- `conductor`
+- `rex-forge`
 
 If a repo has no GitHub Release yet, `linux-ops-install` now says that explicitly and prints:
 
@@ -93,13 +132,18 @@ proto-aarch64-unknown-linux-gnu.tar.gz
 linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz
 ```
 
-The `linux-ops-suite` release is the one special case: it is where `toolbox-bridge` is expected to come from.
+The `linux-ops-suite` release is the special case: a single `linux-ops-suite-<target>` archive carries **all** the in-workspace tools — `toolbox-bridge`, `rex-doctor`, `portman`, `pulse`, `tripwire`, `rewind`, `conductor`, and `rex-forge` — and the installer extracts each binary by name.
 
-### Create the first releases
+### Cutting releases
 
-There is no release workflow in this repo yet; only CI is present in [.github/workflows/ci.yml](.github/workflows/ci.yml). The first release set is therefore a manual packaging step unless you add release automation.
+This repo has a release workflow: [.github/workflows/release.yml](.github/workflows/release.yml) builds, packages, checksums, and publishes the in-workspace tool binaries on every `v*` tag — `v0.3.0` was published this way (continuous integration lives in [.github/workflows/ci.yml](.github/workflows/ci.yml)). So cutting this repo's release is just a tag:
 
-For each standalone tool repo (`bulwark`, `scriptvault`, `toolfoundry`, `workstate`, `proto`, `rexops`):
+```bash
+git tag v0.3.1
+git push origin v0.3.1   # release.yml builds the x86_64 + aarch64 archives and uploads them
+```
+
+The standalone tool repos (`bulwark`, `scriptvault`, `toolfoundry`, `workstate`, `proto`, `rexops`) each publish their own release. For one of them:
 
 1. Build the release binary in that repo.
 2. Package the executable into a Linux archive, preferably `.tar.gz`.
@@ -110,25 +154,25 @@ Example for a tool whose repo and binary are both `bulwark`:
 ```bash
 cargo build --release
 mkdir -p dist
-tar -C target/release -czf dist/bulwark-x86_64-unknown-linux-gnu.tar.gz bulwark
-gh release create vX.Y.Z \
-  dist/bulwark-x86_64-unknown-linux-gnu.tar.gz \
-  --repo tom2025b/bulwark \
-  --title "vX.Y.Z" \
-  --notes "Linux release"
+asset="bulwark-x86_64-unknown-linux-gnu.tar.gz"
+tar -C target/release -czf "dist/$asset" bulwark
+( cd dist && sha256sum "$asset" > "$asset.sha256" )   # the installer verifies this, fail-closed
+gh release create vX.Y.Z dist/"$asset" dist/"$asset.sha256" \
+  --repo tom2025b/bulwark --title "vX.Y.Z" --notes "Linux release"
 ```
 
-For `toolbox-bridge`, build from this repo:
+To package this repo's in-workspace tools by hand (the `release.yml` workflow does exactly this on a tag):
 
 ```bash
-cargo build --release -p toolbox-bridge
+cargo build --release -p toolbox-bridge -p rex-doctor -p portman -p pulse \
+  -p tripwire -p rewind -p conductor -p rex-forge
 mkdir -p dist
-tar -C target/release -czf dist/linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz toolbox-bridge
-gh release create vX.Y.Z \
-  dist/linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz \
-  --repo tom2025b/linux-ops-suite \
-  --title "vX.Y.Z" \
-  --notes "toolbox-bridge release"
+asset="linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz"
+tar -C target/release -czf "dist/$asset" \
+  toolbox-bridge rex-doctor portman pulse tripwire rewind conductor rex-forge
+( cd dist && sha256sum "$asset" > "$asset.sha256" )
+gh release create vX.Y.Z dist/"$asset" dist/"$asset.sha256" \
+  --repo tom2025b/linux-ops-suite --title "vX.Y.Z" --notes "in-workspace tools"
 ```
 
 Repeat with an `aarch64` build if you want ARM Linux installs to work without falling back to source builds.

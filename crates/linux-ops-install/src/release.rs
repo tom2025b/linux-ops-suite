@@ -41,9 +41,43 @@ pub(crate) const TOOLS: &[Tool] = &[
         repo: "rexops",
         binary: "rexops",
     },
+    // In-workspace tools: built from this umbrella repo and shipped together in
+    // one `linux-ops-suite-<target>` release archive (matched by repo name;
+    // `find_binary` then extracts each by its own binary name). Keep this list in
+    // sync with release.yml's package step and the README "Supported binaries"
+    // list. rex-check is intentionally omitted — it is a dev/health tool, not part
+    // of the user-facing tool set in the README.
     Tool {
         repo: "linux-ops-suite",
         binary: "toolbox-bridge",
+    },
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "rex-doctor",
+    },
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "portman",
+    },
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "pulse",
+    },
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "tripwire",
+    },
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "rewind",
+    },
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "conductor",
+    },
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "rex-forge",
     },
 ];
 
