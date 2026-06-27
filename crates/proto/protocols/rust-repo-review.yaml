@@ -1,0 +1,98 @@
+# =============================================================================
+# rust-repo-review.yaml — a guided review checklist for a Rust repository
+# =============================================================================
+# This is a Proto PROTOCOL: a human-authored, ordered checklist that Proto walks
+# you through with `proto run rust-repo-review`. It is INPUT ONLY — Proto reads
+# it and records your answers in a separate session file; it never edits this.
+#
+# Step kinds (the `kind:` field, default `manual_check`):
+#   * manual_check — a yes/no/skip confirmation (the default; omit `kind` for it)
+#   * info         — something to READ and acknowledge (no pass/fail)
+#   * command      — a suggested command shown in `detail`; YOU run it, Proto
+#                    only displays it (Proto never executes anything)
+# =============================================================================
+
+# Machine id — what you type in `proto run <id>`. Matches the filename stem.
+id: rust-repo-review
+
+# Human-facing heading shown when the run starts.
+title: Rust Repository Review
+
+# When/why to use this protocol (shown under the title).
+description: >-
+  A pre-merge / periodic health review for a Rust repository. Walks through
+  formatting, linting, tests, dependency hygiene, docs, and git state so nothing
+  obvious slips through before you ship or hand the repo off.
+
+# Version of THIS checklist's content (not Proto's version).
+version: "1"
+
+# The ordered steps. List order is execution order — no separate sort key.
+steps:
+  # --- Orientation --------------------------------------------------------
+  - id: clean-tree
+    title: Is the working tree clean (no uncommitted changes you didn't mean)?
+    detail: A review should reflect committed state, not stray local edits.
+    kind: command
+    # `command:` is the EXACT string Proto offers to run for you; on yes it runs
+    # it and records pass/fail from the exit code. `git status --short` exits 0
+    # whether or not the tree is clean, so this checks "git works", and you can
+    # eyeball the output (empty = clean) before the next step.
+    command: git status --short
+
+  - id: builds
+    title: Does the project build cleanly?
+    detail: "Run: cargo build --all-targets"
+    kind: command
+    command: cargo build --all-targets
+
+  # --- Formatting & linting ----------------------------------------------
+  - id: formatted
+    title: Is the code formatted?
+    detail: "Run: cargo fmt --all -- --check  (exit 0 means already formatted)"
+    kind: command
+    command: cargo fmt --all -- --check
+
+  - id: clippy-clean
+    title: Is Clippy clean (no warnings)?
+    detail: "Run: cargo clippy --all-targets -- -D warnings"
+    kind: command
+    command: cargo clippy --all-targets -- -D warnings
+
+  # --- Correctness --------------------------------------------------------
+  - id: tests-pass
+    title: Do all tests pass?
+    detail: "Run: cargo test --all"
+    kind: command
+    command: cargo test --all
+
+  - id: doc-builds
+    title: Do the docs build without warnings?
+    detail: "Run: cargo doc --no-deps"
+    kind: command
+    command: cargo doc --no-deps
+
+  # --- Dependency hygiene -------------------------------------------------
+  - id: deps-reviewed
+    title: Have you reviewed dependencies for anything unexpected or unused?
+    detail: "Optional tools: cargo tree, cargo machete, cargo outdated"
+    kind: command
+
+  - id: no-secrets
+    title: Are there no secrets, tokens, or credentials committed?
+    detail: Scan for API keys, .env files, or hard-coded passwords.
+    # default kind (manual_check): a judgement call, not a single command.
+
+  # --- Documentation ------------------------------------------------------
+  - id: readme-current
+    title: Is the README accurate (install/run instructions still correct)?
+    detail: Outdated setup steps are the most common rot in a repo.
+
+  - id: license-present
+    title: Is a LICENSE file present and correct?
+
+  # --- Wrap up ------------------------------------------------------------
+  - id: review-note
+    title: "Reminder: record anything notable before you finish."
+    detail: Findings worth a follow-up issue, risky areas, or TODOs spotted.
+    kind: info

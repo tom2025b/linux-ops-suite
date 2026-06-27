@@ -1,0 +1,76 @@
+# =============================================================================
+# ai-agent-handoff.yaml — handing a task off to (or from) an AI coding agent
+# =============================================================================
+# A Proto PROTOCOL run with `proto run ai-agent-handoff`. INPUT ONLY — Proto
+# records your answers in a session file; it never edits this.
+#
+# WHY THIS PROTOCOL:
+#   An AI agent is only as good as the context and guardrails you hand it. Most
+#   bad agent runs trace back to a skipped setup step: no clear goal, no clean
+#   branch, no test command, no defined "done", or no review of what it changed.
+#   This checklist makes the handoff deliberate in BOTH directions — briefing the
+#   agent before, and verifying its work after — so autonomy stays safe.
+#
+# Step kinds: manual_check (default) | info | command
+# =============================================================================
+
+id: ai-agent-handoff
+title: AI Agent Handoff
+description: >-
+  A pre- and post-flight checklist for delegating a coding task to an AI agent:
+  brief it with the right context and guardrails, then verify and own the result.
+  Turns "let the agent loose" into a controlled handoff with a clear definition
+  of done and a real review of the diff.
+version: "1"
+
+steps:
+  # --- Brief (before the agent runs) --------------------------------------
+  - id: clear-goal
+    title: Have you written the goal as a single, testable outcome?
+    detail: "'Make X work / make this test pass', not 'improve the code'. Vague goals get vague work."
+
+  - id: clean-branch
+    title: Is the agent working on a clean, dedicated branch (not your main line)?
+    detail: "Run: git status --short   (clean)   and   git checkout -b agent/<task>"
+    kind: command
+
+  - id: context-provided
+    title: Does the agent have the context it needs (relevant files, conventions, constraints)?
+    detail: Point it at the right files and any project rules. Don't make it guess your conventions.
+
+  - id: test-command
+    title: Did you tell the agent HOW to verify its own work (the test/build command)?
+    detail: An agent that can run the tests can self-correct. One that can't will hand you guesses.
+
+  - id: guardrails
+    title: Are the boundaries explicit — what it may NOT touch, and when to stop and ask?
+    detail: Out-of-scope files, secrets, destructive commands, irreversible actions. Name the no-go zones.
+
+  - id: definition-of-done
+    title: Is "done" defined so both you and the agent can tell when to stop?
+    detail: Tests green + scope met + diff reviewed. Without this, an agent over- or under-shoots.
+
+  # --- Verify (after the agent runs) --------------------------------------
+  - id: review-diff
+    title: Have you actually READ the full diff the agent produced?
+    detail: "Run: git diff   — do not merge agent work you haven't read. Ownership stays with you."
+    kind: command
+
+  - id: tests-green
+    title: Do the tests/build the agent claimed pass actually pass on your machine?
+    detail: "Run: cargo test   (or the project command). Verify the claim; don't take it on faith."
+    kind: command
+
+  - id: scope-respected
+    title: Did the agent stay in scope (no surprise refactors, no touched no-go files)?
+    detail: Unrequested changes are where agent diffs hide bugs. Confirm it did what was asked and no more.
+
+  - id: no-secrets-leaked
+    title: Did the agent avoid committing secrets or pasting sensitive data anywhere it shouldn't?
+    detail: Scan the diff and any logs/output for tokens, keys, internal URLs.
+
+  # --- Wrap up ------------------------------------------------------------
+  - id: handoff-note
+    title: "Reminder: capture what worked / what to brief better next time."
+    detail: A short note on the handoff improves the next one — context, guardrails, and prompt phrasing.
+    kind: info

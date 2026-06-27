@@ -14,6 +14,7 @@ members = [
     "crates/rewind",
     "crates/conductor",
     "crates/rex-forge",
+    "crates/proto",
 ]
 
 [workspace.package]
@@ -42,6 +43,12 @@ minijinja = "2"
 include_dir = "0.7"
 toml = "0.8"
 tempfile = "3"
+
+# Deps brought in by consolidated tool crates (repos moved in-tree under crates/).
+serde_yaml = "0.9"
+shlex = "2"
+libc = "0.2"
+anyhow = "1"
 
 # Workstate snapshot CONTRACT crate — the single source of truth for the snapshot
 # format, the canonical path, and the load/write functions. Every consumer reads

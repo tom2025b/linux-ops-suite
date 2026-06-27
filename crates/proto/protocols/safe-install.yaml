@@ -1,0 +1,81 @@
+# =============================================================================
+# safe-install.yaml — vetting third-party software BEFORE you install it
+# =============================================================================
+# A Proto PROTOCOL run with `proto run safe-install`. INPUT ONLY — Proto records
+# your answers in a session file; it never edits this.
+#
+# WHY THIS PROTOCOL:
+#   "curl | sudo bash" is how a lot of machines get compromised. This checklist
+#   slows the install down just enough to vet the source, read what the installer
+#   actually does, prefer signed/packaged distribution, and know how to undo it.
+#   The session record is also a small audit trail of WHAT you installed and WHY.
+#
+# READ-ONLY STANCE: Proto only DISPLAYS the commands; you run them. It will never
+# install anything for you — the decision and the action stay with you.
+#
+# Step kinds: manual_check (default) | info | command
+# =============================================================================
+
+id: safe-install
+title: Safe Software Install
+description: >-
+  A pre-install vetting checklist for third-party software: confirm you need it,
+  trust the source, understand what the installer does, prefer signed packages
+  over piped scripts, and know how to remove it. Turns a blind install into a
+  deliberate, reversible one.
+version: "1"
+
+steps:
+  # --- Justify ------------------------------------------------------------
+  - id: need-it
+    title: Do you actually need this tool, and is this the right one for the job?
+    detail: The safest install is the one you don't do. Check for something already installed that does it.
+
+  - id: official-source
+    title: Are you getting it from the OFFICIAL source (project site, vendor, distro repo)?
+    detail: Typo-squatted domains and copycat repos are common. Verify the URL/repo is the real one.
+
+  # --- Inspect ------------------------------------------------------------
+  - id: read-installer
+    title: "If it's an install script, have you READ it before running it?"
+    detail: "Download first, read, THEN run — never pipe straight to a shell. e.g. curl -fsSL <url> -o install.sh; less install.sh"
+    kind: command
+
+  - id: no-blind-sudo
+    title: Do you understand why it needs root (if it asks), and is that reasonable?
+    detail: A tool demanding sudo for no clear reason is a red flag. Know what the elevated step does.
+
+  - id: prefer-packaged
+    title: Is there a SIGNED package (apt/dnf/official repo) instead of a raw script/binary?
+    detail: Packaged installs are verified, tracked, and uninstallable. Prefer them over loose binaries.
+
+  - id: verify-checksum
+    title: "If downloading a binary/archive, did you verify its checksum/signature?"
+    detail: "Run: sha256sum <file>   and compare to the published hash (or verify the GPG signature)."
+    kind: command
+
+  # --- Contain ------------------------------------------------------------
+  - id: scope-permissions
+    title: Will it run with least privilege (not as root, scoped to your user where possible)?
+    detail: Prefer a user-local install (~/.local, a venv, --user) over system-wide when you can.
+
+  - id: know-uninstall
+    title: Do you know how to UNINSTALL it cleanly if it misbehaves?
+    detail: Package manager remove, or the files/dirs a manual install drops. Know the undo before you install.
+
+  # --- Install ------------------------------------------------------------
+  - id: install-now
+    title: Proceed with the install now that it's vetted?
+    detail: Run the install you've reviewed. This step records that you went ahead (or skipped).
+    kind: command
+
+  - id: verify-works
+    title: Does it run, report the expected version, and behave sanely?
+    detail: "Run: <tool> --version   and a quick smoke test. Confirm you installed what you intended."
+    kind: command
+
+  # --- Wrap up ------------------------------------------------------------
+  - id: record-install
+    title: "Reminder: note what you installed, the version, source, and why."
+    detail: A line in your notes (or this session) is a cheap audit trail for later "where did this come from?".
+    kind: info

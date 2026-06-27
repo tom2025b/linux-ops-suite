@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "source_tool": "proto",
+  "generated_at": "2026-06-06T08:44:38Z",
+  "item_count": 2,
+  "items": [
+    {
+      "id": "rust-repo-review-20260606T084438Z",
+      "protocol_id": "rust-repo-review",
+      "protocol_title": "Rust Repository Review",
+      "started_at": "2026-06-06T08:40:10Z",
+      "finished_at": "2026-06-06T08:44:38Z",
+      "status": "complete",
+      "passed": 9,
+      "failed": 1,
+      "skipped": 0,
+      "summary": "9 passed, 1 failed, 1 info"
+    },
+    {
+      "id": "release-readiness-20260605T173012Z",
+      "protocol_id": "release-readiness",
+      "protocol_title": "Release Readiness",
+      "started_at": "2026-06-05T17:30:12Z",
+      "status": "incomplete",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 1,
+      "summary": "4 passed, 1 skipped, 2 pending"
+    }
+  ]
+}

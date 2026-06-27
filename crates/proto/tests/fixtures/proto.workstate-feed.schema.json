@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tom2025b/linux-ops-suite/contracts/proto.workstate-feed.v1.schema.json",
+  "title": "Proto Workstate feed (v1)",
+  "description": "Proto-owned rolling summary of recent protocol runs, emitted by `proto run` (automatically) and `proto feed` (on demand) for Workstate ingestion. One well-known file (proto.json), overwritten each time, holding the most recent N sessions. Distinct from the per-run `proto.session` record (proto.session.schema.json), which is one detailed file per run; this feed is the integration artifact aimed at Workstate, modeled on the same envelope as bulwark.workstate-feed.v1.",
+  "$comment": "Modeled from proto/src/core/feed.rs (WorkstateFeed, FeedItem). JSON Schema does not enforce item_count == items.length; Proto's producer contract test (feed_contract) covers that invariant. Per suite contract rules, optional fields (finished_at) are OMITTED when absent rather than written as null.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_tool",
+    "generated_at",
+    "item_count",
+    "items"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Integer major version. Workstate gates on this FIRST. Bumped only on a breaking change."
+    },
+    "source_tool": {
+      "type": "string",
+      "const": "proto",
+      "description": "Producer attribution; always \"proto\" for this feed."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When Proto generated this feed file, as an RFC3339 timestamp."
+    },
+    "item_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of items in the feed (equals items.length)."
+    },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/item" },
+      "description": "Recent sessions, newest first, capped at Proto's feed window."
+    }
+  },
+  "definitions": {
+    "item": {
+      "type": "object",
+      "required": [
+        "id",
+        "protocol_id",
+        "protocol_title",
+        "started_at",
+        "status",
+        "passed",
+        "failed",
+        "skipped",
+        "summary"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Session id (the per-run session file's stem); the handle to the full record."
+        },
+        "protocol_id": {
+          "type": "string",
+          "description": "Stable id of the protocol that was run."
+        },
+        "protocol_title": {
+          "type": "string",
+          "description": "Human-facing title of the protocol, copied in so the row is self-describing."
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the run began, RFC3339."
+        },
+        "finished_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When every step had an outcome, RFC3339. OMITTED while the run is incomplete."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["complete", "incomplete"],
+          "description": "Completion state: complete once no step is pending, else incomplete."
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of passed steps."
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of failed steps."
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of skipped steps."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Proto's own compact \"N passed, N failed, …\" outcome line (zero categories omitted)."
+        }
+      }
+    }
+  }
+}

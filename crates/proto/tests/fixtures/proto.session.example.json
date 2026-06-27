@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "source_tool": "proto",
+  "generated_at": "2026-06-02T00:00:00Z",
+  "protocol_id": "rust-repo-review",
+  "protocol_title": "Rust Repository Review",
+  "started_at": "2026-06-02T00:00:00Z",
+  "finished_at": "2026-06-02T00:05:00Z",
+  "steps": [
+    {
+      "step_id": "clean-tree",
+      "status": "passed",
+      "answered_at": "2026-06-02T00:00:30Z"
+    },
+    {
+      "step_id": "builds",
+      "status": "passed",
+      "answered_at": "2026-06-02T00:01:00Z"
+    },
+    {
+      "step_id": "formatted",
+      "status": "passed",
+      "answered_at": "2026-06-02T00:01:30Z"
+    },
+    {
+      "step_id": "clippy-clean",
+      "status": "failed",
+      "answered_at": "2026-06-02T00:02:00Z",
+      "note": "two warnings in src/core/loader.rs"
+    },
+    {
+      "step_id": "tests-pass",
+      "status": "passed",
+      "answered_at": "2026-06-02T00:02:30Z"
+    },
+    {
+      "step_id": "doc-builds",
+      "status": "passed",
+      "answered_at": "2026-06-02T00:03:00Z"
+    },
+    {
+      "step_id": "deps-reviewed",
+      "status": "skipped",
+      "answered_at": "2026-06-02T00:03:30Z"
+    },
+    {
+      "step_id": "no-secrets",
+      "status": "passed",
+      "answered_at": "2026-06-02T00:04:00Z"
+    },
+    {
+      "step_id": "readme-current",
+      "status": "passed",
+      "answered_at": "2026-06-02T00:04:15Z"
+    },
+    {
+      "step_id": "license-present",
+      "status": "passed",
+      "answered_at": "2026-06-02T00:04:30Z"
+    },
+    {
+      "step_id": "review-note",
+      "status": "acknowledged",
+      "answered_at": "2026-06-02T00:05:00Z"
+    }
+  ]
+}
