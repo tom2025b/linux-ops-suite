@@ -1,0 +1,82 @@
+# =============================================================================
+# workstate-feed-validation.yaml — verify a Workstate feed/snapshot is contract-clean
+# =============================================================================
+# This is a Proto PROTOCOL: a human-authored, ordered checklist that Proto walks
+# you through with `proto run workstate-feed-validation`. It is INPUT ONLY —
+# Proto reads it and records your answers in a separate session file.
+#
+# WHEN TO USE: before another suite tool (RexOps, a panel) is pointed at a
+# Workstate feed/snapshot JSON, confirm the file obeys the suite contract rules
+# so a consumer can trust it. Proto SHOWS the checks; YOU run the commands and
+# answer — Proto never executes anything and never edits the feed.
+#
+# Step kinds:  manual_check (default y/n/s) · info (read & ack) · command (shown,
+# you run it). See rust-repo-review.yaml for the full author notes.
+# =============================================================================
+
+id: workstate-feed-validation
+title: Workstate Feed Validation
+description: >-
+  Validate a Workstate snapshot/feed JSON against the suite contract before a
+  consumer reads it: the file exists, leads with an integer schema_version and an
+  RFC3339 generated_at, validates against its schema, and isn't stale. Catches the
+  drift that breaks downstream tools before they ever see it.
+version: "1"
+
+steps:
+  # --- Locate -------------------------------------------------------------
+  - id: intro
+    title: "Pick the feed file you're validating, e.g. ~/.local/share/workstate/snapshot.json."
+    detail: >-
+      The rest of this protocol asks about THAT file. Have its path ready; you'll
+      run the commands below against it.
+    kind: info
+
+  - id: file-present
+    title: Does the feed file exist and is it non-empty?
+    detail: "Run: test -s <feed.json> && echo present  (no output = missing/empty)"
+    kind: command
+
+  - id: valid-json
+    title: Is the file valid JSON (parses without error)?
+    detail: "Run: jq empty <feed.json>  (silent = valid; an error points at the line)"
+    kind: command
+
+  # --- Contract header ----------------------------------------------------
+  - id: schema-version-first
+    title: Does it carry an INTEGER schema_version (the contract's first rule)?
+    detail: "Run: jq -e '.schema_version | numbers' <feed.json>  (prints the integer)"
+    kind: command
+
+  - id: generated-at
+    title: Is there a generated_at timestamp in RFC3339 / YYYY-MM-DD form?
+    detail: "Run: jq -r '.generated_at' <feed.json>  (e.g. 2026-06-06T12:00:00Z)"
+    kind: command
+
+  - id: source-tool
+    title: Does it name its source_tool so a consumer can attribute the data?
+    detail: "Run: jq -r '.source_tool' <feed.json>  (e.g. \"workstate\")"
+    kind: command
+
+  # --- Schema conformance -------------------------------------------------
+  - id: schema-match
+    title: Does the file validate against its published contract schema?
+    detail: >-
+      Validate against contracts/workstate.snapshot.schema.json (or the matching
+      feed schema). Run: check-jsonschema --schemafile <schema> <feed.json>
+    kind: command
+
+  # --- Freshness ----------------------------------------------------------
+  - id: not-stale
+    title: Is the data fresh enough to trust (generated_at recent, not a leftover)?
+    detail: A weeks-old snapshot can validate yet mislead a consumer. Judgement call.
+
+  - id: matches-reality
+    title: Does the snapshot reflect the system's ACTUAL current state?
+    detail: Spot-check a field or two against the live system, not just the schema.
+
+  # --- Wrap up ------------------------------------------------------------
+  - id: record-findings
+    title: "Reminder: note anything off before you finish (stale fields, schema gaps)."
+    detail: Findings worth a follow-up so the producer can fix the feed at its source.
+    kind: info

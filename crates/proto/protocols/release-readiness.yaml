@@ -1,0 +1,95 @@
+# =============================================================================
+# release-readiness.yaml — pre-tag checklist for cutting a release
+# =============================================================================
+# This is a Proto PROTOCOL: a human-authored, ordered checklist that Proto walks
+# you through with `proto run release-readiness`. It is INPUT ONLY — Proto reads
+# it and records your answers in a separate session file.
+#
+# WHEN TO USE: right before you tag and publish a release of a suite tool. It
+# gathers the easy-to-forget gates (version bump, CHANGELOG, clean tree, green
+# checks, docs) into one audited pass so a release is deliberate, not accidental.
+# Proto SHOWS each check; YOU run the commands and answer — Proto never executes
+# anything.
+#
+# Step kinds:  manual_check (default y/n/s) · info (read & ack) · command (shown,
+# you run it). See rust-repo-review.yaml for the full author notes.
+# =============================================================================
+
+id: release-readiness
+title: Release Readiness
+description: >-
+  A pre-tag gate before publishing a release: clean tree, version bumped,
+  CHANGELOG updated, formatting/lint/tests green, docs current, and a tag plan.
+  Turns the "did I forget anything?" moment into an audited checklist so cutting
+  a release is a decision, not an accident.
+version: "1"
+
+steps:
+  # --- State --------------------------------------------------------------
+  - id: on-main
+    title: Are you on the intended release branch with the latest pulled?
+    detail: "Run: git status -sb  (shows branch + ahead/behind)"
+    kind: command
+
+  - id: clean-tree
+    title: Is the working tree clean (nothing uncommitted)?
+    detail: "Run: git status --short  (empty output = clean)"
+    kind: command
+
+  # --- Versioning ---------------------------------------------------------
+  - id: version-bumped
+    title: Is the version bumped per semver for what changed?
+    detail: "Check Cargo.toml `version`. Run: cargo pkgid  (shows the resolved version)"
+    kind: command
+
+  - id: changelog-updated
+    title: Does the CHANGELOG have an entry for this version (dated, user-facing)?
+    detail: Describe changes for READERS — features/fixes/breaks — not raw commit subjects.
+
+  - id: lockfile-current
+    title: Is Cargo.lock current and committed (build is reproducible)?
+    detail: "Run: cargo update --workspace --locked  (errors if the lock is stale)"
+    kind: command
+
+  # --- Green checks -------------------------------------------------------
+  - id: builds-release
+    title: Does a release build succeed?
+    detail: "Run: cargo build --release --all-targets"
+    kind: command
+
+  - id: formatted
+    title: Is the code formatted?
+    detail: "Run: cargo fmt --all -- --check  (exit 0 = formatted)"
+    kind: command
+
+  - id: clippy-clean
+    title: Is Clippy clean with warnings denied?
+    detail: "Run: cargo clippy --all-targets -- -D warnings"
+    kind: command
+
+  - id: tests-pass
+    title: Do all tests pass?
+    detail: "Run: cargo test --all"
+    kind: command
+
+  # --- Docs & contracts ---------------------------------------------------
+  - id: readme-current
+    title: Is the README accurate for this version (install/run/commands)?
+    detail: Outdated setup steps are the most common release-time rot.
+
+  - id: contracts-stable
+    title: If this tool produces a contract file, is its schema_version correct?
+    detail: >-
+      A breaking change to the output JSON must BUMP schema_version; an additive
+      change must NOT. Skip if this tool produces no contract feed.
+
+  # --- Tag plan -----------------------------------------------------------
+  - id: tag-plan
+    title: Do you know the exact tag to create and that it doesn't already exist?
+    detail: "Run: git tag -l  (confirm your intended vX.Y.Z isn't taken)"
+    kind: command
+
+  - id: final-reminder
+    title: "Reminder: tag + push only after this passes; record anything deferred."
+    detail: Anything you chose to skip should be a follow-up issue, not a silent gap.
+    kind: info

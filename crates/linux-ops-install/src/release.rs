@@ -34,10 +34,6 @@ pub(crate) const TOOLS: &[Tool] = &[
         binary: "workstate",
     },
     Tool {
-        repo: "proto",
-        binary: "proto",
-    },
-    Tool {
         repo: "rexops",
         binary: "rexops",
     },
@@ -78,6 +74,11 @@ pub(crate) const TOOLS: &[Tool] = &[
     Tool {
         repo: "linux-ops-suite",
         binary: "rex-forge",
+    },
+    // Consolidated in-tree (was a standalone repo): producer of the proto feed.
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "proto",
     },
 ];
 

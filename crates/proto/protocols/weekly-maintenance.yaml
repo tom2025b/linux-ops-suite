@@ -1,0 +1,85 @@
+# =============================================================================
+# weekly-maintenance.yaml — a recurring "keep the machine healthy" checklist
+# =============================================================================
+# A Proto PROTOCOL run with `proto run weekly-maintenance`. INPUT ONLY — Proto
+# records your answers in a session file; it never edits this.
+#
+# WHY THIS PROTOCOL:
+#   Maintenance rot is silent: backups quietly stop, disks fill, updates pile up,
+#   logs grow unbounded. A weekly pass over the same checklist catches each before
+#   it becomes an incident. The session record doubles as proof the pass happened
+#   (and a history you can `proto sessions` to see you didn't skip a week).
+#
+# READ-ONLY STANCE: every `command` step is only DISPLAYED — you run it and tell
+# Proto the result. Proto never executes anything (that is the suite's gated final
+# phase). So even destructive-sounding cleanup is under your hand, not Proto's.
+#
+# Step kinds: manual_check (default) | info | command
+# =============================================================================
+
+id: weekly-maintenance
+title: Weekly System Maintenance
+description: >-
+  A once-a-week health pass over a Linux workstation/server: updates, disk and
+  memory headroom, backups, services, logs, and security basics. Catches the slow
+  failures (full disk, stale backup, unpatched package) before they bite.
+version: "1"
+
+steps:
+  # --- Updates ------------------------------------------------------------
+  - id: package-updates
+    title: Are system packages up to date?
+    detail: "Run: sudo apt update && apt list --upgradable   (or your distro's equivalent)"
+    kind: command
+
+  - id: reboot-needed
+    title: If a kernel/library update landed, is a reboot scheduled or done?
+    detail: "Check: ls /var/run/reboot-required 2>/dev/null   (present => reboot needed)"
+    kind: command
+
+  # --- Capacity -----------------------------------------------------------
+  - id: disk-space
+    title: Is there healthy free disk space on all important mounts?
+    detail: "Run: df -h   (watch any mount over ~85% used)"
+    kind: command
+
+  - id: big-offenders
+    title: If a disk is filling, do you know what's eating it?
+    detail: "Run: du -xh / 2>/dev/null | sort -rh | head -20   (largest dirs)"
+    kind: command
+
+  - id: memory-swap
+    title: Are memory and swap usage sane (no runaway process)?
+    detail: "Run: free -h   and   ps aux --sort=-%mem | head"
+    kind: command
+
+  # --- Resilience ---------------------------------------------------------
+  - id: backups-ran
+    title: Did this week's backups actually run AND complete successfully?
+    detail: A backup you never verify is not a backup. Check the log/exit status, not just that it's configured.
+
+  - id: backup-restore
+    title: "Have you spot-checked that a backup can RESTORE (recently, even if not today)?"
+    detail: Restores fail silently far more often than backups do. Untested backups are a false sense of safety.
+
+  # --- Services & security ------------------------------------------------
+  - id: services-healthy
+    title: Are the services you care about up and not crash-looping?
+    detail: "Run: systemctl --failed   (empty is good)"
+    kind: command
+
+  - id: logs-reviewed
+    title: Anything alarming in recent system logs (errors, OOM kills, auth failures)?
+    detail: "Run: journalctl -p err -b --no-pager | tail -40"
+    kind: command
+
+  - id: security-basics
+    title: Firewall up, no unexpected listening ports or new SSH keys?
+    detail: "Run: sudo ss -tlnp   and review ~/.ssh/authorized_keys"
+    kind: command
+
+  # --- Wrap up ------------------------------------------------------------
+  - id: note-followups
+    title: "Reminder: note anything that needs a real follow-up (don't fix it in passing)."
+    detail: A maintenance pass is for spotting; schedule the fixes you can't safely do right now.
+    kind: info

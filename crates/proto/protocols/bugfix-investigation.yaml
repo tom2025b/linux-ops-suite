@@ -1,0 +1,89 @@
+# =============================================================================
+# bugfix-investigation.yaml — a disciplined path from "bug reported" to "root cause"
+# =============================================================================
+# A Proto PROTOCOL: a human-authored, ordered checklist Proto walks you through
+# with `proto run bugfix-investigation`. It is INPUT ONLY — Proto reads it and
+# records your answers in a separate session file; it never edits this.
+#
+# WHY THIS PROTOCOL:
+#   The expensive mistake in debugging is jumping to a fix before you understand
+#   the cause. This checklist enforces the order that actually works: REPRODUCE
+#   first, then ISOLATE, then understand, THEN fix — and only with a failing test
+#   that proves you fixed the real thing. It encodes the "systematic debugging"
+#   discipline so you don't skip a step under pressure.
+#
+# Step kinds (the `kind:` field, default `manual_check`):
+#   * manual_check — a yes/no/skip confirmation (the default; omit `kind` for it)
+#   * info         — something to READ and acknowledge (no pass/fail)
+#   * command      — a suggested command shown in `detail`; YOU run it
+# =============================================================================
+
+# Machine id — matches the filename stem (Proto looks protocols up by id).
+id: bugfix-investigation
+
+# Human-facing heading shown when the run starts.
+title: Bug Fix Investigation
+
+# When/why to use this protocol (shown under the title).
+description: >-
+  A root-cause-first walkthrough for investigating a reported bug. Forces you to
+  reproduce and isolate before theorizing, and to land a failing test before the
+  fix — so you fix the actual cause, not a symptom, and it stays fixed.
+
+# Version of THIS checklist's content (not Proto's version).
+version: "1"
+
+# The ordered steps. List order is execution order.
+steps:
+  # --- Frame the problem --------------------------------------------------
+  - id: read-report
+    title: "Read the report fully — what is the EXACT observed vs expected behaviour?"
+    detail: Quote the actual symptom in your own words. Vague reports hide the bug.
+    kind: info
+
+  - id: scope
+    title: Do you know the scope — who/what is affected and since when?
+    detail: One user or everyone? A recent regression or always broken? This guides where to look.
+
+  # --- Reproduce ----------------------------------------------------------
+  - id: reproduce
+    title: Can you reproduce the bug locally, reliably?
+    detail: A bug you can't reproduce, you can't confirm you've fixed. Get a repeatable trigger first.
+
+  - id: minimal-repro
+    title: Have you reduced it to the SMALLEST input/steps that still trigger it?
+    detail: Strip away everything that isn't required. The minimal repro usually points at the cause.
+
+  # --- Isolate ------------------------------------------------------------
+  - id: recent-changes
+    title: Did a recent change introduce it? Check the history around the affected code.
+    detail: "Run: git log --oneline -20 <path>   (and consider `git bisect` for a regression)"
+    kind: command
+
+  - id: isolate-layer
+    title: Have you isolated WHICH layer/component the fault is in?
+    detail: Narrow it with logging/prints or a debugger before guessing. Confirm, don't assume.
+
+  - id: root-cause
+    title: "Can you state the ROOT CAUSE in one sentence (not the symptom)?"
+    detail: "'X is null because Y never initializes it when Z' — a cause, not 'it crashes'."
+
+  # --- Fix with proof -----------------------------------------------------
+  - id: failing-test
+    title: Have you written a test that FAILS because of this bug?
+    detail: Red-first. The failing test is your proof the cause is understood and the fix is real.
+
+  - id: fix-applied
+    title: Does the fix make that test pass — and the rest of the suite still green?
+    detail: "Run: cargo test   (or the project's test command)"
+    kind: command
+
+  - id: no-collateral
+    title: Have you checked the fix didn't break related behaviour or paper over a deeper issue?
+    detail: A fix that suppresses the symptom but leaves the cause is a future bug. Be honest here.
+
+  # --- Wrap up ------------------------------------------------------------
+  - id: record-cause
+    title: "Reminder: record the root cause + fix in the issue/PR for the next person."
+    detail: Future-you (or a teammate) hitting something similar will thank you.
+    kind: info

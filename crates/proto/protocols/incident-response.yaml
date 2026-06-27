@@ -1,0 +1,79 @@
+# =============================================================================
+# incident-response.yaml — calm, ordered triage when something is on fire
+# =============================================================================
+# A Proto PROTOCOL run with `proto run incident-response`. INPUT ONLY — Proto
+# records your answers in a session file; it never edits this.
+#
+# WHY THIS PROTOCOL:
+#   Under incident stress, people skip the steps that matter — they start fixing
+#   before they've STABILIZED the bleeding, or they fix it and forget to confirm
+#   recovery, or they lose the timeline they'll need for the post-mortem. This
+#   checklist imposes the proven order: stabilize -> diagnose -> mitigate ->
+#   verify -> communicate -> capture. The session is your incident timeline.
+#
+# This is intentionally a LIGHT, fast triage list — not a heavyweight runbook.
+# It's the thing you actually run at 2am.
+#
+# Step kinds: manual_check (default) | info | command
+# =============================================================================
+
+id: incident-response
+title: Incident Response Triage
+description: >-
+  A fast, ordered triage for an active incident (outage, breach, data issue):
+  stop the bleeding first, then diagnose, mitigate, verify recovery, communicate,
+  and capture the timeline for the post-mortem. Designed to run live, under
+  pressure, so you don't skip the step you'll regret skipping.
+version: "1"
+
+steps:
+  # --- Stabilize ----------------------------------------------------------
+  - id: declare
+    title: "Have you DECLARED the incident and noted the start time?"
+    detail: Naming it (even to yourself) starts the clock and the timeline. Write down the time now.
+    kind: info
+
+  - id: assess-severity
+    title: Do you know the severity and blast radius — what's broken and who's affected?
+    detail: Total outage vs degraded? One service or many? This sizes the response and who to pull in.
+
+  - id: stop-bleeding
+    title: Have you taken the fastest action to STABILIZE (even if it's not the real fix)?
+    detail: Roll back, fail over, disable the bad feature, take it offline. Stop harm first; fix root cause later.
+
+  # --- Diagnose -----------------------------------------------------------
+  - id: recent-change
+    title: Did a recent deploy/config/change line up with the start time?
+    detail: Most incidents are change-induced. Check what shipped right before symptoms began — roll it back if so.
+
+  - id: gather-signals
+    title: Have you pulled the key signals (logs, metrics, alerts) for the affected window?
+    detail: "Run: journalctl -p err --since '30 min ago' --no-pager   (and your metrics/alert dashboards)"
+    kind: command
+
+  - id: hypothesis
+    title: Do you have a working hypothesis for the cause (stated, not just felt)?
+    detail: Say it out loud / write it down. A named hypothesis is testable; a hunch leads to flailing.
+
+  # --- Mitigate & verify --------------------------------------------------
+  - id: apply-mitigation
+    title: Have you applied a mitigation that addresses the cause (or a solid workaround)?
+    detail: This is the deliberate fix/workaround, distinct from the emergency stabilize above.
+
+  - id: verify-recovery
+    title: Have you CONFIRMED recovery with real signals (not just "looks better")?
+    detail: Check the same metrics/logs/healthchecks that flagged it. Verify, don't assume, the recovery.
+
+  # --- Communicate & capture ----------------------------------------------
+  - id: communicate
+    title: Have you updated stakeholders/users on status and impact?
+    detail: Even "we're aware and working on it" matters. Silence during an incident erodes trust fast.
+
+  - id: timeline-captured
+    title: Have you captured the timeline (what happened when, what you did)?
+    detail: You'll need it for the post-mortem and you WILL forget the details by tomorrow. This session helps.
+
+  - id: schedule-postmortem
+    title: "Reminder: schedule a blameless post-mortem and any follow-up fixes."
+    detail: The incident isn't over at recovery — the lasting fix and the lessons come from the post-mortem.
+    kind: info

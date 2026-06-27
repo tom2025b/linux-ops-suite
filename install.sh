@@ -48,7 +48,6 @@ RUST_TOOLS=(
   "scriptvault:scriptvault"
   "toolfoundry:toolfoundry"
   "workstate:workstate"
-  "proto:proto"
   "rexops:rexops"
 )
 
@@ -59,6 +58,7 @@ WORKSPACE_TOOLS=(
   "toolbox-bridge:toolbox-bridge"
   "rex-check:rex-check"
   "conductor:conductor"
+  "proto:proto"
 )
 
 # --- flags -------------------------------------------------------------------
