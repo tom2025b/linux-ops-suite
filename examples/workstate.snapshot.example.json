@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "built_at": "2026-06-14T12:00:00Z",
   "scripts": {
     "status": "Fresh",
@@ -82,5 +82,25 @@
       "dropped_records": 0
     },
     "data": null
+  },
+  "jobs": {
+    "status": "Fresh",
+    "provenance": {
+      "feed_id": "jobs",
+      "fetched_at": "2026-06-14T12:00:00Z",
+      "source_observed_at": "2026-06-14T11:30:00Z",
+      "dropped_records": 0
+    },
+    "data": {
+      "generated_at": "2026-06-14",
+      "jobs": [
+        {
+          "id": "nightly-backup-check",
+          "title": "Nightly backup verification",
+          "outcome": "passed"
+        }
+      ],
+      "dropped_records": 0
+    }
   }
 }
