@@ -11,6 +11,21 @@ a single entry covers the whole suite.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-27
+
+Installer coverage + release-docs fixes.
+
+### Changed
+
+- **linux-ops-install** now installs every active tool in the README, not just the
+  six sibling-repo tools and `toolbox-bridge`. The in-workspace tools
+  (`rex-doctor`, `portman`, `pulse`, `tripwire`, `rewind`, `conductor`, `rex-forge`)
+  were added to the installer's tool registry; `release.yml` now builds and packages
+  all of them into the one `linux-ops-suite-<target>` archive, and the installer
+  extracts each binary by name.
+- **README**: documented the existing `release.yml` workflow (replacing the stale
+  "no release workflow yet" note) and added a capability matrix under the tool list.
+
 ## [0.3.0] - 2026-06-26
 
 The **single-source-of-truth** release. The Workstate snapshot contract was
@@ -133,7 +148,8 @@ was extracted and rolled across the suite.
 Initial tagged releases; see the git history for details
 (`git log v0.1.0`, `v0.1.1`, `v0.1.2`).
 
-[Unreleased]: https://github.com/tom2025b/linux-ops-suite/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/tom2025b/linux-ops-suite/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/tom2025b/linux-ops-suite/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/tom2025b/linux-ops-suite/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tom2025b/linux-ops-suite/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/tom2025b/linux-ops-suite/compare/v0.1.1...v0.1.2

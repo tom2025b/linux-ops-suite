@@ -198,7 +198,7 @@ dependencies = [
 
 [[package]]
 name = "conductor"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "clap",
@@ -541,7 +541,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "linux-ops-install"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "serde_json",
@@ -676,7 +676,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "portman"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "serde",
@@ -706,7 +706,7 @@ dependencies = [
 
 [[package]]
 name = "pulse"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "crossterm",
@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "rewind"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "clap",
@@ -778,14 +778,14 @@ dependencies = [
 
 [[package]]
 name = "rex-check"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "suite-core",
 ]
 
 [[package]]
 name = "rex-doctor"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "serde",
@@ -796,7 +796,7 @@ dependencies = [
 
 [[package]]
 name = "rex-forge"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "crossterm",
@@ -1004,11 +1004,11 @@ dependencies = [
 
 [[package]]
 name = "suite-core"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "suite-ui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "crossterm",
  "insta",
@@ -1062,7 +1062,7 @@ dependencies = [
 
 [[package]]
 name = "thomas-tui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "crossterm",
@@ -1115,7 +1115,7 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "toolbox-bridge"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "clap",
@@ -1129,7 +1129,7 @@ dependencies = [
 
 [[package]]
 name = "tripwire"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "serde",
