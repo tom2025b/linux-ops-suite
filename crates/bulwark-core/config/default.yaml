@@ -1,0 +1,48 @@
+# Bulwark — Default Configuration
+#
+# This is the baked-in default configuration.
+# Users can override by placing a file at:
+#   $XDG_CONFIG_HOME/bulwark/config.yaml   (usually ~/.config/bulwark/config.yaml on Linux)
+#
+# The user config is merged on top of (or replaces) this default.
+# For the MVP we do a full replacement when the user file exists and is valid.
+#
+# All paths support ~ (home) expansion. Environment variables are supported in later layers.
+
+version: 1
+
+# Scan configuration controls where and how deeply Bulwark looks for tools/scripts.
+scan:
+  # Directories to scan (recursively). These are the primary places the user keeps
+  # personal tools, scripts, and workflows.
+  paths:
+    - "~/bin"
+    - "~/.local/bin"
+    - "~/scripts"
+    - "~/tools"
+    - "~/dotfiles/bin"
+
+  # Maximum recursion depth (1 = only the listed directories, no recursion).
+  max_depth: 8
+
+  # Whether to follow symbolic links. Keep false for safety and to avoid cycles.
+  follow_symlinks: false
+
+# Ignore rules (applied during scanning). These keep noise and irrelevant directories out.
+ignore:
+  # Exact directory or file names to skip entirely.
+  names:
+    - ".git"
+    - ".hg"
+    - ".svn"
+    - "target"
+    - "node_modules"
+    - "__pycache__"
+    - ".venv"
+    - "venv"
+    - ".cargo"
+    - "dist"
+    - "build"
+
+  # Future: glob patterns or regex can be added here when the scanner layer supports them.
+  # patterns: []

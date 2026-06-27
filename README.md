@@ -8,7 +8,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 
 | Tool | Role | Status |
 |------|------|--------|
-| **[Bulwark](https://github.com/tom2025b/bulwark)** | Read-only scanner + risk classifier | Active |
+| **[Bulwark](crates/bulwark)** | Read-only scanner + risk classifier | Active |
 | **[ScriptVault](https://github.com/tom2025b/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
 | **[Toolbox-Bridge](https://github.com/tom2025b/linux-ops-suite)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active |
 | **[ToolFoundry](crates/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
@@ -90,7 +90,6 @@ Supported binaries:
 
 From standalone tool repos (each publishes its own GitHub Release):
 
-- `bulwark`
 - `scriptvault`
 - `workstate`
 - `rexops`
@@ -107,6 +106,7 @@ From this umbrella repo (all shipped together in the `linux-ops-suite` release a
 - `rex-forge`
 - `proto`
 - `toolfoundry`
+- `bulwark`
 
 If a repo has no GitHub Release yet, `linux-ops-install` now says that explicitly and prints:
 
@@ -121,14 +121,14 @@ For each tool repo, publish at least one Linux release asset that matches the bi
 
 - Preferred archive: `.tar.gz`
 - Also accepted: `.tgz`, `.tar.xz`, `.zip`
-- Expected executable name inside the archive: exactly the tool binary name, for example `bulwark` or `proto`
+- Expected executable name inside the archive: exactly the tool binary name, for example `scriptvault` or `rexops`
 - Expected naming hints in the asset filename: Linux plus `x86_64` or `amd64`, or `aarch64` or `arm64`
 
 Examples of good asset names:
 
 ```text
-bulwark-x86_64-unknown-linux-gnu.tar.gz
-proto-aarch64-unknown-linux-gnu.tar.gz
+scriptvault-x86_64-unknown-linux-gnu.tar.gz
+rexops-aarch64-unknown-linux-gnu.tar.gz
 linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz
 ```
 
@@ -143,22 +143,22 @@ git tag v0.3.1
 git push origin v0.3.1   # release.yml builds the x86_64 + aarch64 archives and uploads them
 ```
 
-The standalone tool repos (`bulwark`, `scriptvault`, `workstate`, `rexops`) each publish their own release. For one of them:
+The standalone tool repos (`scriptvault`, `workstate`, `rexops`) each publish their own release. For one of them:
 
 1. Build the release binary in that repo.
 2. Package the executable into a Linux archive, preferably `.tar.gz`.
 3. Create a GitHub Release and upload the archive.
 
-Example for a tool whose repo and binary are both `bulwark`:
+Example for a tool whose repo and binary are both `scriptvault`:
 
 ```bash
 cargo build --release
 mkdir -p dist
-asset="bulwark-x86_64-unknown-linux-gnu.tar.gz"
-tar -C target/release -czf "dist/$asset" bulwark
+asset="scriptvault-x86_64-unknown-linux-gnu.tar.gz"
+tar -C target/release -czf "dist/$asset" scriptvault
 ( cd dist && sha256sum "$asset" > "$asset.sha256" )   # the installer verifies this, fail-closed
 gh release create vX.Y.Z dist/"$asset" dist/"$asset.sha256" \
-  --repo tom2025b/bulwark --title "vX.Y.Z" --notes "Linux release"
+  --repo tom2025b/scriptvault --title "vX.Y.Z" --notes "Linux release"
 ```
 
 To package this repo's in-workspace tools by hand (the `release.yml` workflow does exactly this on a tag):
@@ -266,7 +266,7 @@ of the snapshot empty, and consumers degrade gracefully rather than failing.
 
 ## Repositories
 
-- [Bulwark](https://github.com/tom2025b/bulwark) — Scanner & risk
+- Bulwark — lives in this repo: [`crates/bulwark`](crates/bulwark) — Scanner & risk classifier
 - [ScriptVault](https://github.com/tom2025b/scriptvault) — Script launcher
 - Toolbox-Bridge — lives in this repo: [`crates/toolbox-bridge`](crates/toolbox-bridge) (Bulwark → Workstate → ScriptVault adapter)
 - ToolFoundry — lives in this repo: [`crates/toolfoundry`](crates/toolfoundry) — Lifecycle & ownership

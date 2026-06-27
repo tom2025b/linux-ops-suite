@@ -558,6 +558,14 @@ mod tests {
 
         let aliases = fs::read_to_string(&paths.aliases_file).expect("read aliases");
 
-        assert!(aliases.contains("alias existing='existing'\nalias r-bulwark='bulwark'\n"));
+        // The point of this test is that a seeded aliases file with NO trailing
+        // newline still gets a separating newline before the first appended
+        // alias (so lines aren't glued together). Reference the first registry
+        // entry rather than hardcoding a tool name, so reordering TOOLS (e.g.
+        // consolidating a standalone repo in-tree) doesn't break this test.
+        let first = TOOLS[0].binary;
+        assert!(aliases.contains(&format!(
+            "alias existing='existing'\nalias r-{first}='{first}'\n"
+        )));
     }
 }
