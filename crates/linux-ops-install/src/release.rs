@@ -25,10 +25,6 @@ pub(crate) const TOOLS: &[Tool] = &[
         repo: "workstate",
         binary: "workstate",
     },
-    Tool {
-        repo: "rexops",
-        binary: "rexops",
-    },
     // In-workspace tools: built from this umbrella repo and shipped together in
     // one `linux-ops-suite-<target>` release archive (matched by repo name;
     // `find_binary` then extracts each by its own binary name). Keep this list in
@@ -81,6 +77,14 @@ pub(crate) const TOOLS: &[Tool] = &[
     Tool {
         repo: "linux-ops-suite",
         binary: "bulwark",
+    },
+    // Consolidated in-tree (was a standalone repo): the operations cockpit +
+    // suite launcher. Binary `rexops` is built from the rexops-cli crate; the
+    // separate rexops-tui binary is reachable via `cargo run` but not shipped
+    // (the `rexops` binary launches the TUI by default).
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "rexops",
     },
 ];
 

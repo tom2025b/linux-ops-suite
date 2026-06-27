@@ -1,0 +1,22 @@
+[package]
+name = "rexops-adapters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Adapter layer for RexOps — thin integrations with Bulwark, System, and Workstate"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rexops-core = { workspace = true }
+
+# Unix-only: kill a timed-out probe's whole process group (killpg), so a
+# grandchild that outlived the direct child does not linger.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+# Keep deps minimal. No tokio, no async, no anyhow.
+# Execution is synchronous via std::process. Timeout implemented with std threads + channels.

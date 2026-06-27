@@ -14,7 +14,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[ToolFoundry](crates/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
 | **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — compiles the one canonical snapshot (shape/version/path defined by `workstate-schema`) | Active |
 | **[Proto](crates/proto)** | Guided protocol / checklist runner — emits session records | Active |
-| **[RexOps](https://github.com/tom2025b/rexops)** | Operations cockpit + suite launcher | Active |
+| **[RexOps](crates/rexops-cli)** | Operations cockpit + suite launcher | Active |
 | **[rex-doctor](crates/rex-doctor)** | Suite diagnostics — checks env/PATH, binaries & versions | Active |
 | **[portman](crates/portman)** | Lists listening sockets + ownership chain, with baseline diff | Active |
 | **[pulse](crates/pulse)** | Calm read-only TUI showing one suite-health verdict | Active |
@@ -92,7 +92,6 @@ From standalone tool repos (each publishes its own GitHub Release):
 
 - `scriptvault`
 - `workstate`
-- `rexops`
 
 From this umbrella repo (all shipped together in the `linux-ops-suite` release archive):
 
@@ -107,6 +106,7 @@ From this umbrella repo (all shipped together in the `linux-ops-suite` release a
 - `proto`
 - `toolfoundry`
 - `bulwark`
+- `rexops`
 
 If a repo has no GitHub Release yet, `linux-ops-install` now says that explicitly and prints:
 
@@ -121,18 +121,18 @@ For each tool repo, publish at least one Linux release asset that matches the bi
 
 - Preferred archive: `.tar.gz`
 - Also accepted: `.tgz`, `.tar.xz`, `.zip`
-- Expected executable name inside the archive: exactly the tool binary name, for example `scriptvault` or `rexops`
+- Expected executable name inside the archive: exactly the tool binary name, for example `scriptvault` or `workstate`
 - Expected naming hints in the asset filename: Linux plus `x86_64` or `amd64`, or `aarch64` or `arm64`
 
 Examples of good asset names:
 
 ```text
 scriptvault-x86_64-unknown-linux-gnu.tar.gz
-rexops-aarch64-unknown-linux-gnu.tar.gz
+workstate-aarch64-unknown-linux-gnu.tar.gz
 linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz
 ```
 
-The `linux-ops-suite` release is the special case: a single `linux-ops-suite-<target>` archive carries **all** the in-workspace tools — `toolbox-bridge`, `rex-doctor`, `portman`, `pulse`, `tripwire`, `rewind`, `conductor`, and `rex-forge` — and the installer extracts each binary by name.
+The `linux-ops-suite` release is the special case: a single `linux-ops-suite-<target>` archive carries **all** the in-workspace tools — `toolbox-bridge`, `rex-doctor`, `portman`, `pulse`, `tripwire`, `rewind`, `conductor`, `rex-forge`, `proto`, `toolfoundry`, `bulwark`, and `rexops` — and the installer extracts each binary by name.
 
 ### Cutting releases
 
@@ -143,7 +143,7 @@ git tag v0.3.1
 git push origin v0.3.1   # release.yml builds the x86_64 + aarch64 archives and uploads them
 ```
 
-The standalone tool repos (`scriptvault`, `workstate`, `rexops`) each publish their own release. For one of them:
+The standalone tool repos (`scriptvault`, `workstate`) each publish their own release. For one of them:
 
 1. Build the release binary in that repo.
 2. Package the executable into a Linux archive, preferably `.tar.gz`.
@@ -272,7 +272,7 @@ of the snapshot empty, and consumers degrade gracefully rather than failing.
 - ToolFoundry — lives in this repo: [`crates/toolfoundry`](crates/toolfoundry) — Lifecycle & ownership
 - [Workstate](https://github.com/tom2025b/workstate) — State compiler
 - Proto — lives in this repo: [`crates/proto`](crates/proto) — Guided protocol / checklist runner
-- [RexOps](https://github.com/tom2025b/rexops) — Suite cockpit
+- RexOps — lives in this repo: [`crates/rexops-cli`](crates/rexops-cli) — Suite cockpit + launcher
 
 ## Shared UI (`thomas-tui` + `suite-ui`)
 

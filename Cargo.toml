@@ -19,6 +19,11 @@ members = [
     "crates/toolfoundry-core",
     "crates/bulwark",
     "crates/bulwark-core",
+    "crates/rexops-core",
+    "crates/rexops-adapters",
+    "crates/rexops-app",
+    "crates/rexops-cli",
+    "crates/rexops-tui",
 ]
 
 [workspace.package]
@@ -35,6 +40,10 @@ suite-ui = { path = "crates/suite-ui" }
 thomas-tui = { path = "crates/thomas-tui" }
 toolfoundry-core = { path = "crates/toolfoundry-core" }
 bulwark-core = { path = "crates/bulwark-core" }
+rexops-core = { path = "crates/rexops-core" }
+rexops-adapters = { path = "crates/rexops-adapters" }
+rexops-app = { path = "crates/rexops-app" }
+rexops-tui = { path = "crates/rexops-tui" }
 ratatui = "0.29"
 crossterm = "0.28"
 unicode-width = "0.2"

@@ -46,7 +46,6 @@ ALIASES_FILE="${ALIASES_FILE:-$HOME/.rust_aliases.sh}"
 RUST_TOOLS=(
   "scriptvault:scriptvault"
   "workstate:workstate"
-  "rexops:rexops"
 )
 
 # Rust tools that live in THIS repo's cargo workspace (not a sibling repo):
@@ -59,6 +58,7 @@ WORKSPACE_TOOLS=(
   "proto:proto"
   "toolfoundry:toolfoundry"
   "bulwark:bulwark"
+  "rexops-cli:rexops"
 )
 
 # --- flags -------------------------------------------------------------------
