@@ -2,6 +2,7 @@
 name = "toolbox-bridge"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -21,9 +22,10 @@ thiserror = { workspace = true }
 clap = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = { workspace = true }
 # The integration test drives the REAL producer (SnapshotBuilder + ingest adapters)
 # to compile a snapshot from fixtures, then runs the bridge against it — so the test
 # needs the full `workstate` producer crate. The library itself depends only on
-# `workstate-schema`. Pinned to the same rev as workstate-schema.
-workstate = { git = "https://github.com/tom2025b/workstate", rev = "48c58c74acf88c8ae30ff21b4e032243ba66f8c3" }
+# `workstate-schema`. Inherited from the workspace, which pins it to the SAME rev as
+# workstate-schema so the two can never resolve to different revisions.
+workstate = { workspace = true }

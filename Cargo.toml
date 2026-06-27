@@ -27,6 +27,7 @@ repository = "https://github.com/tom2025b/linux-ops-suite"
 [workspace.dependencies]
 suite-core = { path = "crates/suite-core" }
 suite-ui = { path = "crates/suite-ui" }
+thomas-tui = { path = "crates/thomas-tui" }
 ratatui = "0.29"
 crossterm = "0.28"
 unicode-width = "0.2"
@@ -47,3 +48,9 @@ tempfile = "3"
 # the snapshot through this and nothing else. Pinned by rev like every cross-repo
 # suite dependency.
 workstate-schema = { git = "https://github.com/tom2025b/workstate", rev = "4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724" }
+
+# Workstate PRODUCER crate (SnapshotBuilder + ingest adapters). Used only by
+# toolbox-bridge's integration test to compile a snapshot from fixtures. Pinned to
+# the SAME rev as workstate-schema above so the producer and the contract can never
+# resolve to two different revisions of the same repo.
+workstate = { git = "https://github.com/tom2025b/workstate", rev = "4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724" }

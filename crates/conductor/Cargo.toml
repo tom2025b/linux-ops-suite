@@ -40,4 +40,4 @@ ratatui = { workspace = true }
 crossterm = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = { workspace = true }

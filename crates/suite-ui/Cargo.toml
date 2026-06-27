@@ -2,6 +2,7 @@
 name = "suite-ui"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -17,7 +18,7 @@ clap = ["thomas-tui/clap"]
 [dependencies]
 ratatui = { workspace = true }
 crossterm = { workspace = true }
-thomas-tui = { path = "../thomas-tui" }
+thomas-tui = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
