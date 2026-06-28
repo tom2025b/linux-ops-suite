@@ -1,5 +1,83 @@
 # Last Work
 
+## Repo-to-crate consolidation — pull all six standalone tools into the umbrella
+
+2026-06-27. **Committed, pushed, and MERGED to `main`** across six PRs; `main` is at
+the final merge (`ffa50ec`) and green. The umbrella went from 13 to **27 member
+crates**; it is now effectively a monorepo. **No git references to any sibling repo
+remain** in the manifests or `Cargo.lock`.
+
+**Goal (Tom's):** pull the standalone sibling repos into the umbrella workspace
+under `crates/`, smallest/lowest-dep first, converting each to workspace dependency
+inheritance and flipping cross-repo git deps to in-tree path deps — ending with
+Workstate (the shared contract) last because it changes the dependency model for the
+whole workspace.
+
+**Order, PRs, and merge commits (each green on the full CI gate before merge):**
+- Proto → `crates/proto` — **PR #57** (`9875498`).
+- ToolFoundry → `crates/toolfoundry{,-core}` — **PR #59** (`c4df2f9`).
+- Bulwark → `crates/bulwark{,-core}` — **PR #60** (`f32a98d`).
+- RexOps → `crates/rexops-{core,adapters,app,cli,tui}` — **PR #61** (`e430abf`).
+- ScriptVault → `crates/scriptvault{,-core}` — **PR #63** (`00108c6`).
+- Workstate → `crates/workstate{,-schema}` — **PR #64** (`ffa50ec`).
+
+**The recipe applied to each (per tool):** copy the crate(s) in (excluding
+`target`/lockfiles); convert each manifest to workspace inheritance (`{ workspace =
+true }`); set `edition` explicitly only where it differs from the umbrella's 2021
+(Proto/ToolFoundry/Bulwark/ScriptVault are 2024); drop per-crate `readme` (the
+umbrella defines none); centralize the internal lib crate(s) and any new third-party
+deps in `[workspace.dependencies]`; move each tool from the sibling-repo install
+path to the in-workspace path (`release.rs` `TOOLS` registry → `repo:
+"linux-ops-suite"`, `release.yml` `-p <crate>` + `bins`, `install.sh`
+`WORKSPACE_TOOLS`, README); run the EXACT CI gate locally (`fmt --check`, `clippy
+--workspace --all-targets --all-features -D warnings`, `build --all-targets
+--all-features`, `test --all-features`) before pushing.
+
+**Notable per-tool details and snags fixed:**
+- **suite-ui git → path.** Bulwark, RexOps, and ScriptVault consumed `suite-ui` as a
+  pinned git dep; all flipped to the in-tree path crate via workspace inheritance.
+  ScriptVault keeps the `clap` feature: `suite-ui = { workspace = true, features =
+  ["clap"] }` (the umbrella default carries no features; verified `crates/suite-ui`
+  exposes `clap = ["thomas-tui/clap"]`).
+- **Proto MSRV (caught by CI clippy, then fixed across the stack).** Proto used
+  `u64::is_multiple_of` (stable in 1.87) but the umbrella MSRV is 1.85 → clippy's
+  `incompatible_msrv`, denied in CI. Fixed to `secs % 60 == 0` and folded into
+  Proto's commit; the fix was rebased through the then-stacked ToolFoundry/Bulwark
+  branches so all three went green before merge.
+- **Bulwark order-coupled test.** A `linux-ops-install` test hardcoded `r-bulwark` as
+  the first wrapper alias; moving Bulwark out of the top of the `TOOLS` registry
+  broke it. Fixed to assert against `TOOLS[0].binary` (order-independent — the test's
+  real intent). Also kept `serde_yaml_bw` inline in `bulwark-core` (the umbrella
+  standardizes on classic `serde_yaml` 0.9; the two coexist).
+- **RexOps (5 crates, biggest).** `thiserror` 1 → 2 reconciliation (derive usage is
+  2.0-clean); no new third-party deps; centralized the four depended-on internal
+  crates. `rexops-tui` builds but isn't shipped (the `rexops` binary launches the
+  TUI by default).
+- **ScriptVault (dep-heaviest).** Centralized **9 new deps** (fuzzy-matcher, globset,
+  `dirs` — distinct from `directories` — tracing, tracing-subscriber, clap_complete,
+  clap_mangen, arboard, syntect). Relocated its embedded `config/default.yaml` INTO
+  the crate (it had reached out to the old repo root via
+  `include_str!("../../../../config/default.yaml")`).
+- **Workstate (the contract, last).** Its repo wasn't a `crates/` layout — root
+  package (`workstate` lib+bin) + a `workstate-schema` subdir crate. Flattened to
+  `crates/workstate-schema` (the contract) and `crates/workstate` (producer lib +
+  `workstate` binary, with a fresh package-only Cargo.toml). Both `workstate-schema`
+  and `workstate` flipped from pinned git deps to path deps; the three consumers
+  (toolbox-bridge, conductor, pulse) already used `{ workspace = true }`, so they
+  picked up the in-tree crates with no edits. Local HEAD was the pinned rev + one
+  docs-only commit, so the contract code is unchanged. New dep: `uuid` (v4). After
+  this, `install.sh`'s `RUST_TOOLS` sibling list is empty.
+
+**Process notes:** worktree-per-tool, stacked PRs at first (Proto→ToolFoundry→Bulwark
+shared edits to the same files) then sequential off `main` once the stack merged.
+`gh pr edit`/`pr merge` hit a deprecated-Projects GraphQL bug, so base-retarget used
+the REST API (`gh api PATCH`); merges used `--merge` commits to preserve history.
+After each merge: deleted the remote+local branch and worktree, fast-forwarded local
+`main`, and re-verified `main`'s push CI green.
+
+**Follow-up:** the six superseded standalone repos (`bulwark`, `scriptvault`,
+`toolfoundry`, `proto`, `rexops`, `workstate`) can now be archived.
+
 ## Fix "conductor keeps saying workstate snapshot is stale" — wire workstate to LIVE tools
 
 2026-06-22. Spans 4 repos, **NOT committed, NOT pushed** (changes in working

@@ -11,6 +11,53 @@ a single entry covers the whole suite.
 
 ## [Unreleased]
 
+### Changed
+
+- **Repo-to-crate consolidation — every standalone suite tool is now in-tree.**
+  The six tools that lived in their own GitHub repos — **Proto, ToolFoundry,
+  Bulwark, RexOps, ScriptVault, and Workstate** — were pulled into this umbrella
+  workspace under `crates/`, taking it from 13 to **27 member crates**. The
+  umbrella is now effectively a monorepo: one `Cargo.toml`, one `Cargo.lock`, one
+  CI, one shared version, one release archive.
+  - Each tool converted to **workspace dependency inheritance**: third-party
+    versions and the shared in-tree crates are centralized in
+    `[workspace.dependencies]` and consumed with `{ workspace = true }`. Crates
+    that were edition 2024 (Proto, ToolFoundry, Bulwark, ScriptVault) keep it via
+    an explicit `edition` (the umbrella root is 2021).
+  - **`suite-ui` is now an in-tree path dependency** for Bulwark, RexOps, and
+    ScriptVault — it was a git dependency pinned by rev. ScriptVault keeps its
+    `clap` feature via `{ workspace = true, features = ["clap"] }`.
+  - **The Workstate snapshot contract is now in-tree.** `workstate-schema` (the
+    contract) and `workstate` (the producer + binary) flipped from pinned
+    cross-repo git deps to path deps; their consumers (toolbox-bridge, conductor,
+    pulse) pick them up through workspace inheritance, so the contract still
+    cannot drift — it is now a single in-tree crate. **No git references to any
+    sibling repo remain** in the manifests or `Cargo.lock`.
+  - Dependency reconciliations: `thiserror` 1→2 (RexOps); `serde_yaml` kept as the
+    maintained `serde_yaml_bw` fork in `bulwark-core` (the umbrella standard is
+    classic `serde_yaml` 0.9 — the two coexist); a single MSRV fix in Proto
+    (`u64::is_multiple_of`, stable in 1.87 → `% 60 == 0`, under the umbrella's
+    1.85 MSRV); and ScriptVault's embedded `config/default.yaml` moved inside its
+    crate (it had reached out to the old repo root via `include_str!`).
+  - **Installer / release**: every tool moved from the sibling-repo install path to
+    the in-workspace path. `linux-ops-install`'s `TOOLS` registry, `release.yml`,
+    and `install.sh` now build and ship all tools from this one repo into the
+    single `linux-ops-suite-<target>` archive; `install.sh`'s sibling-repo list is
+    now empty. The library crates (`*-core`, `workstate-schema`) and the secondary
+    `rexops-tui` binary are intentionally not installed.
+  - **Docs**: README reframed away from "each tool is its own repo"; `PROJECT-STATUS.md`
+    rewritten for the monorepo reality.
+  - Landed as six PRs — #57 (Proto), #59 (ToolFoundry), #60 (Bulwark), #61 (RexOps),
+    #63 (ScriptVault), #64 (Workstate) — each green on the full CI gate
+    (`fmt` + `clippy --all-targets --all-features -D warnings` + `build` + `test
+    --all-features`) before merge.
+
+### Notes
+
+- The six standalone tool repos (`bulwark`, `scriptvault`, `toolfoundry`, `proto`,
+  `rexops`, `workstate`) are now superseded by their in-tree crates and can be
+  archived.
+
 ## [0.3.1] - 2026-06-27
 
 Installer coverage + release-docs fixes.
