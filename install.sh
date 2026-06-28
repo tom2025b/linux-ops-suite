@@ -41,11 +41,12 @@ BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"          # cargo install + wrappers
 WRAPPER_DIR="${WRAPPER_DIR:-$HOME/bin}"          # r-<tool> wrappers (user convention)
 ALIASES_FILE="${ALIASES_FILE:-$HOME/.rust_aliases.sh}"
 
-# The Rust tools: "repo_name:binary_name". Repo and binary usually match, but
-# keep them separate so a repo whose binary differs is handled correctly.
-RUST_TOOLS=(
-  "workstate:workstate"
-)
+# Sibling-repo Rust tools ("repo_name:binary_name"): each lived in its own GitHub
+# repo and was installed from its own release. This list is now EMPTY — every suite
+# tool has been consolidated into this umbrella workspace (see WORKSPACE_TOOLS
+# below); workstate was the last one moved in-tree. The sibling-install path is
+# kept for any future external tool, but currently nothing uses it.
+RUST_TOOLS=()
 
 # Rust tools that live in THIS repo's cargo workspace (not a sibling repo):
 # "crate_name:binary_name". toolbox-bridge replaced the retired Python bridge;
@@ -59,6 +60,7 @@ WORKSPACE_TOOLS=(
   "bulwark:bulwark"
   "rexops-cli:rexops"
   "scriptvault:scriptvault"
+  "workstate:workstate"
 )
 
 # --- flags -------------------------------------------------------------------

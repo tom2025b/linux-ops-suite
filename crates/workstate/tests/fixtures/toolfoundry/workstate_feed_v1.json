@@ -1,0 +1,39 @@
+{
+  "_comment": "Grounded ToolFoundry neutral Workstate feed sample. This is no longer a RexOps-specific feed; Workstate ingests it and compiles the tools section of snapshot v3.",
+  "schema_version": 1,
+  "source_tool": "toolfoundry",
+  "generated_at": "2026-06-02T00:00:00Z",
+  "as_of": "2026-06-02",
+  "tool_count": 2,
+  "attention_count": 1,
+  "tools": [
+    {
+      "id": "backup-home",
+      "display_name": "Backup Home",
+      "owner": "tom",
+      "project": "backupsage",
+      "lifecycle_state": "active",
+      "status": "attention",
+      "review_after": "2026-09-01",
+      "review_due_flag": false,
+      "health_passed": 0,
+      "health_total": 2,
+      "drifted": true,
+      "manifest_path": "default.yaml"
+    },
+    {
+      "id": "log-rotator",
+      "display_name": "Log Rotator",
+      "owner": "tom",
+      "project": "ops-utils",
+      "lifecycle_state": "active",
+      "status": "ok",
+      "review_after": "2026-09-01",
+      "review_due_flag": true,
+      "health_passed": 3,
+      "health_total": 3,
+      "drifted": false,
+      "manifest_path": "log-rotator.yaml"
+    }
+  ]
+}

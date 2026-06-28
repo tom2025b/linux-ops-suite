@@ -26,6 +26,8 @@ members = [
     "crates/rexops-tui",
     "crates/scriptvault-core",
     "crates/scriptvault",
+    "crates/workstate-schema",
+    "crates/workstate",
 ]
 
 [workspace.package]
@@ -47,6 +49,8 @@ rexops-adapters = { path = "crates/rexops-adapters" }
 rexops-app = { path = "crates/rexops-app" }
 rexops-tui = { path = "crates/rexops-tui" }
 scriptvault-core = { path = "crates/scriptvault-core" }
+workstate-schema = { path = "crates/workstate-schema" }
+workstate = { path = "crates/workstate" }
 ratatui = "0.29"
 crossterm = "0.28"
 unicode-width = "0.2"
@@ -83,15 +87,12 @@ syntect = { version = "5", default-features = false, features = [
     "default-syntaxes",
     "regex-onig",
 ] }
+# workstate-schema's id generation (the producer/contract are now in-tree, see the
+# path deps above — workstate was the last standalone repo consolidated in).
+uuid = { version = "1", features = ["v4"] }
 
-# Workstate snapshot CONTRACT crate — the single source of truth for the snapshot
-# format, the canonical path, and the load/write functions. Every consumer reads
-# the snapshot through this and nothing else. Pinned by rev like every cross-repo
-# suite dependency.
-workstate-schema = { git = "https://github.com/tom2025b/workstate", rev = "4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724" }
-
-# Workstate PRODUCER crate (SnapshotBuilder + ingest adapters). Used only by
-# toolbox-bridge's integration test to compile a snapshot from fixtures. Pinned to
-# the SAME rev as workstate-schema above so the producer and the contract can never
-# resolve to two different revisions of the same repo.
-workstate = { git = "https://github.com/tom2025b/workstate", rev = "4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724" }
+# NOTE: workstate-schema (the snapshot CONTRACT) and workstate (the PRODUCER lib +
+# binary) are now IN-TREE path deps, declared above alongside the other suite
+# crates. They were pinned cross-repo git deps until this consolidation; every
+# consumer (toolbox-bridge, conductor, pulse) reaches them through workspace
+# inheritance, so the contract still cannot drift — it is now a single in-tree crate.

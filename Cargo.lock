@@ -2547,8 +2547,7 @@ dependencies = [
 
 [[package]]
 name = "workstate"
-version = "0.3.0"
-source = "git+https://github.com/tom2025b/workstate?rev=4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724#4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2560,8 +2559,7 @@ dependencies = [
 
 [[package]]
 name = "workstate-schema"
-version = "0.1.0"
-source = "git+https://github.com/tom2025b/workstate?rev=4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724#4220d0fd87c19bf07bd4cd7a6c0bbea3a639a724"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "serde",

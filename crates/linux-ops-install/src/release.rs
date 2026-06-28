@@ -17,12 +17,10 @@ pub(crate) struct Tool {
 }
 
 pub(crate) const TOOLS: &[Tool] = &[
-    Tool {
-        repo: "workstate",
-        binary: "workstate",
-    },
-    // In-workspace tools: built from this umbrella repo and shipped together in
-    // one `linux-ops-suite-<target>` release archive (matched by repo name;
+    // Every suite tool now lives in this umbrella repo — there are no standalone
+    // tool repos left (workstate, the last one, was consolidated in-tree). All are
+    // built from this workspace and shipped together in one
+    // `linux-ops-suite-<target>` release archive (matched by repo name;
     // `find_binary` then extracts each by its own binary name). Keep this list in
     // sync with release.yml's package step and the README "Supported binaries"
     // list. rex-check is intentionally omitted — it is a dev/health tool, not part
@@ -86,6 +84,13 @@ pub(crate) const TOOLS: &[Tool] = &[
     Tool {
         repo: "linux-ops-suite",
         binary: "scriptvault",
+    },
+    // Consolidated in-tree (was the LAST standalone repo): the state compiler that
+    // produces the one canonical snapshot. The snapshot contract crate
+    // (workstate-schema) is a library and is not installed.
+    Tool {
+        repo: "linux-ops-suite",
+        binary: "workstate",
     },
 ];
 

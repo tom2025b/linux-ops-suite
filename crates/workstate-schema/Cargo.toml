@@ -1,0 +1,16 @@
+[package]
+name = "workstate-schema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The Workstate snapshot contract: model types, schema version, the canonical output path, and the atomic write / validating load. Shared by the producer and every consumer so the contract cannot drift."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
