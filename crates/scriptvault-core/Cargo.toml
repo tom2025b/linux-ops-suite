@@ -1,0 +1,46 @@
+# =============================================================================
+# scriptvault-core — the pure logic library
+# -----------------------------------------------------------------------------
+# This crate contains ALL of ScriptVault's brains: config loading, directory
+# scanning, header/sidecar parsing, the index, fuzzy search, and the
+# process-spawning actions. It deliberately knows NOTHING about terminals,
+# windows, or any user interface.
+#
+# THE RULE: no UI dependency may ever appear below. If a future Tauri GUI or
+# the current TUI needs this crate, it gets pure data + functions — never a
+# ratatui widget or a clap command. That is what makes the core reusable
+# "without changes" by any frontend.
+# =============================================================================
+
+[package]
+name = "scriptvault-core"
+# `*.workspace = true` pulls these from the root [workspace.package] table so
+# we maintain version/edition/etc. in exactly one place.
+version.workspace = true
+edition = "2024"
+authors.workspace = true
+license.workspace = true
+description = "Core logic for ScriptVault: scan, parse, index, and search scripts."
+
+[dependencies]
+# Each line opts into a version pinned centrally in the workspace root.
+serde = { workspace = true }          # derive (De)Serialize on Config/ScriptEntry/etc.
+serde_yaml = { workspace = true }     # read config.yaml + sidecar .scriptvault.yaml
+serde_json = { workspace = true }     # persist user state (favorites/recents) as JSON
+thiserror = { workspace = true }      # the typed `ScriptVaultError` enum (core's error type)
+fuzzy-matcher = { workspace = true }  # scores how well a query matches each field
+walkdir = { workspace = true }        # recursive, ignore-aware directory traversal
+globset = { workspace = true }        # compile glob ignore patterns (literal names still work)
+dirs = { workspace = true }           # find the user's ~/.config directory portably
+# Logging FACADE only. This is NOT a UI dependency: `tracing` emits structured
+# events but does not decide where they go — the binary installs the subscriber.
+# So the core stays reusable; a future GUI just installs its own subscriber.
+tracing = { workspace = true }        # debug!/warn! for non-fatal degradation diagnostics
+
+# NOTE: `anyhow` is intentionally ABSENT here — it is the binary/adapter layer's
+# error type. Core returns the typed `ScriptVaultError` (via thiserror); the
+# binary maps those at its boundary. See AGENTS.md / error.rs.
+
+# NOTE: intentionally absent — clap, ratatui, crossterm. Those are UI concerns
+# and live only in the `scriptvault` binary crate. Keeping them out here is the
+# whole point of the split.

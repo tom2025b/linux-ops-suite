@@ -1,0 +1,61 @@
+# =============================================================================
+# scriptvault — the BINARY crate (CLI today, TUI in Layer 7)
+# -----------------------------------------------------------------------------
+# Depends on scriptvault-core for ALL logic. UI concerns live here, never in core:
+#   • clap   — CLI argument parsing.
+#   • NO ratatui / crossterm YET — added in Layer 7. Their absence now is the
+#     whole point of the headless checkpoint: the CLI exercises the entire
+#     pipeline with zero TUI dependencies, demonstrating the core facade is
+#     usable by a non-TUI consumer.
+# =============================================================================
+
+[package]
+name = "scriptvault"
+version.workspace = true
+edition = "2024"
+authors.workspace = true
+license.workspace = true
+description = "Personal script search engine (CLI + TUI)."
+
+# Explicit binary target so `cargo run` / the installed command is `scriptvault`.
+[[bin]]
+name = "scriptvault"
+path = "src/main.rs"
+
+[dependencies]
+# The binary points at the core crate by path — this is what makes the whole
+# workspace build together.
+scriptvault-core = { workspace = true }
+clap = { workspace = true }      # derive-based CLI parsing
+clap_complete = { workspace = true } # `gen` subcommand: shell completion scripts
+clap_mangen = { workspace = true }   # `gen` subcommand: roff man page
+anyhow = { workspace = true }    # Result + readable error chain in main()
+# Logging facade (re-emitted by core too) + the subscriber that writes events.
+# The binary is the ONE place that installs a subscriber: stderr for the CLI,
+# a log file for the TUI. RUST_LOG is honoured via the env-filter feature.
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dirs = { workspace = true }      # resolve the TUI log file path (<data-dir>/scriptvault/)
+
+# --- TUI dependencies (Layer 7) — UI concerns, correctly in the binary ---
+ratatui = { workspace = true }   # widget/layout framework
+crossterm = { workspace = true } # terminal backend (raw mode, key events)
+# Shared TUI chrome for the suite: the single source of truth for theme/palette
+# (cyan/amber + NO_COLOR), the rounded pane, and centering helpers. ScriptVault
+# consumes this instead of carrying its own copy. The `clap` feature derives
+# ValueEnum on ThemeChoice/ColorChoice so `--theme`/`--color` still parse here —
+# enabled on the workspace-inherited suite-ui (the umbrella default has no features).
+suite-ui = { workspace = true, features = ["clap"] }
+# Clipboard for the 'copy path' action. Deliberately in the BINARY, not core:
+# clipboard is a frontend concern and differs between a TUI and a future GUI.
+arboard = { workspace = true }
+# Syntax highlighting for the preview. Also binary-only — colour is a UI concern;
+# core stays dependency-clean and reusable by a future GUI.
+syntect = { workspace = true }
+serde_yaml = { workspace = true }  # for writing sidecar .scriptvault.yaml in metadata editor (Phase 2)
+serde = { workspace = true }       # derive Serialize on the CLI export DTO (search --format json)
+serde_json = { workspace = true }  # `search --format json` serializer
+# `workstate-feed` stamps `generated_at` with the current UTC time. The umbrella
+# centralizes chrono (0.4, with the `serde` feature); `clock` is on by default so
+# the timestamp formatting this crate needs is available via workspace inheritance.
+chrono = { workspace = true }

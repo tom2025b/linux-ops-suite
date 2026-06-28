@@ -1,0 +1,50 @@
+# =============================================================================
+# ScriptVault — default configuration
+# -----------------------------------------------------------------------------
+# This file is EMBEDDED into the binary at build time (via include_str!), so
+# ScriptVault works out of the box with zero setup. It also doubles as living
+# documentation: a user can copy any key below into their own config at
+#   ~/.config/scriptvault/config.yaml
+# to override it.
+#
+# Merge rules (how your config combines with these defaults):
+#   roots   : if you set a non-empty list, it REPLACES these defaults
+#             (you are telling ScriptVault exactly where to look).
+#   ignores : your entries are ADDED to these defaults (you almost always want
+#             the sensible skips below PLUS your own).
+#   editor  : your value overrides; otherwise this default (then $EDITOR) is used.
+#
+# A leading "~" in any root expands to your home directory.
+# =============================================================================
+
+# Directories ScriptVault scans for scripts. Recurses into each.
+roots:
+  - "~/bin"
+  - "~/scripts"
+  - "~/.local/bin"
+
+# Path fragments to skip while scanning. Matched against directory/file names.
+# These keep noisy, non-script trees out of the index.
+ignores:
+  - ".git"
+  - "node_modules"
+  - "target"
+  - "dist"
+  - "build"
+  - "build-*"
+  - ".cache"
+  - ".venv"
+  - "venv"
+  - "__pycache__"
+  - ".DS_Store"
+  - "*.bak"
+  - "*.backup"
+  - "*.old"
+  - "*.orig"
+  - "*.tmp"
+  - "*~"
+
+# Command used to open a script for editing. If left null, ScriptVault falls back
+# to the $EDITOR environment variable at action time, and to `nano` if that is
+# unset.
+editor: null
