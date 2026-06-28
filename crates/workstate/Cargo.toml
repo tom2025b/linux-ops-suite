@@ -1,0 +1,25 @@
+# workstate — the PRODUCER: a lib (SnapshotBuilder + ingest adapters, consumed by
+# toolbox-bridge's integration test) plus the `workstate` binary (src/main.rs)
+# that compiles the canonical snapshot. Consolidated in-tree from the standalone
+# workstate repo, where this crate's Cargo.toml doubled as the workspace root;
+# here it is a plain umbrella member and the snapshot CONTRACT lives in the
+# sibling workstate-schema crate (an in-tree path dep via workspace inheritance).
+[package]
+name = "workstate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Central state compiler and source of truth for the Linux ops suite"
+
+[dependencies]
+# The snapshot CONTRACT (model, schema version, canonical path, atomic write/load)
+# lives in workstate-schema so the producer and every consumer share one definition.
+workstate-schema = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }

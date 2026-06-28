@@ -12,7 +12,7 @@ This repository is the **contract and index headquarters** for the suite. Each t
 | **[ScriptVault](crates/scriptvault)** | Fast TUI script launcher + favorites & recents | Active |
 | **[Toolbox-Bridge](https://github.com/tom2025b/linux-ops-suite)** | Bridges Bulwark findings into ScriptVault sidecar metadata, via Workstate | Active |
 | **[ToolFoundry](crates/toolfoundry)** | Tool lifecycle, ownership, and health | Active |
-| **[Workstate](https://github.com/tom2025b/workstate)** | Read-only state compiler — compiles the one canonical snapshot (shape/version/path defined by `workstate-schema`) | Active |
+| **[Workstate](crates/workstate)** | Read-only state compiler — compiles the one canonical snapshot (shape/version/path defined by [`workstate-schema`](crates/workstate-schema)) | Active |
 | **[Proto](crates/proto)** | Guided protocol / checklist runner — emits session records | Active |
 | **[RexOps](crates/rexops-cli)** | Operations cockpit + suite launcher | Active |
 | **[rex-doctor](crates/rex-doctor)** | Suite diagnostics — checks env/PATH, binaries & versions | Active |
@@ -86,13 +86,9 @@ Integrity flags:
 - `--allow-unverified` — downgrade a *missing* checksum from a hard failure to a loud warning and install anyway. (A checksum *mismatch* still fails regardless.)
 - `--no-verify` — skip verification entirely (unsafe; local/offline testing only).
 
-Supported binaries:
-
-From standalone tool repos (each publishes its own GitHub Release):
-
-- `workstate`
-
-From this umbrella repo (all shipped together in the `linux-ops-suite` release archive):
+Supported binaries — **every** suite tool now lives in this umbrella repo and ships
+together in the one `linux-ops-suite` release archive (there are no standalone tool
+repos left; workstate was the last one consolidated in-tree):
 
 - `toolbox-bridge`
 - `rex-doctor`
@@ -107,6 +103,7 @@ From this umbrella repo (all shipped together in the `linux-ops-suite` release a
 - `bulwark`
 - `rexops`
 - `scriptvault`
+- `workstate`
 
 If a repo has no GitHub Release yet, `linux-ops-install` now says that explicitly and prints:
 
@@ -132,7 +129,8 @@ workstate-aarch64-unknown-linux-gnu.tar.gz
 linux-ops-suite-x86_64-unknown-linux-gnu.tar.gz
 ```
 
-The `linux-ops-suite` release is the special case: a single `linux-ops-suite-<target>` archive carries **all** the in-workspace tools — `toolbox-bridge`, `rex-doctor`, `portman`, `pulse`, `tripwire`, `rewind`, `conductor`, `rex-forge`, `proto`, `toolfoundry`, `bulwark`, `rexops`, and `scriptvault` — and the installer extracts each binary by name.
+The `linux-ops-suite` release is now the only case that matters: a single
+`linux-ops-suite-<target>` archive carries **all** the suite tools — `toolbox-bridge`, `rex-doctor`, `portman`, `pulse`, `tripwire`, `rewind`, `conductor`, `rex-forge`, `proto`, `toolfoundry`, `bulwark`, `rexops`, `scriptvault`, and `workstate` — and the installer extracts each binary by name. (The per-tool-repo asset format above still applies to any future external tool installed from its own release, but no suite tool uses it today.)
 
 ### Cutting releases
 
@@ -143,23 +141,12 @@ git tag v0.3.1
 git push origin v0.3.1   # release.yml builds the x86_64 + aarch64 archives and uploads them
 ```
 
-The standalone tool repo (`workstate`) publishes its own release:
-
-1. Build the release binary in that repo.
-2. Package the executable into a Linux archive, preferably `.tar.gz`.
-3. Create a GitHub Release and upload the archive.
-
-Example for a tool whose repo and binary are both `workstate`:
-
-```bash
-cargo build --release
-mkdir -p dist
-asset="workstate-x86_64-unknown-linux-gnu.tar.gz"
-tar -C target/release -czf "dist/$asset" workstate
-( cd dist && sha256sum "$asset" > "$asset.sha256" )   # the installer verifies this, fail-closed
-gh release create vX.Y.Z dist/"$asset" dist/"$asset.sha256" \
-  --repo tom2025b/workstate --title "vX.Y.Z" --notes "Linux release"
-```
+There are no standalone tool repos left to release separately — every suite tool is
+built and published from this umbrella's `release.yml` on a `v*` tag (above). Should a
+future external tool be installed from its own GitHub Release, package it as a Linux
+`.tar.gz` whose inner binary matches the tool name and whose asset filename carries the
+target arch (see the asset-format rules earlier), then `gh release create` it in that
+tool's own repo with a matching `.sha256` so the installer can verify it fail-closed.
 
 To package this repo's in-workspace tools by hand (the `release.yml` workflow does exactly this on a tag):
 
@@ -270,7 +257,7 @@ of the snapshot empty, and consumers degrade gracefully rather than failing.
 - ScriptVault — lives in this repo: [`crates/scriptvault`](crates/scriptvault) — Script launcher
 - Toolbox-Bridge — lives in this repo: [`crates/toolbox-bridge`](crates/toolbox-bridge) (Bulwark → Workstate → ScriptVault adapter)
 - ToolFoundry — lives in this repo: [`crates/toolfoundry`](crates/toolfoundry) — Lifecycle & ownership
-- [Workstate](https://github.com/tom2025b/workstate) — State compiler
+- Workstate — lives in this repo: [`crates/workstate`](crates/workstate) — State compiler (contract in [`crates/workstate-schema`](crates/workstate-schema))
 - Proto — lives in this repo: [`crates/proto`](crates/proto) — Guided protocol / checklist runner
 - RexOps — lives in this repo: [`crates/rexops-cli`](crates/rexops-cli) — Suite cockpit + launcher
 
